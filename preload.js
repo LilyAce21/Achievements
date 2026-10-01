@@ -17,9 +17,10 @@ function subscribeIpc(channel, callback, mapArgs = (_event, data) => [data]) {
 const RARITY_BORDER_STYLE_ID = "achievements-rarity-border-style";
 const RARITY_PERCENTAGE_ID = "achievements-rarity-percentage";
 const RARITY_BORDER_CLASSES = [
-  "achievements-rarity-border-gold",
-  "achievements-rarity-border-silver",
   "achievements-rarity-border-bronze",
+  "achievements-rarity-border-silver",
+  "achievements-rarity-border-gold",
+  "achievements-rarity-border-sapphire",
 ];
 let rarityBorderObserver = null;
 let rarityBorderTimer = null;
@@ -42,17 +43,19 @@ function parseNotificationRarityPercent(value) {
 
 function getNotificationRarityTier(value) {
   const percent = parseNotificationRarityPercent(value);
-  if (percent === null || percent > 10) return "";
-  if (percent <= 1) return "gold";
-  if (percent <= 5) return "silver";
-  return "bronze";
+  if (percent === null) return "";
+  if (percent > 50) return "bronze";
+  if (percent > 20) return "silver";
+  if (percent > 5) return "gold";
+  if (percent > 0) return "sapphire";
+  return "";
 }
 
 function getExplicitNotificationRarityTier(data = {}) {
   const value = String(data?.rarityTier || data?.trophyType || "")
     .trim()
     .toLowerCase();
-  if (value === "gold" || value === "silver" || value === "bronze") {
+  if (value === "bronze" || value === "silver" || value === "gold" || value === "sapphire") {
     return value;
   }
   return "";
@@ -96,12 +99,12 @@ function ensureRarityBorderStyles() {
   const style = document.createElement("style");
   style.id = RARITY_BORDER_STYLE_ID;
   style.textContent = `
-    .achievements-rarity-border-gold {
+    .achievements-rarity-border-bronze {
       box-sizing: border-box !important;
-      border: 2px solid #f9c74f !important;
+      border: 2px solid #cd7f32 !important;
       box-shadow:
-        0 0 0 1px rgba(249, 199, 79, 0.55),
-        0 0 14px rgba(249, 199, 79, 0.78) !important;
+        0 0 0 1px rgba(205, 127, 50, 0.55),
+        0 0 12px rgba(205, 127, 50, 0.68) !important;
     }
     .achievements-rarity-border-silver {
       box-sizing: border-box !important;
@@ -110,12 +113,19 @@ function ensureRarityBorderStyles() {
         0 0 0 1px rgba(199, 208, 217, 0.55),
         0 0 12px rgba(199, 208, 217, 0.68) !important;
     }
-    .achievements-rarity-border-bronze {
+    .achievements-rarity-border-gold {
       box-sizing: border-box !important;
-      border: 2px solid #cd7f32 !important;
+      border: 2px solid #f9c74f !important;
       box-shadow:
-        0 0 0 1px rgba(205, 127, 50, 0.55),
-        0 0 12px rgba(205, 127, 50, 0.68) !important;
+        0 0 0 1px rgba(249, 199, 79, 0.55),
+        0 0 14px rgba(249, 199, 79, 0.78) !important;
+    }
+    .achievements-rarity-border-sapphire {
+      box-sizing: border-box !important;
+      border: 2px solid #0066ff !important;
+      box-shadow:
+        0 0 0 1px rgba(0, 102, 255, 0.55),
+        0 0 14px rgba(0, 102, 255, 0.78) !important;
     }
     #${RARITY_PERCENTAGE_ID} {
       position: fixed;
@@ -142,17 +152,21 @@ function ensureRarityBorderStyles() {
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
     }
-    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-gold {
-      border-color: rgba(249, 199, 79, 0.88);
-      color: #ffe08a;
+    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-bronze {
+      border-color: rgba(205, 127, 50, 0.88);
+      color: #efb475;
     }
     #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-silver {
       border-color: rgba(199, 208, 217, 0.88);
       color: #edf3f8;
     }
-    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-bronze {
-      border-color: rgba(205, 127, 50, 0.88);
-      color: #efb475;
+    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-gold {
+      border-color: rgba(249, 199, 79, 0.88);
+      color: #ffe08a;
+    }
+    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-sapphire {
+      border-color: rgba(0, 102, 255, 0.88);
+      color: #80ccff;
     }
   `;
   document.head.appendChild(style);
