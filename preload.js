@@ -17,6 +17,7 @@ function subscribeIpc(channel, callback, mapArgs = (_event, data) => [data]) {
 const RARITY_BORDER_STYLE_ID = "achievements-rarity-border-style";
 const RARITY_PERCENTAGE_ID = "achievements-rarity-percentage";
 const RARITY_BORDER_CLASSES = [
+  "achievements-rarity-border-sapphire",
   "achievements-rarity-border-gold",
   "achievements-rarity-border-silver",
   "achievements-rarity-border-bronze",
@@ -40,19 +41,26 @@ function parseNotificationRarityPercent(value) {
     : null;
 }
 
+// Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 0-5%.
 function getNotificationRarityTier(value) {
   const percent = parseNotificationRarityPercent(value);
-  if (percent === null || percent > 10) return "";
-  if (percent <= 1) return "gold";
-  if (percent <= 5) return "silver";
-  return "bronze";
+  if (percent === null) return "";
+  if (percent > 50) return "bronze";
+  if (percent > 20) return "silver";
+  if (percent > 5) return "gold";
+  return "sapphire";
 }
 
 function getExplicitNotificationRarityTier(data = {}) {
   const value = String(data?.rarityTier || data?.trophyType || "")
     .trim()
     .toLowerCase();
-  if (value === "gold" || value === "silver" || value === "bronze") {
+  if (
+    value === "sapphire" ||
+    value === "gold" ||
+    value === "silver" ||
+    value === "bronze"
+  ) {
     return value;
   }
   return "";
@@ -110,6 +118,13 @@ function ensureRarityBorderStyles() {
         0 0 0 1px rgba(199, 208, 217, 0.55),
         0 0 12px rgba(199, 208, 217, 0.68) !important;
     }
+    .achievements-rarity-border-sapphire {
+      box-sizing: border-box !important;
+      border: 2px solid #3d7bff !important;
+      box-shadow:
+        0 0 0 1px rgba(61, 123, 255, 0.55),
+        0 0 14px rgba(61, 123, 255, 0.78) !important;
+    }
     .achievements-rarity-border-bronze {
       box-sizing: border-box !important;
       border: 2px solid #cd7f32 !important;
@@ -149,6 +164,10 @@ function ensureRarityBorderStyles() {
     #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-silver {
       border-color: rgba(199, 208, 217, 0.88);
       color: #edf3f8;
+    }
+    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-sapphire {
+      border-color: rgba(61, 123, 255, 0.88);
+      color: #a9c4ff;
     }
     #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-bronze {
       border-color: rgba(205, 127, 50, 0.88);
@@ -403,7 +422,7 @@ function applyNotificationRarityBorder(data = {}) {
       attachNotificationRarityPercentage(
         icon,
         percent,
-        tier,
+        showBorder ? tier : "",
         data?.scale,
         presetName,
       );

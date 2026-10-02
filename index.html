@@ -1275,6 +1275,11 @@
                 <h4 id="settings-achievementNotificationTitle">
                   Achievement Notification
                 </h4>
+                <p style="margin: 0 0 8px; opacity: 0.7; font-size: 0.85em">
+                  Bronze (50.1–100% rarity) and achievements without rarity
+                  data. Silver, Gold, Sapphire and Platinum have their own
+                  settings below.
+                </p>
 
                 <div class="settings-control">
                   <label for="settings-positionDropdown"
@@ -1322,64 +1327,54 @@
 
                 <hr style="margin: 18px 0 14px" />
                 <h4
-                  id="settings-rareTitle"
-                  data-i18n="settings-rareTitle"
+                  id="settings-silverTitle"
                   style="margin-top: 10px"
                 >
-                  Rare Notification
+                  Silver Notification (20.1–50% rarity)
                 </h4>
                 <div class="settings-control">
                   <label
-                    for="settings-rarePositionDropdown"
-                    data-i18n="label.settings-rarePositionDropdown"
-                    >Rare Achievement Position:</label
+                    for="settings-silverPositionDropdown"
+                    >Silver Achievement Position:</label
                   >
-                  <select id="settings-rarePositionDropdown">
+                  <select id="settings-silverPositionDropdown">
                     <option
                       value="center-bottom"
-                      data-i18n="option.positionDropdown.center-bottom"
                     >
                       Center Bottom
                     </option>
                     <option
                       value="center-top"
-                      data-i18n="option.positionDropdown.center-top"
                     >
                       Center Top
                     </option>
                     <option
                       value="top-right"
-                      data-i18n="option.positionDropdown.top-right"
                     >
                       Top Right
                     </option>
                     <option
                       value="bottom-right"
-                      data-i18n="option.positionDropdown.bottom-right"
                     >
                       Bottom Right
                     </option>
                     <option
                       value="middle-right"
-                      data-i18n="option.positionDropdown.middle-right"
                     >
                       Middle Right
                     </option>
                     <option
                       value="top-left"
-                      data-i18n="option.positionDropdown.top-left"
                     >
                       Top Left
                     </option>
                     <option
                       value="bottom-left"
-                      data-i18n="option.positionDropdown.bottom-left"
                     >
                       Bottom Left
                     </option>
                     <option
                       value="middle-left"
-                      data-i18n="option.positionDropdown.middle-left"
                     >
                       Middle Left
                     </option>
@@ -1388,36 +1383,204 @@
 
                 <div class="settings-control">
                   <label
-                    for="settings-rarePresetDropdown"
-                    data-i18n="label.settings-rarePresetDropdown"
-                    >Rare Achievement Preset:</label
+                    for="settings-silverPresetDropdown"
+                    >Silver Achievement Preset:</label
                   >
-                  <select id="settings-rarePresetDropdown"></select>
+                  <select id="settings-silverPresetDropdown"></select>
                 </div>
 
                 <div class="settings-control">
                   <label
-                    for="settings-rareSoundSelect"
-                    data-i18n="label.settings-rareSoundSelect"
-                    >Rare Achievement Sound:</label
+                    for="settings-silverSoundSelect"
+                    >Silver Achievement Sound:</label
                   >
-                  <select id="settings-rareSoundSelect"></select>
+                  <select id="settings-silverSoundSelect"></select>
                 </div>
                 <div class="settings-control">
                   <label
-                    for="settings-rareSanPresetDropdown"
-                    data-i18n="label.settings-rareSanPresetDropdown"
-                    >Rare Achievement SAN Preset:</label
+                    for="settings-silverSanPresetDropdown"
+                    >Silver Achievement SAN Preset:</label
                   >
-                  <select id="settings-rareSanPresetDropdown"></select>
+                  <select id="settings-silverSanPresetDropdown"></select>
                 </div>
                 <button
-                  id="settings-testRareNotificationBtn"
+                  id="settings-testSilverNotificationBtn"
                   class="settings-test-button"
-                  data-i18n="settings-testRareNotificationBtn"
                   style="width: 100%; margin: 10px 0; padding: 10px"
                 >
-                  Test Rare Notification
+                  Test Silver Notification
+                </button>
+
+                <hr style="margin: 18px 0 14px" />
+                <h4
+                  id="settings-goldTitle"
+                  style="margin-top: 10px"
+                >
+                  Gold Notification (5.1–20% rarity)
+                </h4>
+                <div class="settings-control">
+                  <label
+                    for="settings-goldPositionDropdown"
+                    >Gold Achievement Position:</label
+                  >
+                  <select id="settings-goldPositionDropdown">
+                    <option
+                      value="center-bottom"
+                    >
+                      Center Bottom
+                    </option>
+                    <option
+                      value="center-top"
+                    >
+                      Center Top
+                    </option>
+                    <option
+                      value="top-right"
+                    >
+                      Top Right
+                    </option>
+                    <option
+                      value="bottom-right"
+                    >
+                      Bottom Right
+                    </option>
+                    <option
+                      value="middle-right"
+                    >
+                      Middle Right
+                    </option>
+                    <option
+                      value="top-left"
+                    >
+                      Top Left
+                    </option>
+                    <option
+                      value="bottom-left"
+                    >
+                      Bottom Left
+                    </option>
+                    <option
+                      value="middle-left"
+                    >
+                      Middle Left
+                    </option>
+                  </select>
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-goldPresetDropdown"
+                    >Gold Achievement Preset:</label
+                  >
+                  <select id="settings-goldPresetDropdown"></select>
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-goldSoundSelect"
+                    >Gold Achievement Sound:</label
+                  >
+                  <select id="settings-goldSoundSelect"></select>
+                </div>
+                <div class="settings-control">
+                  <label
+                    for="settings-goldSanPresetDropdown"
+                    >Gold Achievement SAN Preset:</label
+                  >
+                  <select id="settings-goldSanPresetDropdown"></select>
+                </div>
+                <button
+                  id="settings-testGoldNotificationBtn"
+                  class="settings-test-button"
+                  style="width: 100%; margin: 10px 0; padding: 10px"
+                >
+                  Test Gold Notification
+                </button>
+
+                <hr style="margin: 18px 0 14px" />
+                <h4
+                  id="settings-sapphireTitle"
+                  style="margin-top: 10px"
+                >
+                  Sapphire / Ultra-Rare Notification (0–5% rarity)
+                </h4>
+                <div class="settings-control">
+                  <label
+                    for="settings-sapphirePositionDropdown"
+                    >Sapphire / Ultra-Rare Achievement Position:</label
+                  >
+                  <select id="settings-sapphirePositionDropdown">
+                    <option
+                      value="center-bottom"
+                    >
+                      Center Bottom
+                    </option>
+                    <option
+                      value="center-top"
+                    >
+                      Center Top
+                    </option>
+                    <option
+                      value="top-right"
+                    >
+                      Top Right
+                    </option>
+                    <option
+                      value="bottom-right"
+                    >
+                      Bottom Right
+                    </option>
+                    <option
+                      value="middle-right"
+                    >
+                      Middle Right
+                    </option>
+                    <option
+                      value="top-left"
+                    >
+                      Top Left
+                    </option>
+                    <option
+                      value="bottom-left"
+                    >
+                      Bottom Left
+                    </option>
+                    <option
+                      value="middle-left"
+                    >
+                      Middle Left
+                    </option>
+                  </select>
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-sapphirePresetDropdown"
+                    >Sapphire / Ultra-Rare Achievement Preset:</label
+                  >
+                  <select id="settings-sapphirePresetDropdown"></select>
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-sapphireSoundSelect"
+                    >Sapphire / Ultra-Rare Achievement Sound:</label
+                  >
+                  <select id="settings-sapphireSoundSelect"></select>
+                </div>
+                <div class="settings-control">
+                  <label
+                    for="settings-sapphireSanPresetDropdown"
+                    >Sapphire / Ultra-Rare Achievement SAN Preset:</label
+                  >
+                  <select id="settings-sapphireSanPresetDropdown"></select>
+                </div>
+                <button
+                  id="settings-testSapphireNotificationBtn"
+                  class="settings-test-button"
+                  style="width: 100%; margin: 10px 0; padding: 10px"
+                >
+                  Test Sapphire / Ultra-Rare Notification
                 </button>
 
                 <hr style="margin: 18px 0 14px" />
@@ -5418,9 +5581,15 @@
       </select>
       <select id="presetDropdown"></select>
       <select id="soundSelect"></select>
-      <input type="hidden" id="rarePresetValue" />
-      <input type="hidden" id="rarePositionValue" />
-      <input type="hidden" id="rareSoundValue" />
+      <input type="hidden" id="silverPresetValue" />
+      <input type="hidden" id="silverPositionValue" />
+      <input type="hidden" id="silverSoundValue" />
+      <input type="hidden" id="goldPresetValue" />
+      <input type="hidden" id="goldPositionValue" />
+      <input type="hidden" id="goldSoundValue" />
+      <input type="hidden" id="sapphirePresetValue" />
+      <input type="hidden" id="sapphirePositionValue" />
+      <input type="hidden" id="sapphireSoundValue" />
       <input type="hidden" id="platinumPresetValue" />
       <input type="hidden" id="platinumPositionValue" />
       <input type="hidden" id="platinumSoundValue" />
@@ -13283,6 +13452,11 @@
       });
 
       let presetOptionsLoadPromise = null;
+      const NOTIFICATION_RARITY_TIERS = Object.freeze([
+        "silver",
+        "gold",
+        "sapphire",
+      ]);
       const NATIVE_WINDOWS_PRESET_VALUE = "native windows";
       const GAME_BAR_NOTIFICATIONS_PRESET_VALUE = "game bar notifications";
       const NATIVE_WINDOWS_NOTIFICATION_CONTROL_MAP = Object.freeze([
@@ -13298,13 +13472,13 @@
             "settings-sanPresetDropdown",
           ],
         },
-        {
-          presetId: "settings-rarePresetDropdown",
+        ...NOTIFICATION_RARITY_TIERS.map((tier) => ({
+          presetId: `settings-${tier}PresetDropdown`,
           controlIds: [
-            "settings-rarePositionDropdown",
-            "settings-rareSanPresetDropdown",
+            `settings-${tier}PositionDropdown`,
+            `settings-${tier}SanPresetDropdown`,
           ],
-        },
+        })),
         {
           presetId: "settings-platinumPresetDropdown",
           controlIds: [
@@ -14527,7 +14701,11 @@
 
         const mappings = [
           ["settings-sanPresetDropdown", "sanPreset"],
-          ["settings-rareSanPresetDropdown", "rareSanPreset"],
+          ...NOTIFICATION_RARITY_TIERS.map((tier) => [
+            `settings-${tier}SanPresetDropdown`,
+            `${tier}SanPreset`,
+            "rareSanPreset",
+          ]),
           ["settings-platinumSanPresetDropdown", "platinumSanPreset"],
           ...EMULATOR_NOTIFICATION_SETTINGS.map((setting) => [
             setting.sanPresetId,
@@ -14535,10 +14713,11 @@
           ]),
         ];
         const migrated = {};
-        for (const [selectId, prefKey] of mappings) {
+        for (const [selectId, prefKey, legacyPrefKey] of mappings) {
           const select = document.getElementById(selectId);
           if (!select) continue;
-          const selectedPreset = prefs?.[prefKey] || "";
+          const selectedPreset =
+            prefs?.[prefKey] || (legacyPrefKey ? prefs?.[legacyPrefKey] : "") || "";
           const matchedPreset = fillSanPresetSelect(select, selectedPreset);
           if (matchedPreset && matchedPreset.id !== selectedPreset) {
             migrated[prefKey] = matchedPreset.id;
@@ -14711,44 +14890,57 @@
       }
 
       function applyRareNotificationPreferences(prefs = {}) {
-        const rarePosition =
-          prefs.rarePosition || prefs.position || "center-bottom";
-        const rarePreset = prefs.rarePreset || prefs.preset || "default";
-        const rareSound = prefs.rareSound || prefs.sound || "mute";
+        for (const tier of NOTIFICATION_RARITY_TIERS) {
+          // Falls back to the legacy single "Rare" profile for existing users.
+          const position =
+            prefs[`${tier}Position`] ||
+            prefs.rarePosition ||
+            prefs.position ||
+            "center-bottom";
+          const preset =
+            prefs[`${tier}Preset`] ||
+            prefs.rarePreset ||
+            prefs.preset ||
+            "default";
+          const sound =
+            prefs[`${tier}Sound`] || prefs.rareSound || prefs.sound || "mute";
 
-        const positionSelect = document.getElementById(
-          "settings-rarePositionDropdown",
-        );
-        if (positionSelect) positionSelect.value = rarePosition;
+          const positionSelect = document.getElementById(
+            `settings-${tier}PositionDropdown`,
+          );
+          if (positionSelect) positionSelect.value = position;
 
-        const presetSelect = document.getElementById(
-          "settings-rarePresetDropdown",
-        );
-        if (
-          presetSelect &&
-          Array.from(presetSelect.options).some(
-            (option) => option.value === rarePreset,
-          )
-        ) {
-          presetSelect.value = rarePreset;
+          const presetSelect = document.getElementById(
+            `settings-${tier}PresetDropdown`,
+          );
+          if (
+            presetSelect &&
+            Array.from(presetSelect.options).some(
+              (option) => option.value === preset,
+            )
+          ) {
+            presetSelect.value = preset;
+          }
+
+          const soundSelect = document.getElementById(
+            `settings-${tier}SoundSelect`,
+          );
+          if (
+            soundSelect &&
+            Array.from(soundSelect.options).some(
+              (option) => option.value === sound,
+            )
+          ) {
+            soundSelect.value = sound;
+          }
+
+          const hiddenPosition = document.getElementById(`${tier}PositionValue`);
+          const hiddenPreset = document.getElementById(`${tier}PresetValue`);
+          const hiddenSound = document.getElementById(`${tier}SoundValue`);
+          if (hiddenPosition) hiddenPosition.value = position;
+          if (hiddenPreset) hiddenPreset.value = preset;
+          if (hiddenSound) hiddenSound.value = sound;
         }
-
-        const soundSelect = document.getElementById("settings-rareSoundSelect");
-        if (
-          soundSelect &&
-          Array.from(soundSelect.options).some(
-            (option) => option.value === rareSound,
-          )
-        ) {
-          soundSelect.value = rareSound;
-        }
-
-        const hiddenPosition = document.getElementById("rarePositionValue");
-        const hiddenPreset = document.getElementById("rarePresetValue");
-        const hiddenSound = document.getElementById("rareSoundValue");
-        if (hiddenPosition) hiddenPosition.value = rarePosition;
-        if (hiddenPreset) hiddenPreset.value = rarePreset;
-        if (hiddenSound) hiddenSound.value = rareSound;
       }
 
       let __xboxPcStatusSyncActive = false;
@@ -18380,38 +18572,42 @@
           window.api.showTestProgressNotification({ position });
         });
 
-      document
-        .getElementById("settings-testRareNotificationBtn")
-        .addEventListener("click", function () {
-          const preset =
-            document.getElementById("settings-rarePresetDropdown")?.value ||
-            "default";
-          const position =
-            document.getElementById("settings-rarePositionDropdown")?.value ||
-            "center-bottom";
-          const sound =
-            document.getElementById("settings-rareSoundSelect")?.value ||
-            "mute";
-          const useSanPreset =
-            document.getElementById("settings-useSanPresetCheckbox")
-              ?.checked === true;
-          const sanPreset =
-            document.getElementById("settings-rareSanPresetDropdown")?.value ||
-            "";
-          const scale = parseFloat(
-            document.getElementById("settings-scaleSlider")?.value || 1,
-          );
+      for (const tier of NOTIFICATION_RARITY_TIERS) {
+        const tierCap = tier.charAt(0).toUpperCase() + tier.slice(1);
+        document
+          .getElementById(`settings-test${tierCap}NotificationBtn`)
+          ?.addEventListener("click", function () {
+            const preset =
+              document.getElementById(`settings-${tier}PresetDropdown`)
+                ?.value || "default";
+            const position =
+              document.getElementById(`settings-${tier}PositionDropdown`)
+                ?.value || "center-bottom";
+            const sound =
+              document.getElementById(`settings-${tier}SoundSelect`)?.value ||
+              "mute";
+            const useSanPreset =
+              document.getElementById("settings-useSanPresetCheckbox")
+                ?.checked === true;
+            const sanPreset =
+              document.getElementById(`settings-${tier}SanPresetDropdown`)
+                ?.value || "";
+            const scale = parseFloat(
+              document.getElementById("settings-scaleSlider")?.value || 1,
+            );
 
-          stopUiAudioPlayback();
-          window.api.showTestRareNotification({
-            preset,
-            position,
-            sound,
-            useSanPreset,
-            sanPreset,
-            scale,
+            stopUiAudioPlayback();
+            window.api.showTestRareNotification({
+              tier,
+              preset,
+              position,
+              sound,
+              useSanPreset,
+              sanPreset,
+              scale,
+            });
           });
-        });
+      }
 
       document
         .getElementById("settings-testPlatinumNotificationBtn")
@@ -18697,13 +18893,15 @@
           window.api.savePreferences({ position: e.target.value }),
         );
 
-      document
-        .getElementById("settings-rarePositionDropdown")
-        .addEventListener("change", (e) => {
-          const hidden = document.getElementById("rarePositionValue");
-          if (hidden) hidden.value = e.target.value;
-          window.api.savePreferences({ rarePosition: e.target.value });
-        });
+      for (const tier of NOTIFICATION_RARITY_TIERS) {
+        document
+          .getElementById(`settings-${tier}PositionDropdown`)
+          ?.addEventListener("change", (e) => {
+            const hidden = document.getElementById(`${tier}PositionValue`);
+            if (hidden) hidden.value = e.target.value;
+            window.api.savePreferences({ [`${tier}Position`]: e.target.value });
+          });
+      }
 
       document
         .getElementById("settings-platinumPositionDropdown")
@@ -18736,13 +18934,15 @@
           window.api.savePreferences({ preset: e.target.value }),
         );
 
-      document
-        .getElementById("settings-rarePresetDropdown")
-        .addEventListener("change", (e) => {
-          const hidden = document.getElementById("rarePresetValue");
-          if (hidden) hidden.value = e.target.value;
-          window.api.savePreferences({ rarePreset: e.target.value });
-        });
+      for (const tier of NOTIFICATION_RARITY_TIERS) {
+        document
+          .getElementById(`settings-${tier}PresetDropdown`)
+          ?.addEventListener("change", (e) => {
+            const hidden = document.getElementById(`${tier}PresetValue`);
+            if (hidden) hidden.value = e.target.value;
+            window.api.savePreferences({ [`${tier}Preset`]: e.target.value });
+          });
+      }
 
       document
         .getElementById("settings-platinumPresetDropdown")
@@ -18773,11 +18973,15 @@
           window.api.savePreferences({ sanPreset: e.target.value });
         });
 
-      document
-        .getElementById("settings-rareSanPresetDropdown")
-        ?.addEventListener("change", (e) => {
-          window.api.savePreferences({ rareSanPreset: e.target.value });
-        });
+      for (const tier of NOTIFICATION_RARITY_TIERS) {
+        document
+          .getElementById(`settings-${tier}SanPresetDropdown`)
+          ?.addEventListener("change", (e) => {
+            window.api.savePreferences({
+              [`${tier}SanPreset`]: e.target.value,
+            });
+          });
+      }
 
       document
         .getElementById("settings-platinumSanPresetDropdown")
@@ -18785,14 +18989,16 @@
           window.api.savePreferences({ platinumSanPreset: e.target.value });
         });
 
-      document
-        .getElementById("settings-rareSoundSelect")
-        .addEventListener("change", (e) => {
-          const hidden = document.getElementById("rareSoundValue");
-          if (hidden) hidden.value = e.target.value;
-          window.api.savePreferences({ rareSound: e.target.value });
-          playPreviewSound(e.target.value, "settings-rareSoundSelect");
-        });
+      for (const tier of NOTIFICATION_RARITY_TIERS) {
+        document
+          .getElementById(`settings-${tier}SoundSelect`)
+          ?.addEventListener("change", (e) => {
+            const hidden = document.getElementById(`${tier}SoundValue`);
+            if (hidden) hidden.value = e.target.value;
+            window.api.savePreferences({ [`${tier}Sound`]: e.target.value });
+            playPreviewSound(e.target.value, `settings-${tier}SoundSelect`);
+          });
+      }
 
       document
         .getElementById("settings-platinumSoundSelect")
@@ -18825,13 +19031,18 @@
           ) {
             settingsPresetDropdown.value = selectedPreset;
           }
-          const rarePresetDropdown = document.getElementById(
-            "settings-rarePresetDropdown",
-          );
-          if (rarePresetDropdown) {
-            rarePresetDropdown.innerHTML = mainPresetDropdown.innerHTML;
-            rarePresetDropdown.value =
-              prefs.rarePreset || rarePresetDropdown.value || "default";
+          for (const tier of NOTIFICATION_RARITY_TIERS) {
+            const tierPresetDropdown = document.getElementById(
+              `settings-${tier}PresetDropdown`,
+            );
+            if (tierPresetDropdown) {
+              tierPresetDropdown.innerHTML = mainPresetDropdown.innerHTML;
+              tierPresetDropdown.value =
+                prefs[`${tier}Preset`] ||
+                prefs.rarePreset ||
+                tierPresetDropdown.value ||
+                "default";
+            }
           }
           const platinumPresetDropdown = document.getElementById(
             "settings-platinumPresetDropdown",
@@ -18870,13 +19081,18 @@
           ) {
             settingsSoundSelect.value = selectedSound;
           }
-          const rareSoundSelect = document.getElementById(
-            "settings-rareSoundSelect",
-          );
-          if (rareSoundSelect) {
-            rareSoundSelect.innerHTML = mainSoundSelect.innerHTML;
-            rareSoundSelect.value =
-              prefs.rareSound || rareSoundSelect.value || "mute";
+          for (const tier of NOTIFICATION_RARITY_TIERS) {
+            const tierSoundSelect = document.getElementById(
+              `settings-${tier}SoundSelect`,
+            );
+            if (tierSoundSelect) {
+              tierSoundSelect.innerHTML = mainSoundSelect.innerHTML;
+              tierSoundSelect.value =
+                prefs[`${tier}Sound`] ||
+                prefs.rareSound ||
+                tierSoundSelect.value ||
+                "mute";
+            }
           }
           const platinumSoundSelect = document.getElementById(
             "settings-platinumSoundSelect",
@@ -18911,14 +19127,17 @@
         if (mainPositionDropdown && settingsPositionDropdown) {
           settingsPositionDropdown.value = mainPositionDropdown.value;
         }
-        const settingsRarePositionDropdown = document.getElementById(
-          "settings-rarePositionDropdown",
-        );
-        if (settingsRarePositionDropdown) {
-          settingsRarePositionDropdown.value =
-            prefs.rarePosition ||
-            settingsRarePositionDropdown.value ||
-            "center-bottom";
+        for (const tier of NOTIFICATION_RARITY_TIERS) {
+          const tierPositionDropdown = document.getElementById(
+            `settings-${tier}PositionDropdown`,
+          );
+          if (tierPositionDropdown) {
+            tierPositionDropdown.value =
+              prefs[`${tier}Position`] ||
+              prefs.rarePosition ||
+              tierPositionDropdown.value ||
+              "center-bottom";
+          }
         }
         const settingsPlatinumPositionDropdown = document.getElementById(
           "settings-platinumPositionDropdown",
@@ -19230,20 +19449,24 @@
           language: getGlobalAchievementLanguage(),
         };
 
-        snapshot.rarePreset = pick(
-          getVal("settings-rarePresetDropdown") || getVal("rarePresetValue"),
-          base.rarePreset || snapshot.preset,
-        );
-        snapshot.rarePosition = pick(
-          getVal("settings-rarePositionDropdown") ||
-            getVal("rarePositionValue"),
-          base.rarePosition || snapshot.position,
-        );
-        snapshot.rareSound = pick(
-          getVal("settings-rareSoundSelect") || getVal("rareSoundValue"),
-          base.rareSound || snapshot.sound,
-        );
-        snapshot.rareSanPreset = getVal("settings-rareSanPresetDropdown") || "";
+        for (const tier of NOTIFICATION_RARITY_TIERS) {
+          snapshot[`${tier}Preset`] = pick(
+            getVal(`settings-${tier}PresetDropdown`) ||
+              getVal(`${tier}PresetValue`),
+            base[`${tier}Preset`] || base.rarePreset || snapshot.preset,
+          );
+          snapshot[`${tier}Position`] = pick(
+            getVal(`settings-${tier}PositionDropdown`) ||
+              getVal(`${tier}PositionValue`),
+            base[`${tier}Position`] || base.rarePosition || snapshot.position,
+          );
+          snapshot[`${tier}Sound`] = pick(
+            getVal(`settings-${tier}SoundSelect`) || getVal(`${tier}SoundValue`),
+            base[`${tier}Sound`] || base.rareSound || snapshot.sound,
+          );
+          snapshot[`${tier}SanPreset`] =
+            getVal(`settings-${tier}SanPresetDropdown`) || "";
+        }
         snapshot.platinumPreset = pick(
           getVal("settings-platinumPresetDropdown") ||
             getVal("platinumPresetValue"),

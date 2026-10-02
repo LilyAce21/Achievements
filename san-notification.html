@@ -78,7 +78,10 @@
           .trim()
           .toLowerCase();
         const tierFromPayload =
-          explicitTier === "gold" || explicitTier === "silver" || explicitTier === "bronze"
+          explicitTier === "sapphire" ||
+          explicitTier === "gold" ||
+          explicitTier === "silver" ||
+          explicitTier === "bronze"
             ? explicitTier
             : "";
         const rawValue = payload?.rarityPct;
@@ -88,11 +91,18 @@
             : Number(rawValue);
         const hasPercent = Number.isFinite(raw);
         const value = hasPercent ? Math.max(raw, 0.1) : 50;
-        const rarity = 1;
-        const semirarity = 5;
+        // Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 0-5%.
+        const rarity = 5;
+        const semirarity = 20;
         const tier =
           tierFromPayload ||
-          (value <= rarity ? "gold" : value <= semirarity ? "silver" : "bronze");
+          (value <= rarity
+            ? "sapphire"
+            : value <= semirarity
+              ? "gold"
+              : value <= 50
+                ? "silver"
+                : "bronze");
         return { value, rarity, semirarity, tier, hasPercent };
       }
 
@@ -106,8 +116,14 @@
 
       function pickRarityAsset(value, tier) {
         if (Array.isArray(value)) {
-          const index = tier === "gold" ? 2 : tier === "silver" ? 1 : 0;
-          return value[index] || value[0] || "";
+          const index =
+            tier === "sapphire" ? 3 : tier === "gold" ? 2 : tier === "silver" ? 1 : 0;
+          return (
+            value[index] ||
+            (tier === "sapphire" ? value[2] : "") ||
+            value[0] ||
+            ""
+          );
         }
         return value || "";
       }
@@ -185,6 +201,13 @@
 
       function getSanTierValue(customisation, flagKey, prefix, fallback, tier) {
         if (!customisation?.[flagKey]) return fallback;
+        if (tier === "sapphire") {
+          return (
+            customisation[`${prefix}sapphire`] ||
+            customisation[`${prefix}gold`] ||
+            fallback
+          );
+        }
         if (tier === "gold") return customisation[`${prefix}gold`] || fallback;
         if (tier === "silver") return customisation[`${prefix}silver`] || fallback;
         return customisation[`${prefix}bronze`] || fallback;
@@ -497,7 +520,10 @@
             ? customisation.iconborderimgbronze
             : percent.tier === "silver"
               ? customisation.iconborderimgsilver
-              : customisation.iconborderimg
+              : percent.tier === "sapphire"
+                ? customisation.iconborderimgsapphire ||
+                  customisation.iconborderimg
+                : customisation.iconborderimg
           : customisation.iconborderimg;
         setVar("--iconborder", customisation.showiconborder ? cssUrl(iconBorder) : "none");
         setVar("--iconborderpos", customisation.iconborderpos === "back" ? -1 : 99);
@@ -533,7 +559,10 @@
             : `${badgeFontSize / 4 / Math.max(0.1, badgeRoundness / 10)}px`,
         );
         const badgeAsset =
-          percent.tier === "gold"
+          percent.tier === "sapphire"
+            ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgsapphire") ||
+              getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
+            : percent.tier === "gold"
             ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
             : percent.tier === "silver"
               ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgsilver")

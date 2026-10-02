@@ -13175,6 +13175,18 @@ function getUserPreferredSound() {
 const RANDOM_SOUND_VALUE = "random";
 let lastRandomAchievementSound = "";
 let lastRandomRareSound = "";
+const lastRandomRareTierSounds = {};
+const RARITY_NOTIFICATION_TIERS = Object.freeze(["silver", "gold", "sapphire"]);
+
+// Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 0-5%.
+// Platinum is a separate completion condition and never goes through this.
+function getRarityTierFromPercent(percent) {
+  if (typeof percent !== "number" || !Number.isFinite(percent)) return "";
+  if (percent > 50) return "bronze";
+  if (percent > 20) return "silver";
+  if (percent > 5) return "gold";
+  return "sapphire";
+}
 let lastRandomPlatinumSound = "";
 let lastRandomTestSound = "";
 
@@ -13202,6 +13214,9 @@ function resolveNotificationSound(sound, options = {}) {
 
   const isPlatinum = options.isPlatinum === true;
   const isRare = options.isRare === true;
+  const rareTierKey = RARITY_NOTIFICATION_TIERS.includes(options.rarityTier)
+    ? options.rarityTier
+    : "rare";
   const isTest = options.isTest === true;
   const sounds = getAvailableNotificationSounds();
   if (!sounds.length) return "mute";
@@ -13211,7 +13226,7 @@ function resolveNotificationSound(sound, options = {}) {
     : isPlatinum
       ? lastRandomPlatinumSound
       : isRare
-        ? lastRandomRareSound
+        ? lastRandomRareTierSounds[rareTierKey] || lastRandomRareSound
         : lastRandomAchievementSound;
   const candidates =
     sounds.length > 1
@@ -13225,6 +13240,7 @@ function resolveNotificationSound(sound, options = {}) {
     lastRandomPlatinumSound = selected;
   } else if (isRare) {
     lastRandomRareSound = selected;
+    lastRandomRareTierSounds[rareTierKey] = selected;
   } else {
     lastRandomAchievementSound = selected;
   }
@@ -14592,13 +14608,14 @@ ipcMain.on("show-test-notification", (event, options) => {
   queueAchievementNotification(notificationData);
 });
 
-function getRandomTestRareRarity() {
+function getRandomTestRareRarity(requestedTier = "") {
   const tiers = [
-    { name: "gold", min: 0.01, max: 1 },
-    { name: "silver", min: 1.01, max: 5 },
-    { name: "bronze", min: 5.01, max: 10 },
+    { name: "sapphire", min: 0.1, max: 5 },
+    { name: "gold", min: 5.1, max: 20 },
+    { name: "silver", min: 20.1, max: 50 },
   ];
-  const tier = tiers[crypto.randomInt(tiers.length)];
+  const requested = tiers.find((entry) => entry.name === requestedTier);
+  const tier = requested || tiers[crypto.randomInt(tiers.length)];
   const percent =
     Math.round((tier.min + Math.random() * (tier.max - tier.min)) * 100) / 100;
   return { tier: tier.name, percent };
@@ -14614,8 +14631,9 @@ function resolveTestNotificationSanPreset(options = {}, fallback = "") {
 ipcMain.on("show-test-rare-notification", (_event, options = {}) => {
   const prefs = cachedPreferences || {};
   const baseDir = app.isPackaged ? process.resourcesPath : __dirname;
-  const rarity = getRandomTestRareRarity();
+  const rarity = getRandomTestRareRarity(String(options.tier || ""));
   const tierLabel = rarity.tier.charAt(0).toUpperCase() + rarity.tier.slice(1);
+  const tierKey = rarity.tier;
 
   queueAchievementNotification({
     name: `TEST_RARE_NOTIFICATION_${rarity.tier.toUpperCase()}`,
@@ -14634,15 +14652,29 @@ ipcMain.on("show-test-rare-notification", (_event, options = {}) => {
     config_path: baseDir,
     rarityPct: rarity.percent,
     raritySource: "test",
-    preset: options.preset || prefs.rarePreset || prefs.preset || "default",
+    preset:
+      options.preset ||
+      prefs[`${tierKey}Preset`] ||
+      prefs.rarePreset ||
+      prefs.preset ||
+      "default",
     position:
       options.position ||
+      prefs[`${tierKey}Position`] ||
       prefs.rarePosition ||
       prefs.position ||
       "center-bottom",
-    sound: options.sound || prefs.rareSound || prefs.sound || "mute",
+    sound:
+      options.sound ||
+      prefs[`${tierKey}Sound`] ||
+      prefs.rareSound ||
+      prefs.sound ||
+      "mute",
     useSanPreset: options.useSanPreset === true,
-    sanPreset: resolveTestNotificationSanPreset(options, prefs.rareSanPreset),
+    sanPreset: resolveTestNotificationSanPreset(
+      options,
+      prefs[`${tierKey}SanPreset`] || prefs.rareSanPreset,
+    ),
     scale: parseFloat(
       options.scale != null
         ? options.scale
@@ -15682,16 +15714,18 @@ function queueAchievementNotification(achievement) {
     isPlatinum || (isTest && !isTestRare && !hasExplicitRarity)
       ? { percent: null, source: null }
       : resolveNotificationRarity(achievement);
-  const isRare =
-    !usesEmulatorNotificationProfile &&
-    rarity.percent !== null &&
-    rarity.percent >= 0 &&
-    rarity.percent <= 10;
+  // Bronze (50.1-100%) uses the regular "Achievement Notification" profile.
+  // Silver / Gold / Sapphire each have their own profile.
+  const percentTier =
+    !usesEmulatorNotificationProfile && rarity.percent !== null
+      ? getRarityTierFromPercent(rarity.percent)
+      : "";
+  const isRare = percentTier !== "" && percentTier !== "bronze";
   const trophyRarityTier =
     usesTrophyTier && ["bronze", "silver", "gold"].includes(trophyType)
       ? trophyType
       : "";
-  const rarityTier = trophyRarityTier || "";
+  const rarityTier = trophyRarityTier || (isRare ? percentTier : "");
   const preferredScale =
     achievement.scale != null
       ? achievement.scale
@@ -15725,17 +15759,17 @@ function queueAchievementNotification(achievement) {
   const resolvedPreset = isPlatinum
     ? prefs.platinumPreset || normalPreset
     : isRare
-      ? prefs.rarePreset || normalPreset
+      ? prefs[`${percentTier}Preset`] || prefs.rarePreset || normalPreset
       : emulatorPreset;
   const resolvedPosition = isPlatinum
     ? prefs.platinumPosition || normalPosition
     : isRare
-      ? prefs.rarePosition || normalPosition
+      ? prefs[`${percentTier}Position`] || prefs.rarePosition || normalPosition
       : emulatorPosition;
   const requestedSound = isPlatinum
     ? prefs.platinumSound || normalSound
     : isRare
-      ? prefs.rareSound || normalSound
+      ? prefs[`${percentTier}Sound`] || prefs.rareSound || normalSound
       : emulatorSound;
   const emulatorSanPreset = emulatorPreferencePrefix
     ? String(prefs[`${emulatorPreferencePrefix}SanPreset`] || "")
@@ -15743,7 +15777,7 @@ function queueAchievementNotification(achievement) {
   const preferenceSanPreset = isPlatinum
     ? String(prefs.platinumSanPreset || "")
     : isRare
-      ? String(prefs.rareSanPreset || "")
+      ? String(prefs[`${percentTier}SanPreset`] || prefs.rareSanPreset || "")
       : emulatorSanPreset;
   const sanPresetCandidate = String(
     Object.prototype.hasOwnProperty.call(achievement, "sanPreset")
@@ -15809,6 +15843,7 @@ function queueAchievementNotification(achievement) {
   notificationData.sound = resolveNotificationSound(notificationData.sound, {
     isPlatinum,
     isRare,
+    rarityTier: isRare ? percentTier : "",
     isTest: notificationData.isTest,
   });
 
