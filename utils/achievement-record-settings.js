@@ -79,7 +79,10 @@ function shouldEnableAchievementRecorder(options = {}) {
     platform === "win32" &&
     prefs.disableAchievementRecords === false &&
     options.configMode === "active" &&
-    configName.length > 0
+    configName.length > 0 &&
+    // The dashboard is shown instead of a game, so nothing is being played in
+    // view: keep the recorder process shut down while it is open.
+    options.dashboardOpen !== true
   );
 }
 

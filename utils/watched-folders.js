@@ -38,7 +38,10 @@ const {
   buildSnapshotFromPs4,
   buildSnapshotFromPs4ProgressFile,
 } = require("./shadps4-config-generator");
-const { generateConfigFromAppcacheBin } = require("./steam-appcache-generator");
+const {
+  generateConfigFromAppcacheBin,
+  isOtherSteamInstall,
+} = require("./steam-appcache-generator");
 const {
   parseKVBinary: parseSteamKv,
   extractUserStats,
@@ -46,6 +49,7 @@ const {
   normalizeAppcacheSchemaEntries,
   enrichSchemaEntriesFromAppcacheSchemaFile,
   pickPreferredUserBin,
+  isPreferredAccountApplicable,
   parseUserBinName,
 } = require("./steam-appcache");
 const { steamId64ToAccountId } = require("./steam-local-users");
@@ -3650,9 +3654,20 @@ module.exports = function makeWatchedFolders({
     return fs.existsSync(fallback);
   }
 
-  function shouldSkipSteamOfficialGeneration(appid) {
+  function shouldSkipSteamOfficialGeneration(appid, statsDir = "") {
     const meta = getSteamOfficialMetaByAppId(appid);
-    return !!meta && hasSteamOfficialSchema(appid);
+    if (!meta || !hasSteamOfficialSchema(appid)) return false;
+    if (!statsDir) return true;
+    // Same game found in a different Steam install's stats folder: let the
+    // generator add it as its own entry instead of skipping it as "existing".
+    const metas = getConfigMetas(appid).filter((m) => isSteamOfficialMeta(m));
+    const key = normalizePathForMetaMatch(statsDir);
+    if (metas.some((m) => normalizePathForMetaMatch(m?.save_path || "") === key)) {
+      return true;
+    }
+    return !metas.every((m) =>
+      isOtherSteamInstall(m?.save_path, statsDir, String(appid)),
+    );
   }
 
   function resolveGpdPathForMeta(meta) {
@@ -3954,7 +3969,8 @@ module.exports = function makeWatchedFolders({
     if (
       preferredAccountId &&
       info?.kind === "user" &&
-      String(info?.accountId || "") !== preferredAccountId
+      String(info?.accountId || "") !== preferredAccountId &&
+      isPreferredAccountApplicable(statsDir, preferredAccountId)
     ) {
       watcherLogger.info("steam-official:skip-nonselected-account", {
         appid,
@@ -3963,7 +3979,7 @@ module.exports = function makeWatchedFolders({
       });
       return { skipped: true, appid };
     }
-    if (shouldSkipSteamOfficialGeneration(appid)) {
+    if (shouldSkipSteamOfficialGeneration(appid, statsDir)) {
       pendingSteamOfficial.delete(appid);
       watcherLogger.info("steam-official:skip-existing", { appid });
       return { skipped: true, appid };
@@ -5049,8 +5065,13 @@ module.exports = function makeWatchedFolders({
     const preferredAccountId = getPreferredSteamOfficialAccountId(
       opts.preferences || null,
     );
-    if (preferredAccountId) return preferredAccountId;
     const statsDir = String(opts.statsDir || meta?.save_path || "").trim();
+    if (
+      preferredAccountId &&
+      isPreferredAccountApplicable(statsDir, preferredAccountId)
+    ) {
+      return preferredAccountId;
+    }
     const targetAppId = String(opts.appid || appid || meta?.appid || "").trim();
     if (!statsDir || !targetAppId) return "";
     const userBin = pickConfiguredSteamOfficialUserBin(
@@ -12898,7 +12919,7 @@ module.exports = function makeWatchedFolders({
               if (
                 bootMode &&
                 appidFromBin &&
-                shouldSkipSteamOfficialGeneration(appidFromBin)
+                shouldSkipSteamOfficialGeneration(appidFromBin, steamScanBase)
               ) {
                 steamIds.add(appidFromBin);
                 knownAppIds.add(appidFromBin);
@@ -14541,7 +14562,11 @@ module.exports = function makeWatchedFolders({
         if (
           steamInfo?.kind === "user" &&
           preferredSteamOfficialAccountId &&
-          String(steamInfo.accountId || "") !== preferredSteamOfficialAccountId
+          String(steamInfo.accountId || "") !== preferredSteamOfficialAccountId &&
+          isPreferredAccountApplicable(
+            path.dirname(filePath),
+            preferredSteamOfficialAccountId,
+          )
         ) {
           return;
         }
@@ -14810,7 +14835,11 @@ module.exports = function makeWatchedFolders({
         if (
           steamInfo?.kind === "user" &&
           preferredSteamOfficialAccountId &&
-          String(steamInfo.accountId || "") !== preferredSteamOfficialAccountId
+          String(steamInfo.accountId || "") !== preferredSteamOfficialAccountId &&
+          isPreferredAccountApplicable(
+            path.dirname(filePath),
+            preferredSteamOfficialAccountId,
+          )
         ) {
           return;
         }

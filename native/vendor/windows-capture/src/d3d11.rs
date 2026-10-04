@@ -197,6 +197,13 @@ pub fn create_d3d_device() -> Result<(ID3D11Device, ID3D11DeviceContext), Error>
     let d3d_device = d3d_device.ok_or(Error::UnexpectedNullResult("an `ID3D11Device`"))?;
     let d3d_device_context = d3d_device_context.ok_or(Error::UnexpectedNullResult("an `ID3D11DeviceContext`"))?;
 
+    // Background capture work should yield to the game being recorded. This only lowers how the
+    // GPU scheduler ranks this device's work; drivers that ignore it behave exactly as before, so
+    // any failure here is deliberately ignored.
+    if let Ok(dxgi_device) = d3d_device.cast::<IDXGIDevice>() {
+        let _ = unsafe { dxgi_device.SetGPUThreadPriority(-1) };
+    }
+
     Ok((d3d_device, d3d_device_context))
 }
 

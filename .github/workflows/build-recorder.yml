@@ -1,0 +1,58 @@
+name: Build achievements-recorder.exe
+
+# Builds the native recorder helper on a GitHub-hosted Windows machine so nothing
+# has to be installed locally. The finished .exe is attached to the run as an
+# artifact ("achievements-recorder-exe"): open the run on the Actions tab, scroll to
+# "Artifacts", download the zip and copy the .exe into utils\native\.
+#
+# It runs on pushes to feature/** and ci/** branches only (nothing else), and the
+# unit tests run too but never block the download.
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "ci/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Make sure a recent Rust toolchain is used
+        shell: pwsh
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Build the recorder (locked dependencies)
+        shell: pwsh
+        run: cargo build --release --locked --manifest-path native/achievement-recorder/Cargo.toml
+
+      - name: Run the recorder's unit tests
+        shell: pwsh
+        continue-on-error: true
+        run: cargo test --release --locked --manifest-path native/achievement-recorder/Cargo.toml
+
+      - name: Show what was built
+        shell: pwsh
+        run: |
+          $exe = "native/achievement-recorder/target/release/achievements-recorder.exe"
+          Get-Item $exe | Select-Object Name, Length, LastWriteTime
+          Get-FileHash $exe -Algorithm SHA256 | Select-Object Hash
+
+      - name: Upload the recorder
+        uses: actions/upload-artifact@v4
+        with:
+          name: achievements-recorder-exe
+          path: native/achievement-recorder/target/release/achievements-recorder.exe
+          if-no-files-found: error
+          retention-days: 30

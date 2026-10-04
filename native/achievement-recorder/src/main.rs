@@ -253,6 +253,86 @@ fn is_border_unsupported(error: &GraphicsCaptureApiError<AnyError>) -> bool {
         || message.contains("toggling the capture border is not supported")
 }
 
+fn is_minimum_interval_unsupported(error: &GraphicsCaptureApiError<AnyError>) -> bool {
+    matches!(
+        error,
+        GraphicsCaptureApiError::GraphicsCaptureApiError(
+            GraphicsCaptureError::MinimumUpdateIntervalUnsupported
+        )
+    )
+}
+
+/// Windows normally hands the helper every screen update (up to the refresh rate) and the helper
+/// then discards the frames it does not need, after the GPU already copied each one. Asking for a
+/// slightly shorter interval than the target (1.1x the rate) stops Windows from producing those
+/// extra copies while still leaving the helper's own pacing in charge of what is encoded.
+fn capture_update_interval(fps: u32) -> MinimumUpdateIntervalSettings {
+    let fps = u64::from(fps.max(1));
+    let micros = (10_000_000_u64 / (fps * 11)).max(1);
+    MinimumUpdateIntervalSettings::Custom(Duration::from_micros(micros))
+}
+
+/// Starts capture with the update-interval throttle and falls back to Windows' default behaviour
+/// when the OS does not support that setting, so older Windows builds record exactly as before.
+fn try_capture_with_interval_fallback<T>(
+    monitor: T,
+    cursor_capture_settings: CursorCaptureSettings,
+    secondary_window_settings: SecondaryWindowSettings,
+    minimum_update_interval_settings: MinimumUpdateIntervalSettings,
+    dirty_region_settings: DirtyRegionSettings,
+    color_format: ColorFormat,
+    flags: CaptureFlags,
+) -> Result<(), GraphicsCaptureApiError<AnyError>>
+where
+    T: TryInto<GraphicsCaptureItemType> + Clone,
+{
+    if let MinimumUpdateIntervalSettings::Custom(interval) = minimum_update_interval_settings {
+        emit(json!({
+            "type": "capture-update-interval",
+            "requestedMicros": interval.as_micros() as u64,
+            "fps": flags.fps,
+        }));
+    }
+    let result = try_capture_with_border_fallback(
+        monitor.clone(),
+        cursor_capture_settings,
+        secondary_window_settings,
+        minimum_update_interval_settings,
+        dirty_region_settings,
+        color_format,
+        flags.clone(),
+    );
+    let should_fall_back = match &result {
+        Err(error) => {
+            minimum_update_interval_settings != MinimumUpdateIntervalSettings::Default
+                && !flags.ready_signal.load(Ordering::Acquire)
+                && is_minimum_interval_unsupported(error)
+        }
+        Ok(()) => false,
+    };
+    if !should_fall_back {
+        return result;
+    }
+
+    if let Err(error) = &result {
+        emit(json!({
+            "type": "capture-update-interval-fallback",
+            "error": error.to_string(),
+            "effective": "default",
+            "reason": "unsupported",
+        }));
+    }
+    try_capture_with_border_fallback(
+        monitor,
+        cursor_capture_settings,
+        secondary_window_settings,
+        MinimumUpdateIntervalSettings::Default,
+        dirty_region_settings,
+        color_format,
+        flags,
+    )
+}
+
 fn should_retry_sdr(error: &GraphicsCaptureApiError<AnyError>) -> bool {
     matches!(
         error,
@@ -1600,11 +1680,11 @@ fn run() -> Result<(), AnyError> {
         ready_signal: Arc::clone(&ready_signal),
     };
 
-    let mut capture_result = try_capture_with_border_fallback(
+    let mut capture_result = try_capture_with_interval_fallback(
         monitor,
         CursorCaptureSettings::WithoutCursor,
         SecondaryWindowSettings::Default,
-        MinimumUpdateIntervalSettings::Default,
+        capture_update_interval(options.fps),
         DirtyRegionSettings::Default,
         color_format,
         flags,
@@ -1646,11 +1726,11 @@ fn run() -> Result<(), AnyError> {
             ready_signal,
         };
 
-        capture_result = try_capture_with_border_fallback(
+        capture_result = try_capture_with_interval_fallback(
             fallback_monitor,
             CursorCaptureSettings::WithoutCursor,
             SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
+            capture_update_interval(options.fps),
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
             fallback_flags,
@@ -1756,6 +1836,33 @@ mod tests {
             GraphicsCaptureError::BorderConfigUnsupported,
         );
         assert!(is_border_unsupported(&error));
+    }
+
+    #[test]
+    fn update_interval_asks_for_slightly_more_than_the_target_rate() {
+        let micros = |fps: u32| match capture_update_interval(fps) {
+            MinimumUpdateIntervalSettings::Custom(d) => d.as_micros() as u64,
+            MinimumUpdateIntervalSettings::Default => panic!("expected a custom interval"),
+        };
+        // 30 fps -> ~30.3 ms, 60 fps -> ~15.2 ms: always shorter than the target frame time, so
+        // the capture never delivers fewer frames than requested.
+        assert_eq!(micros(30), 30_303);
+        assert_eq!(micros(60), 15_151);
+        assert!(micros(30) < 1_000_000 / 30);
+        assert!(micros(60) < 1_000_000 / 60);
+        assert!(micros(0) > 0);
+    }
+
+    #[test]
+    fn minimum_interval_fallback_only_matches_that_error() {
+        let interval = GraphicsCaptureApiError::<AnyError>::GraphicsCaptureApiError(
+            GraphicsCaptureError::MinimumUpdateIntervalUnsupported,
+        );
+        let border = GraphicsCaptureApiError::<AnyError>::GraphicsCaptureApiError(
+            GraphicsCaptureError::BorderConfigUnsupported,
+        );
+        assert!(is_minimum_interval_unsupported(&interval));
+        assert!(!is_minimum_interval_unsupported(&border));
     }
 
     #[test]

@@ -765,7 +765,15 @@ async function updateSchemaFromAppcache(appid, entries, schemaDir) {
   return { updated, added, changed, imagesUpdated, entries: cur };
 }
 
-function findExistingSteamOfficialConfig(configsDir, appid) {
+function normalizeStatsDirKey(dir) {
+  const raw = String(dir || "").trim();
+  if (!raw) return "";
+  const normalized = path.normalize(raw).replace(/[\\/]+$/, "");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function listSteamOfficialConfigs(configsDir, appid) {
+  const out = [];
   try {
     const entries = fs.readdirSync(configsDir, { withFileTypes: true });
     for (const ent of entries) {
@@ -777,14 +785,54 @@ function findExistingSteamOfficialConfig(configsDir, appid) {
         if (String(data?.appid || "") !== String(appid)) continue;
         if (String(data?.platform || "").toLowerCase() !== "steam-official")
           continue;
-        return {
-          path: full,
-          data,
-        };
+        out.push({ path: full, data });
       } catch {}
     }
   } catch {}
-  return null;
+  return out;
+}
+
+// A stats folder counts as "another Steam install" for a game only when the
+// existing config points at a different folder that still holds that game's
+// schema AND the scanned folder holds it too. Stale/moved folders keep the old
+// behaviour (reuse the existing config) so nothing gets duplicated by accident.
+function isOtherSteamInstall(existingSavePath, statsDir, appid) {
+  const a = normalizeStatsDirKey(existingSavePath);
+  const b = normalizeStatsDirKey(statsDir);
+  if (!a || !b || a === b) return false;
+  const schemaName = `UserGameStatsSchema_${appid}.bin`;
+  try {
+    return (
+      fs.existsSync(path.join(existingSavePath, schemaName)) &&
+      fs.existsSync(path.join(statsDir, schemaName))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getSteamInstallLabel(statsDir) {
+  const root = String(path.parse(String(statsDir || "")).root || "");
+  const drive = root.match(/^([A-Za-z]):/);
+  return drive ? drive[1].toUpperCase() : "2";
+}
+
+// Returns the config that belongs to this exact stats folder, or null.
+// Falls back to the single existing config (old behaviour) unless that config
+// belongs to a different, still-present Steam install.
+function findExistingSteamOfficialConfig(configsDir, appid, statsDir = "") {
+  const all = listSteamOfficialConfigs(configsDir, appid);
+  if (!all.length) return null;
+  if (!statsDir) return all[0];
+  const key = normalizeStatsDirKey(statsDir);
+  const exact = all.find(
+    (c) => normalizeStatsDirKey(c.data?.save_path) === key,
+  );
+  if (exact) return exact;
+  const belongsElsewhere = all.every((c) =>
+    isOtherSteamInstall(c.data?.save_path, statsDir, appid),
+  );
+  return belongsElsewhere ? null : all[0];
 }
 
 async function generateConfigFromAppcacheBin(
@@ -910,13 +958,24 @@ async function generateConfigFromAppcacheBin(
 
   const storeName = await fetchSteamStoreName(appid);
   const resolvedBase = storeName || schemaGameName || String(appid || "");
-  const defaultCfgName = `${resolvedBase} (Steam)`;
+  const existing = findExistingSteamOfficialConfig(configsDir, appid, statsDir);
+  // Same game in a second Steam install (different stats folder): keep it as its
+  // own entry, e.g. "Elden Ring (Steam E)", next to the main "Elden Ring (Steam)".
+  const installLabel = String(
+    existing?.data?.install_label ||
+      (!existing &&
+      listSteamOfficialConfigs(configsDir, appid).length > 0
+        ? getSteamInstallLabel(statsDir)
+        : ""),
+  ).trim();
+  const isSecondaryInstall = !!installLabel;
+  const nameSuffix = isSecondaryInstall ? `(Steam ${installLabel})` : "(Steam)";
+  const defaultCfgName = `${resolvedBase} ${nameSuffix}`;
   emitProgress({
     itemName: defaultCfgName,
     phase: "writingConfig",
     percent: 72,
   });
-  const existing = findExistingSteamOfficialConfig(configsDir, appid);
   const desiredFileBase = sanitizeFileName(defaultCfgName);
   const cfgPath = existing?.path
     ? existing.path
@@ -932,6 +991,7 @@ async function generateConfigFromAppcacheBin(
     executable: "",
     arguments: "",
     process_name: "",
+    ...(isSecondaryInstall ? { install_label: installLabel } : {}),
   };
   let created = true;
   let configUpdated = false;
@@ -947,14 +1007,14 @@ async function generateConfigFromAppcacheBin(
       }
       if (
         existingData?.displayName == null ||
-        String(existingData?.displayName || "") === `${appid} (Steam)`
+        String(existingData?.displayName || "") === `${appid} ${nameSuffix}`
       ) {
         existingData.displayName = defaultCfgName;
         dirty = true;
       }
       const existingDisplay = existingData?.displayName || existingData?.name || "";
       if (resolvedBase && resolvedBase !== String(appid)) {
-        const desiredDisplay = `${resolvedBase} (Steam)`;
+        const desiredDisplay = `${resolvedBase} ${nameSuffix}`;
         if (desiredDisplay && desiredDisplay !== existingDisplay) {
           existingData.displayName = desiredDisplay;
           dirty = true;
@@ -966,9 +1026,12 @@ async function generateConfigFromAppcacheBin(
           });
         }
       }
+      // The second install never gets a process name, so playtime/process
+      // matching keeps pointing at the main entry only.
       const needsLaunchMetadata =
-        !hasProcessNameValue(existingData.process_name) ||
-        !String(existingData.arguments || "").trim();
+        !isSecondaryInstall &&
+        (!hasProcessNameValue(existingData.process_name) ||
+          !String(existingData.arguments || "").trim());
       if (
         needsLaunchMetadata &&
         applyLaunchMetadataToConfig(
@@ -988,10 +1051,12 @@ async function generateConfigFromAppcacheBin(
       }
     } catch {}
   } else {
-    applyLaunchMetadataToConfig(
-      payload,
-      await fetchSteamDbLaunchMetadata(appid)
-    );
+    if (!isSecondaryInstall) {
+      applyLaunchMetadataToConfig(
+        payload,
+        await fetchSteamDbLaunchMetadata(appid)
+      );
+    }
     emitProgress({
       phase: "writingConfig",
       percent: 82,
@@ -1033,6 +1098,8 @@ async function generateConfigFromAppcacheBin(
 }
 
 module.exports = {
+  isOtherSteamInstall,
+  findExistingSteamOfficialConfig,
   generateConfigFromAppcacheBin,
   writeSchemaFromEntries,
   updateSchemaFromAppcache,

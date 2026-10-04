@@ -188,6 +188,7 @@ const {
   normalizeAppcacheSchemaEntries,
   enrichSchemaEntriesFromAppcacheSchemaFile,
   pickPreferredUserBin,
+  isPreferredAccountApplicable,
   parseUserBinName,
 } = require("./utils/steam-appcache");
 const {
@@ -272,6 +273,7 @@ const {
   normalizeProcessNameValue,
   processNameValuesEqual,
 } = require("./utils/process-name-utils");
+const { deriveSteamProcessNames } = require("./utils/steam-local-launch");
 const {
   PROCESS_CONFIG_MATCH,
   classifyProcessConfigMatch,
@@ -2018,7 +2020,12 @@ function resolveSteamOfficialCacheAccountId(
         cachedPreferences?.steamOfficialSteamId,
     );
   const preferredAccountId = steamId64ToAccountId(preferredSteamId);
-  if (preferredAccountId) return preferredAccountId;
+  if (
+    preferredAccountId &&
+    (!savePath || isPreferredAccountApplicable(savePath, preferredAccountId))
+  ) {
+    return preferredAccountId;
+  }
 
   if (savePath && appid) {
     const userBin = pickConfiguredSteamOfficialUserBin(
@@ -7000,17 +7007,23 @@ function syncAchievementRecorderState(
     process.platform === "win32" && prefs?.disableAchievementRecords === false;
   const sessionActive =
     selectedConfigMode === "active" && isNonEmptyString(selectedConfig);
+  let dashboardIsOpen = false;
+  try {
+    dashboardIsOpen = dashboardOpen === true;
+  } catch {}
   const enabled = shouldEnableAchievementRecorder({
     platform: process.platform,
     prefs,
     configName: selectedConfig,
     configMode: selectedConfigMode,
+    dashboardOpen: dashboardIsOpen,
   });
   if (!enabled && !achievementRecorderController) {
     recordLogger.info("achievement-recorder:disabled", {
       reason,
       preferenceEnabled,
       sessionActive,
+      dashboardOpen: dashboardIsOpen,
     });
     return Promise.resolve(false);
   }
@@ -7022,6 +7035,7 @@ function syncAchievementRecorderState(
     enabled,
     preferenceEnabled,
     sessionActive,
+    dashboardOpen: dashboardIsOpen,
     configName: sessionActive ? selectedConfig : null,
     timings,
     timingsChanged,
@@ -9225,10 +9239,18 @@ function requestDashboardRefresh(request = null) {
 }
 
 ipcMain.handle("dashboard:set-open", (_e, state) => {
+  const dashboardWasOpen = dashboardOpen;
   dashboardOpen = !!state;
   try {
     global.dashboardOpen = dashboardOpen;
   } catch {}
+  if (dashboardWasOpen !== dashboardOpen) {
+    // Stop the recorder process while the dashboard is up; start it again
+    // when a game is back in view.
+    void syncAchievementRecorderState(
+      `dashboard:${dashboardOpen ? "opened" : "closed"}`,
+    );
+  }
   if (dashboardOpen && pendingDashboardRefresh) {
     const pending = pendingDashboardRefresh;
     pendingDashboardRefresh = null;
@@ -14642,11 +14664,18 @@ ipcMain.on("show-test-rare-notification", (_event, options = {}) => {
       { tier: tierLabel },
       "{tier} Rare Test",
     ),
+    // The rarity percentage is shown by the notification itself (badge under the
+    // icon), so drop the "(xx%)" part the localized test text would add here.
     description: tUi(
       "main.notify.testRareDescription",
       { tier: tierLabel.toLowerCase(), percent: rarity.percent },
       "Random {tier} rarity test notification ({percent}%)",
-    ),
+    )
+      .replace(
+        new RegExp(`\\s*[(\uFF08]\\s*${String(rarity.percent).replace(".", "\\.")}\\s*%\\s*[)\\uFF09]`),
+        "",
+      )
+      .trim(),
     icon: ICON_PNG_PATH,
     icon_gray: ICON_PNG_PATH,
     config_path: baseDir,
@@ -24752,6 +24781,45 @@ async function upsertAutoSelectIndexEntryFromPath(filePath) {
           );
         } catch {}
       }
+    }
+  }
+
+  // Steam (Official) configs only get a process name when the SteamDB lookup
+  // worked. Without one the game is never recognised as running (no auto-select,
+  // no recorder, no auto-deselect), so fall back to Steam's own local files.
+  // A second Steam install's duplicate entry (install_label) is left alone: it
+  // would share an executable name with the main entry and make both ambiguous.
+  if (
+    normalizePlatform(data?.platform) === "steam-official" &&
+    !hasProcessNameValue(data?.process_name) &&
+    !String(data?.install_label || "").trim()
+  ) {
+    try {
+      const derived = await deriveSteamProcessNames(
+        data?.save_path,
+        normalizeConfigAppIdValue(data),
+      );
+      if (derived.names.length) {
+        data = { ...data, process_name: derived.names };
+        appLogger.info("auto-select:derived-process-name", {
+          config: safeName,
+          appid: normalizeConfigAppIdValue(data),
+          processNames: derived.names,
+          installDir: derived.installDir,
+        });
+        try {
+          await fs.promises.writeFile(
+            filePath,
+            JSON.stringify(data, null, 2),
+            "utf8",
+          );
+        } catch {}
+      }
+    } catch (err) {
+      appLogger.warn("auto-select:derive-process-name-failed", {
+        config: safeName,
+        error: err?.message || String(err),
+      });
     }
   }
 

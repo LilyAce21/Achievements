@@ -603,11 +603,50 @@ function pickLatestUserBin(statsDir, appid) {
   return entries.length ? entries[0].path : null;
 }
 
+// The "Steam Official Account" setting should only filter a stats folder that
+// actually holds that account's data. A second Steam install (for example a
+// different account on another drive) has its own appcache\stats folder with
+// none of the selected account's files; filtering it would hide everything.
+const preferredAccountScopeCache = new Map();
+const PREFERRED_ACCOUNT_SCOPE_TTL_MS = 3000;
+
+function statsDirHasAccountBins(statsDir, accountId) {
+  const dir = String(statsDir || "").trim();
+  const account = String(accountId || "").trim();
+  if (!dir || !account) return false;
+  const key = `${process.platform === "win32" ? dir.toLowerCase() : dir}|${account}`;
+  const now = Date.now();
+  const cached = preferredAccountScopeCache.get(key);
+  if (cached && now - cached.at < PREFERRED_ACCOUNT_SCOPE_TTL_MS) {
+    return cached.value;
+  }
+  let value = true; // unreadable folder: keep the old (strict) behaviour
+  try {
+    const prefix = `usergamestats_${account.toLowerCase()}_`;
+    value = fs
+      .readdirSync(dir)
+      .some((name) => {
+        const lower = name.toLowerCase();
+        return lower.startsWith(prefix) && lower.endsWith(".bin");
+      });
+  } catch {}
+  preferredAccountScopeCache.set(key, { at: now, value });
+  return value;
+}
+
+function isPreferredAccountApplicable(statsDir, preferredAccountId = "") {
+  const preferred = String(preferredAccountId || "").trim();
+  if (!preferred) return false;
+  return statsDirHasAccountBins(statsDir, preferred);
+}
+
 function pickPreferredUserBin(statsDir, appid, preferredAccountId = "") {
   const entries = listUserBins(statsDir, appid);
   if (!entries.length) return null;
   const preferred = String(preferredAccountId || "").trim();
-  if (!preferred) return entries[0].path;
+  if (!preferred || !isPreferredAccountApplicable(statsDir, preferred)) {
+    return entries[0].path;
+  }
   const exact = entries.find((entry) => entry.accountId === preferred);
   return exact ? exact.path : null;
 }
@@ -624,6 +663,7 @@ module.exports = {
   listUserBins,
   parseUserBinName,
   pickPreferredUserBin,
+  isPreferredAccountApplicable,
   pickLatestUserBin,
   extractGameName,
 };

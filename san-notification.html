@@ -96,7 +96,9 @@
         const semirarity = 20;
         const tier =
           tierFromPayload ||
-          (value <= rarity
+          (!hasPercent
+            ? "bronze"
+            : value <= rarity
             ? "sapphire"
             : value <= semirarity
               ? "gold"
@@ -244,7 +246,11 @@
         if (customisation.bgstyle) body.setAttribute(customisation.bgstyle, "");
         if (customisation.bgonly) body.setAttribute("bgonly", "");
         if (customisation.alldetails) body.setAttribute("alldetails", "");
-        if (payload?.isRare) body.setAttribute("rare", "");
+        // The animated icon glow is tied to the "rare" attribute. Only the Gold
+        // (5.1-20%) and Sapphire (0-5%) ranges get it; Silver stays plain.
+        if (payload?.isRare && (percent.tier === "gold" || percent.tier === "sapphire")) {
+          body.setAttribute("rare", "");
+        }
         if (payload?.isPlatinum) body.setAttribute("plat", "");
         if (customisation.fastanim) body.setAttribute("fastanim", "");
         if (isScreenshotSanMode(payload, customisation)) body.setAttribute("ss", "");

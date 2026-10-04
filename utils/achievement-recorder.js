@@ -2,6 +2,7 @@ const { EventEmitter } = require("events");
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
+const os = require("os");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
 
@@ -78,6 +79,8 @@ class AchievementRecorderController extends EventEmitter {
     this.stopping = false;
     this.stopPromise = null;
     this.pendingOutputs = new Map();
+    this.runCounter = 0;
+    this.activeRunDirs = new Set();
     this.forceStopGraceMs = Math.max(
       100,
       Number(options.forceStopGraceMs) || DEFAULT_FORCE_STOP_GRACE_MS,
@@ -170,6 +173,18 @@ class AchievementRecorderController extends EventEmitter {
     }
 
     fs.mkdirSync(this.bufferDir, { recursive: true });
+    // Every helper gets its own buffer folder. The native helper wipes every
+    // "session-<pid>" folder it finds in its buffer dir on startup, so two helpers
+    // sharing one folder (a restart overlapping a helper that is still shutting
+    // down) would delete each other's live segment files.
+    this.sweepStaleRunDirs();
+    this.runCounter += 1;
+    const runDir = path.join(
+      this.bufferDir,
+      `run-${Date.now().toString(36)}-${process.pid}-${this.runCounter}`,
+    );
+    fs.mkdirSync(runDir, { recursive: true });
+    this.activeRunDirs.add(runDir);
     this.stopping = false;
     this.ready = false;
     this.startPromise = new Promise((resolve, reject) => {
@@ -178,7 +193,7 @@ class AchievementRecorderController extends EventEmitter {
     });
     const args = [
       "--buffer-dir",
-      this.bufferDir,
+      runDir,
       "--pre-ms",
       String(this.timings.preMs),
       "--post-ms",
@@ -195,10 +210,12 @@ class AchievementRecorderController extends EventEmitter {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
+    this.lowerChildPriority(child);
     this.emit("starting", { reason, helper, pid: child.pid || null });
 
     const output = readline.createInterface({ input: child.stdout });
     output.on("line", (line) => {
+      if (this.child !== child) return; // output from a helper we already replaced
       try {
         const message = parseRecorderProtocolLine(line);
         if (!message) return;
@@ -215,11 +232,29 @@ class AchievementRecorderController extends EventEmitter {
       stderr = `${stderr}${chunk}`.slice(-4000);
     });
     child.once("error", (error) => {
+      if (this.child !== child) return;
       this.rejectStart(error);
       this.emit("recorder-error", error);
     });
     child.once("exit", (code, signal) => {
       output.close();
+      this.activeRunDirs.delete(runDir);
+      try {
+        fs.rmSync(runDir, { recursive: true, force: true });
+      } catch {}
+      if (this.child !== child) {
+        // A helper that was already stopped/replaced finally exited. It must not
+        // touch the state of the helper that replaced it (that used to reset
+        // `child`, reject the new start and schedule a duplicate helper).
+        this.emit("exit", {
+          code,
+          signal,
+          wasReady: false,
+          expected: true,
+          stale: true,
+        });
+        return;
+      }
       const wasStopping = this.stopping;
       const wasReady = this.ready;
       this.ready = false;
@@ -237,6 +272,7 @@ class AchievementRecorderController extends EventEmitter {
       if (this.enabled && !wasStopping) this.scheduleRestart();
     });
     this.startTimer = setTimeout(() => {
+      if (this.child !== child) return;
       const error = new Error("Achievement recorder did not become ready in time");
       error.code = "recorder-start-timeout";
       this.rejectStart(error);
@@ -247,6 +283,36 @@ class AchievementRecorderController extends EventEmitter {
     }, 15_000);
     this.startTimer.unref?.();
     return this.startPromise;
+  }
+
+  // The recorder is background work: let the game win when the CPU is contended.
+  // Best effort only; if the OS refuses, the helper simply keeps normal priority.
+  lowerChildPriority(child) {
+    if (this.lowerPriority === false || process.platform !== "win32") return;
+    if (!child || !Number.isInteger(child.pid)) return;
+    try {
+      os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+    } catch {}
+  }
+
+  sweepStaleRunDirs(maxAgeMs = 10 * 60 * 1000) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(this.bufferDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const now = Date.now();
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (!/^(?:run-|session-)/.test(entry.name)) continue;
+      const full = path.join(this.bufferDir, entry.name);
+      if (this.activeRunDirs.has(full)) continue;
+      try {
+        const age = now - fs.statSync(full).mtimeMs;
+        if (age > maxAgeMs) fs.rmSync(full, { recursive: true, force: true });
+      } catch {}
+    }
   }
 
   handleMessage(message) {
@@ -424,7 +490,10 @@ class AchievementRecorderController extends EventEmitter {
         try {
           child.kill();
         } catch {}
-        finish();
+        // Give the killed process a moment to really exit before a new helper
+        // is started; finish() is still guaranteed by the bounded fallback.
+        timer = setTimeout(finish, 2_000);
+        timer.unref?.();
       }, 4_000);
       timer.unref?.();
     });

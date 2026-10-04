@@ -14214,7 +14214,10 @@
         try {
           await loadPreferencesCached();
           const prefs = getCachedPreferences();
-          if (prefs?.showDashboardOnStart) {
+          const gameClosed = String(options?.reason || "").startsWith(
+            "process-auto-deselect",
+          );
+          if (prefs?.showDashboardOnStart || gameClosed) {
             await window.openDashboard?.();
           }
         } catch (e) {
@@ -16822,6 +16825,11 @@
             domAlreadySelected &&
             (uiApplied || uiSelectionInFlight)
           ) {
+            if (autoSelectSource === "process") {
+              try {
+                window.closeDashboard?.();
+              } catch {}
+            }
             logUiEvent("info", "ui:auto-select:skip-confirmed-active", {
               configName: targetName,
             });
@@ -16876,6 +16884,13 @@
           setWatcherAutoSelect(targetSafe, autoSelectSource);
           configList.value = targetName;
           configList.dispatchEvent(new Event("change", { bubbles: true }));
+          if (autoSelectSource === "process") {
+            // The game is running: show it instead of leaving it selected behind
+            // the dashboard (the recorder stays off while the dashboard is open).
+            try {
+              window.closeDashboard?.();
+            } catch {}
+          }
           logUiEvent("info", "ui:auto-select:change-dispatched", {
             configName: targetName,
             previousMainConfig: activeAfterReload.configName || null,

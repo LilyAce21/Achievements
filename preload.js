@@ -371,6 +371,7 @@ function findMatchingNotificationIcon(iconPath) {
     "#icon",
     ".ani_icon img",
     ".icon-frame img",
+    "#achicon",
   ];
   const candidates = Array.from(
     document.querySelectorAll(selectors.join(",")),
@@ -390,16 +391,42 @@ function findMatchingNotificationIcon(iconPath) {
   );
 }
 
+// SAN presets draw their own percentage (text and/or badge) when the preset
+// has a percent position or the percent badge enabled. Only add the app's own
+// badge when the preset would otherwise show no percentage at all.
+function sanThemeRendersPercent(data = {}) {
+  const theme = data?.sanTheme || {};
+  const custom = theme.customisation || {};
+  const preset = String(custom.preset || theme.preset || "default").toLowerCase();
+  const icons = custom.customicons || {};
+  const indexed = Number(
+    (icons[custom.preset] || icons[preset] || {})?.index?.percent,
+  );
+  if (Number.isFinite(indexed) && indexed > 0) return true;
+  const screenshotMode = custom.ss === true || data?.screenshotMode === true;
+  if (custom.percentbadge === true) return true;
+  if (screenshotMode && custom.sspercentbadge === true) return true;
+  const pos = Number(screenshotMode ? custom.sspercentpos : custom.percentpos);
+  return Number.isFinite(pos) && pos > 0;
+}
+
 function applyNotificationRarityBorder(data = {}) {
   clearNotificationRarityBorder();
   const percent = parseNotificationRarityPercent(data?.rarityPct);
   const tier =
     getExplicitNotificationRarityTier(data) ||
     getNotificationRarityTier(data?.rarityPct);
+  const isSan = !!data?.sanTheme;
   const showPercentage =
-    data?.showRarityPercentage === true && percent !== null;
+    data?.showRarityPercentage === true &&
+    percent !== null &&
+    !(isSan && sanThemeRendersPercent(data));
+  // SAN presets bring their own icon glow/animation, so the app's border is
+  // only drawn for the regular (non-SAN) presets.
   const showBorder =
-    !!tier && (data?.isRare === true || !!getExplicitNotificationRarityTier(data));
+    !!tier &&
+    !isSan &&
+    (data?.isRare === true || !!getExplicitNotificationRarityTier(data));
   if (
     (!showBorder && !showPercentage) ||
     isLaz0rboxNotificationPreset(data)
@@ -422,7 +449,7 @@ function applyNotificationRarityBorder(data = {}) {
       attachNotificationRarityPercentage(
         icon,
         percent,
-        showBorder ? tier : "",
+        showBorder || isSan ? tier : "",
         data?.scale,
         presetName,
       );
@@ -454,7 +481,7 @@ function applyNotificationRarityBorder(data = {}) {
     rarityBorderObserver?.disconnect();
     rarityBorderObserver = null;
     rarityBorderTimer = null;
-  }, 2000);
+  }, isSan ? 5000 : 2000);
 }
 
 ipcRenderer.on("show-notification", (_event, data) => {
