@@ -38,6 +38,7 @@ jobs:
         run: cargo build --release --locked --manifest-path native/achievement-recorder/Cargo.toml
 
       - name: Run the recorder's unit tests
+        id: tests
         shell: pwsh
         continue-on-error: true
         run: cargo test --release --locked --manifest-path native/achievement-recorder/Cargo.toml
@@ -56,3 +57,12 @@ jobs:
           path: native/achievement-recorder/target/release/achievements-recorder.exe
           if-no-files-found: error
           retention-days: 30
+
+      # The exe above is uploaded either way. This last step only turns a failed
+      # unit-test run into a red run so it cannot go unnoticed.
+      - name: Report unit test result
+        if: steps.tests.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Error "The recorder unit tests failed (the exe was still built and uploaded)."
+          exit 1
