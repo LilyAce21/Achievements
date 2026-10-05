@@ -6930,6 +6930,18 @@ function getAchievementRecorderController() {
   achievementRecorderController.on("capture-border-fallback", (details) => {
     recordLogger.warn("achievement-recorder:capture-border-fallback", details);
   });
+  achievementRecorderController.on("capture-update-interval", (details) => {
+    recordLogger.info("achievement-recorder:capture-update-interval", details);
+  });
+  achievementRecorderController.on(
+    "capture-update-interval-fallback",
+    (details) => {
+      recordLogger.warn(
+        "achievement-recorder:capture-update-interval-fallback",
+        details,
+      );
+    },
+  );
   achievementRecorderController.on("triggered", (details) => {
     recordLogger.info("achievement-recorder:triggered", details);
   });
