@@ -213,9 +213,13 @@ class AchievementRecorderController extends EventEmitter {
       String(this.timings.fps),
       "--hdr-tone-map",
       String(this.timings.hdrToneMapping === true),
-      "--max-height",
-      String(this.nativeResolutionFallback ? 0 : this.timings.maxHeight || 0),
     ];
+    // Only sent when scaling is on, so a recorder program built before this option
+    // existed (it rejects unknown arguments) keeps working with the native setting.
+    const maxHeight = this.nativeResolutionFallback
+      ? 0
+      : this.timings.maxHeight || 0;
+    if (maxHeight > 0) args.push("--max-height", String(maxHeight));
     const child = this.spawnProcess(helper, args, {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
