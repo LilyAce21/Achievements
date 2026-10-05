@@ -12,6 +12,7 @@ const DEFAULT_RECORDER_TIMINGS = Object.freeze({
   segmentMs: 2_000,
   fps: 30,
   hdrToneMapping: false,
+  maxHeight: 0,
 });
 const DEFAULT_FORCE_STOP_GRACE_MS = 4_000;
 
@@ -81,6 +82,7 @@ class AchievementRecorderController extends EventEmitter {
     this.pendingOutputs = new Map();
     this.runCounter = 0;
     this.activeRunDirs = new Set();
+    this.nativeResolutionFallback = false;
     this.forceStopGraceMs = Math.max(
       100,
       Number(options.forceStopGraceMs) || DEFAULT_FORCE_STOP_GRACE_MS,
@@ -113,12 +115,19 @@ class AchievementRecorderController extends EventEmitter {
       )
         ? nextTimings.hdrToneMapping === true
         : this.timings.hdrToneMapping,
+      maxHeight: Object.prototype.hasOwnProperty.call(nextTimings, "maxHeight")
+        ? Math.max(0, Math.round(Number(nextTimings.maxHeight) || 0))
+        : this.timings.maxHeight || 0,
     };
     const changed = Object.keys(normalized).some(
       (key) => normalized[key] !== this.timings[key],
     );
     if (changed) {
       const previous = { ...this.timings };
+      if (normalized.maxHeight !== (previous.maxHeight || 0)) {
+        // A new resolution choice deserves a fresh try even if the old one failed.
+        this.nativeResolutionFallback = false;
+      }
       this.timings = normalized;
       this.emit("timings-changed", { previous, current: { ...normalized } });
     }
@@ -204,6 +213,8 @@ class AchievementRecorderController extends EventEmitter {
       String(this.timings.fps),
       "--hdr-tone-map",
       String(this.timings.hdrToneMapping === true),
+      "--max-height",
+      String(this.nativeResolutionFallback ? 0 : this.timings.maxHeight || 0),
     ];
     const child = this.spawnProcess(helper, args, {
       windowsHide: true,
@@ -267,6 +278,23 @@ class AchievementRecorderController extends EventEmitter {
       error.code = "recorder-exited";
       this.rejectStart(error);
       this.emit("exit", { code, signal, wasReady, expected: wasStopping });
+      if (
+        !wasStopping &&
+        !wasReady &&
+        !this.nativeResolutionFallback &&
+        (this.timings.maxHeight || 0) > 0
+      ) {
+        // The scaled recording never produced a frame. Record at the native size from
+        // now on (until the resolution setting changes) so recording keeps working.
+        this.nativeResolutionFallback = true;
+        this.emit("resolution-fallback", {
+          requestedMaxHeight: this.timings.maxHeight,
+          effective: "native",
+          reason: "helper-exited-before-ready",
+          code,
+          signal: signal || null,
+        });
+      }
       this.cleanupPendingOutputs("helper-exit");
       this.stopping = false;
       if (this.enabled && !wasStopping) this.scheduleRestart();

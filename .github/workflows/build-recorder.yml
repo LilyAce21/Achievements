@@ -5,8 +5,8 @@ name: Build achievements-recorder.exe
 # artifact ("achievements-recorder-exe"): open the run on the Actions tab, scroll to
 # "Artifacts", download the zip and copy the .exe into utils\native\.
 #
-# It runs on pushes to feature/** and ci/** branches only (nothing else), and the
-# unit tests run too but never block the download.
+# It runs on pushes to feature/** and ci/** branches only. Compiler errors and failed
+# unit tests are also written out as annotations on the run so they are easy to read.
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Make sure a recent Rust toolchain is used
-        shell: pwsh
+        shell: bash
         run: |
           rustup update stable --no-self-update
           rustup default stable
@@ -34,14 +34,33 @@ jobs:
           cargo --version
 
       - name: Build the recorder (locked dependencies)
-        shell: pwsh
-        run: cargo build --release --locked --manifest-path native/achievement-recorder/Cargo.toml
+        id: build
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --release --locked --manifest-path native/achievement-recorder/Cargo.toml --message-format=short 2>&1 | tee build.log
+
+      - name: Show compiler problems as an annotation
+        if: failure() && steps.build.outcome == 'failure'
+        shell: bash
+        run: |
+          body=$( (grep -E 'error|warning: unused' build.log | head -40; echo '--- end of log ---'; tail -n 15 build.log) | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=cargo build failed::${body}"
 
       - name: Run the recorder's unit tests
         id: tests
-        shell: pwsh
+        shell: bash
         continue-on-error: true
-        run: cargo test --release --locked --manifest-path native/achievement-recorder/Cargo.toml
+        run: |
+          set -o pipefail
+          cargo test --release --locked --manifest-path native/achievement-recorder/Cargo.toml 2>&1 | tee test.log
+
+      - name: Show unit test problems as an annotation
+        if: steps.tests.outcome == 'failure'
+        shell: bash
+        run: |
+          body=$( (grep -E 'panicked|FAILED|failed|error' test.log | head -40; echo '--- end of log ---'; tail -n 15 test.log) | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=recorder unit tests failed::${body}"
 
       - name: Show what was built
         shell: pwsh
@@ -62,7 +81,7 @@ jobs:
       # unit-test run into a red run so it cannot go unnoticed.
       - name: Report unit test result
         if: steps.tests.outcome == 'failure'
-        shell: pwsh
+        shell: bash
         run: |
-          Write-Error "The recorder unit tests failed (the exe was still built and uploaded)."
+          echo "The recorder unit tests failed (the exe was still built and uploaded)."
           exit 1

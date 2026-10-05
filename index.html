@@ -1094,6 +1094,15 @@
                   </select>
                 </div>
                 <div class="settings-control">
+                  <label for="settings-recordResolutionSelect"
+                    >Recording resolution:</label
+                  >
+                  <select id="settings-recordResolutionSelect">
+                    <option value="native">Native (screen size)</option>
+                    <option value="1080p">1080p (lighter on your PC)</option>
+                  </select>
+                </div>
+                <div class="settings-control">
                   <label
                     for="settings-recordDurationSelect"
                     data-i18n="label.settings-recordDuration"
@@ -15702,6 +15711,20 @@
               });
             }
 
+            const recordResolutionSelect = document.getElementById(
+              "settings-recordResolutionSelect",
+            );
+            if (recordResolutionSelect) {
+              recordResolutionSelect.value =
+                prefs?.recordResolution === "1080p" ? "1080p" : "native";
+              recordResolutionSelect.addEventListener("change", async (e) => {
+                await window.api.savePreferences({
+                  recordResolution:
+                    e.target.value === "1080p" ? "1080p" : "native",
+                });
+              });
+            }
+
             const recordDurationSelect = document.getElementById(
               "settings-recordDurationSelect",
             );
@@ -19456,6 +19479,10 @@
           ),
           disableAchievementRecords: checkbox("settings-disableRecordCheckbox"),
           recordFps: Number(getVal("settings-recordFpsSelect")) || 30,
+          recordResolution:
+            getVal("settings-recordResolutionSelect") === "1080p"
+              ? "1080p"
+              : "native",
           recordDurationSeconds:
             Number(getVal("settings-recordDurationSelect")) || 20,
           windowZoomFactor: Number.isFinite(zoomValue)

@@ -92,6 +92,7 @@ const {
   normalizeAchievementRecordDuration,
   normalizeAchievementRecordFps,
   normalizeAchievementRecordPreferences,
+  normalizeAchievementRecordResolution,
   shouldEnableAchievementRecorder,
 } = require("./utils/achievement-record-settings");
 const {
@@ -2147,6 +2148,7 @@ const DEFAULT_PREFERENCES = {
   screenshotFolder: getDefaultScreenshotFolder(),
   recordsFolder: getDefaultRecordFolder(),
   recordFps: 30,
+  recordResolution: "native",
   recordDurationSeconds: 20,
   enableHdrRecords: false,
   appTheme: "dracula",
@@ -6501,6 +6503,7 @@ function applyPreferenceSideEffects(
   if (
     Object.prototype.hasOwnProperty.call(patch, "disableAchievementRecords") ||
     Object.prototype.hasOwnProperty.call(patch, "recordFps") ||
+    Object.prototype.hasOwnProperty.call(patch, "recordResolution") ||
     Object.prototype.hasOwnProperty.call(patch, "recordDurationSeconds") ||
     Object.prototype.hasOwnProperty.call(patch, "enableHdrRecords")
   ) {
@@ -6601,6 +6604,12 @@ function updatePreferences(patch = {}) {
     incoming.recordFps = normalizeAchievementRecordFps(
       incoming.recordFps,
       DEFAULT_PREFERENCES.recordFps,
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(incoming, "recordResolution")) {
+    incoming.recordResolution = normalizeAchievementRecordResolution(
+      incoming.recordResolution,
+      DEFAULT_PREFERENCES.recordResolution,
     );
   }
   if (Object.prototype.hasOwnProperty.call(incoming, "recordDurationSeconds")) {
@@ -6712,6 +6721,10 @@ function updatePreferences(patch = {}) {
     merged.recordFps = normalizeAchievementRecordFps(
       merged.recordFps,
       DEFAULT_PREFERENCES.recordFps,
+    );
+    merged.recordResolution = normalizeAchievementRecordResolution(
+      merged.recordResolution,
+      DEFAULT_PREFERENCES.recordResolution,
     );
     merged.recordDurationSeconds = normalizeAchievementRecordDuration(
       merged.recordDurationSeconds,
@@ -6929,6 +6942,12 @@ function getAchievementRecorderController() {
   });
   achievementRecorderController.on("capture-border-fallback", (details) => {
     recordLogger.warn("achievement-recorder:capture-border-fallback", details);
+  });
+  achievementRecorderController.on("resolution-fallback", (details) => {
+    recordLogger.warn("achievement-recorder:resolution-fallback", details);
+  });
+  achievementRecorderController.on("downscale-fallback", (details) => {
+    recordLogger.warn("achievement-recorder:downscale-fallback", details);
   });
   achievementRecorderController.on("capture-update-interval", (details) => {
     recordLogger.info("achievement-recorder:capture-update-interval", details);

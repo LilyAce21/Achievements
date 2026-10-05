@@ -43,7 +43,9 @@ use windows_capture::settings::{
     GraphicsCaptureItemType, MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 
+mod scaler;
 mod tone_mapper;
+use scaler::Downscaler;
 use tone_mapper::ToneMapper;
 
 type AnyError = Box<dyn Error + Send + Sync>;
@@ -78,6 +80,10 @@ struct CaptureFlags {
     fps: u32,
     width: u32,
     height: u32,
+    /// Size of the recorded picture. Equal to the (even-rounded) capture size unless the
+    /// downscale option is on.
+    out_width: u32,
+    out_height: u32,
     hdr_tone_map: bool,
     border_mode: &'static str,
     border_fallback: bool,
@@ -180,6 +186,7 @@ struct Capture {
     audio: Option<AudioLoopback>,
     audio_error: Option<String>,
     tone_mapper: Option<ToneMapper>,
+    scaler: Option<Downscaler>,
     ready_emitted: bool,
     shutdown_requested: bool,
 }
@@ -195,6 +202,23 @@ fn even_dimension(value: u32) -> u32 {
     } else {
         value.saturating_add(1)
     }
+}
+
+/// Size of the recorded picture for a capture of `source_width` x `source_height`.
+/// `max_height == 0` (or a source that is already small enough) keeps the native size.
+/// Otherwise the picture is scaled down to `max_height`, keeping the aspect ratio, and
+/// both sides are rounded up to even numbers because the H.264 encoder needs that.
+fn output_dimensions(source_width: u32, source_height: u32, max_height: u32) -> (u32, u32) {
+    let native = (even_dimension(source_width), even_dimension(source_height));
+    if max_height == 0 || source_height == 0 || source_height <= max_height {
+        return native;
+    }
+    let target_height = even_dimension(max_height);
+    let scaled_width = (u64::from(source_width) * u64::from(target_height)
+        + u64::from(source_height) / 2)
+        / u64::from(source_height);
+    let scaled_width = u32::try_from(scaled_width).unwrap_or(u32::MAX).max(2);
+    (even_dimension(scaled_width), target_height)
 }
 
 fn recorder_bitrate(width: u32, height: u32, fps: u32) -> u32 {
@@ -585,6 +609,10 @@ impl Capture {
             "type": "ready",
             "width": self.flags.width,
             "height": self.flags.height,
+            "outputWidth": self.flags.out_width,
+            "outputHeight": self.flags.out_height,
+            "downscaled": (self.flags.out_width, self.flags.out_height)
+                != (even_dimension(self.flags.width), even_dimension(self.flags.height)),
             "fps": self.flags.fps,
             "preMs": self.flags.pre_ms,
             "postMs": self.flags.post_ms,
@@ -593,7 +621,13 @@ impl Capture {
             "audioSampleRate": self.audio.as_ref().map(|_| AUDIO_SAMPLE_RATE),
             "audioChannels": self.audio.as_ref().map(|_| AUDIO_CHANNELS),
             "audioError": self.audio_error.clone(),
-            "captureBackend": if self.tone_mapper.is_some() { "hdr-to-sdr-gpu" } else { "sdr" },
+            "captureBackend": if self.tone_mapper.is_some() {
+                "hdr-to-sdr-gpu"
+            } else if self.scaler.is_some() {
+                "sdr-downscale-gpu"
+            } else {
+                "sdr"
+            },
             "hdrToneMapping": self.tone_mapper.is_some(),
             "borderMode": self.flags.border_mode,
             "borderFallback": self.flags.border_fallback,
@@ -646,8 +680,8 @@ impl Capture {
             return;
         }
         let path = self.allocate_segment_path();
-        let width = self.flags.width;
-        let height = self.flags.height;
+        let width = self.flags.out_width;
+        let height = self.flags.out_height;
         let fps = self.flags.fps;
         let audio_enabled = self.audio.is_some();
         let tx = self.prepare_tx.clone();
@@ -754,8 +788,8 @@ impl Capture {
                 let path = self.allocate_segment_path();
                 let encoder = create_segment_encoder(
                     &path,
-                    self.flags.width,
-                    self.flags.height,
+                    self.flags.out_width,
+                    self.flags.out_height,
                     self.flags.fps,
                     self.audio.is_some(),
                 )?;
@@ -1224,14 +1258,41 @@ impl GraphicsCaptureApiHandler for Capture {
         let (render_tx, render_rx) = mpsc::channel();
         let (prepare_tx, prepare_rx) = mpsc::channel();
         let (finalize_tx, finalize_rx) = mpsc::channel();
-        let tone_mapper = if ctx.flags.hdr_tone_map {
+        let mut flags = ctx.flags.clone();
+        let native_size = (even_dimension(flags.width), even_dimension(flags.height));
+        let mut scaler = None;
+        if (flags.out_width, flags.out_height) != native_size && !flags.hdr_tone_map {
+            match Downscaler::new(
+                ctx.device.clone(),
+                ctx.device_context.clone(),
+                flags.width,
+                flags.height,
+                flags.out_width,
+                flags.out_height,
+            ) {
+                Ok(created) => scaler = Some(created),
+                Err(error) => {
+                    // The option is optional: record at the native size instead of failing.
+                    emit(json!({
+                        "type": "downscale-fallback",
+                        "error": error.to_string(),
+                        "requestedWidth": flags.out_width,
+                        "requestedHeight": flags.out_height,
+                        "effective": "native",
+                    }));
+                    flags.out_width = native_size.0;
+                    flags.out_height = native_size.1;
+                }
+            }
+        }
+        let tone_mapper = if flags.hdr_tone_map {
             Some(ToneMapper::new(
                 ctx.device.clone(),
                 ctx.device_context.clone(),
-                ctx.flags.width,
-                ctx.flags.height,
-                even_dimension(ctx.flags.width),
-                even_dimension(ctx.flags.height),
+                flags.width,
+                flags.height,
+                flags.out_width,
+                flags.out_height,
             )?)
         } else {
             None
@@ -1240,16 +1301,16 @@ impl GraphicsCaptureApiHandler for Capture {
             Ok(audio) => (Some(audio), None),
             Err(error) => (None, Some(error)),
         };
-        let first_path = ctx.flags.session_dir.join("segment-00000001.mp4");
+        let first_path = flags.session_dir.join("segment-00000001.mp4");
         let first_encoder = create_segment_encoder(
             &first_path,
-            ctx.flags.width,
-            ctx.flags.height,
-            ctx.flags.fps,
+            flags.out_width,
+            flags.out_height,
+            flags.fps,
             audio.is_some(),
         )?;
         let capture = Self {
-            flags: ctx.flags,
+            flags,
             started_at: Instant::now(),
             active: Some(ActiveSegment {
                 encoder: first_encoder,
@@ -1289,6 +1350,7 @@ impl GraphicsCaptureApiHandler for Capture {
             audio,
             audio_error,
             tone_mapper,
+            scaler,
             ready_emitted: false,
             shutdown_requested: false,
         };
@@ -1336,6 +1398,18 @@ impl GraphicsCaptureApiHandler for Capture {
                         .map_err(|error| {
                             std::io::Error::other(format!(
                                 "HDR encoded-surface submission failed: {error}"
+                            ))
+                        })?;
+                } else if let Some(scaler) = self.scaler.as_ref() {
+                    let surface = scaler.convert(frame).map_err(|error| {
+                        std::io::Error::other(format!("Downscale frame conversion failed: {error}"))
+                    })?;
+                    active
+                        .encoder
+                        .send_surface(surface, frame_timestamp)
+                        .map_err(|error| {
+                            std::io::Error::other(format!(
+                                "Downscaled surface submission failed: {error}"
                             ))
                         })?;
                 } else {
@@ -1512,6 +1586,8 @@ struct Options {
     segment_ms: u64,
     fps: u32,
     hdr_tone_map: bool,
+    /// 0 = record at the capture size; otherwise the maximum height of the recorded picture.
+    max_height: u32,
 }
 
 fn parse_bool_arg(value: &std::ffi::OsStr) -> Result<bool, AnyError> {
@@ -1530,6 +1606,7 @@ fn parse_options() -> Result<Options, AnyError> {
     let mut segment_ms = 2_000;
     let mut fps = 30;
     let mut hdr_tone_map = false;
+    let mut max_height = 0_u32;
     while let Some(raw) = args.next() {
         let key = raw.to_string_lossy();
         let value = args
@@ -1542,6 +1619,7 @@ fn parse_options() -> Result<Options, AnyError> {
             "--segment-ms" => segment_ms = value.to_string_lossy().parse()?,
             "--fps" => fps = value.to_string_lossy().parse()?,
             "--hdr-tone-map" => hdr_tone_map = parse_bool_arg(&value)?,
+            "--max-height" => max_height = value.to_string_lossy().parse()?,
             _ => return Err(format!("Unknown argument: {key}").into()),
         }
     }
@@ -1553,6 +1631,11 @@ fn parse_options() -> Result<Options, AnyError> {
         segment_ms: segment_ms.clamp(1_000, 5_000),
         fps: fps.clamp(10, 60),
         hdr_tone_map,
+        max_height: if max_height == 0 {
+            0
+        } else {
+            max_height.clamp(360, 4320)
+        },
     })
 }
 
@@ -1674,6 +1757,8 @@ fn run() -> Result<(), AnyError> {
         fps: options.fps,
         width,
         height,
+        out_width: output_dimensions(width, height, options.max_height).0,
+        out_height: output_dimensions(width, height, options.max_height).1,
         hdr_tone_map: options.hdr_tone_map,
         border_mode: "without-border",
         border_fallback: false,
@@ -1720,6 +1805,8 @@ fn run() -> Result<(), AnyError> {
             fps: options.fps,
             width: fallback_width,
             height: fallback_height,
+            out_width: output_dimensions(fallback_width, fallback_height, options.max_height).0,
+            out_height: output_dimensions(fallback_width, fallback_height, options.max_height).1,
             hdr_tone_map: false,
             border_mode: "without-border",
             border_fallback: false,
@@ -1807,6 +1894,30 @@ mod tests {
         let bitrate_60 = recorder_bitrate(1920, 1080, 60);
         assert_eq!(bitrate_30, 8_000_000);
         assert_eq!(bitrate_60, 14_000_000);
+    }
+
+    #[test]
+    fn output_dimensions_keep_native_size_unless_downscaling_is_requested() {
+        // option off, or the screen is already small enough
+        assert_eq!(output_dimensions(3840, 2160, 0), (3840, 2160));
+        assert_eq!(output_dimensions(1920, 1080, 1080), (1920, 1080));
+        assert_eq!(output_dimensions(1366, 768, 1080), (1366, 768));
+        // odd native sizes still end up even for the encoder
+        assert_eq!(output_dimensions(1365, 767, 0), (1366, 768));
+        assert_eq!(output_dimensions(1365, 767, 1080), (1366, 768));
+    }
+
+    #[test]
+    fn output_dimensions_scale_to_the_requested_height_and_keep_the_aspect_ratio() {
+        assert_eq!(output_dimensions(3840, 2160, 1080), (1920, 1080));
+        assert_eq!(output_dimensions(2560, 1440, 1080), (1920, 1080));
+        assert_eq!(output_dimensions(3440, 1440, 1080), (2580, 1080));
+        assert_eq!(output_dimensions(5120, 1440, 1080), (3840, 1080));
+        assert_eq!(output_dimensions(3840, 2160, 720), (1280, 720));
+        // never an odd side and never zero
+        let (w, h) = output_dimensions(2561, 1441, 1080);
+        assert!(w % 2 == 0 && h % 2 == 0 && w > 0 && h > 0);
+        assert_eq!(output_dimensions(100, 0, 1080), (100, 0));
     }
 
     #[test]
