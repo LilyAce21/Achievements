@@ -366,6 +366,12 @@ mod tests {
     #[test]
     fn two_to_one_downscale_averages_each_two_by_two_block() {
         let Some((device, context)) = warp_device() else {
+            // On GitHub's runners this test has to really run, otherwise a green build would
+            // say nothing about the shader; on other machines a missing WARP device just skips.
+            assert!(
+                std::env::var_os("GITHUB_ACTIONS").is_none(),
+                "a WARP device is required on CI so the GPU downscale test really runs"
+            );
             eprintln!("no WARP device available; skipping the GPU downscale test");
             return;
         };
