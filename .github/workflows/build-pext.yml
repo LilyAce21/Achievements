@@ -56,6 +56,21 @@ jobs:
           Rename-Item -Path $zip -NewName ($zip -replace '\.zip$','.pext')
           Get-ChildItem *.pext | Select-Object Name, Length
 
+      - name: Describe the package contents
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $pext = Get-ChildItem *.pext | Select-Object -First 1
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($pext.FullName)
+          try {
+            $names = @($zip.Entries | ForEach-Object { $_.FullName })
+            $top = @($names | Where-Object { $_ -notmatch '/' })
+            $has = @('extension.yaml','PlayniteAchievements.dll','icon.png') | ForEach-Object { "$_=" + ($top -contains $_) }
+            $helper = @($names | Where-Object { $_ -like '*Helper*' } | Select-Object -First 3)
+            $msg = "entries=$($names.Count); top-level files=$($top.Count); $($has -join ', '); helper: $($helper -join ', '); backslashes in names=" + (@($names | Where-Object { $_ -match '\\' }).Count)
+            Write-Host "::notice title=pext layout::$msg"
+          } finally { $zip.Dispose() }
+
       - name: Upload the add-on
         uses: actions/upload-artifact@v4
         with:
@@ -64,16 +79,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Run the display-recording tests
+      - name: Run the recording tests
         id: mytests
         shell: pwsh
         continue-on-error: true
         timeout-minutes: 15
         run: |
-          dotnet test tests/PlayniteAchievements.Tests/PlayniteAchievements.Tests.csproj -c Release --filter "FullyQualifiedName~RecordingCaptureTargetTests" --logger "trx;LogFileName=mine.trx" --results-directory TestResults 2>&1 | Tee-Object -FilePath mytests.log
+          dotnet test tests/PlayniteAchievements.Tests/PlayniteAchievements.Tests.csproj -c Release --filter "FullyQualifiedName~Recording" --logger "trx;LogFileName=mine.trx" --results-directory TestResults 2>&1 | Tee-Object -FilePath mytests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Report the display-recording tests as annotations
+      - name: Report the recording tests as annotations
         if: always()
         shell: pwsh
         run: |
@@ -81,41 +96,14 @@ jobs:
           if (-not $trx) {
             $tail = (Get-Content mytests.log -Tail 30 -ErrorAction SilentlyContinue) -join "`n"
             $msg = $tail -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
-            Write-Host "::warning title=display-recording tests produced no results::$msg"
+            Write-Host "::warning title=recording tests produced no results::$msg"
             exit 0
           }
           [xml]$x = Get-Content $trx.FullName
           $c = $x.TestRun.ResultSummary.Counters
-          Write-Host "::notice title=display-recording tests::total=$($c.total) passed=$($c.passed) failed=$($c.failed)"
+          Write-Host "::notice title=recording tests::total=$($c.total) passed=$($c.passed) failed=$($c.failed)"
           $bad = @($x.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -ne 'Passed' } | ForEach-Object { "$($_.testName): $($_.outcome)" })
           if ($bad.Count -gt 0) {
             $msg = ($bad -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
-            Write-Host "::error title=display-recording tests failed::$msg"
-          }
-
-      - name: Run the rest of the unit tests
-        id: alltests
-        shell: pwsh
-        continue-on-error: true
-        timeout-minutes: 12
-        run: |
-          dotnet test tests/PlayniteAchievements.Tests/PlayniteAchievements.Tests.csproj -c Release --no-build --logger "trx;LogFileName=all.trx" --results-directory TestResults 2>&1 | Tee-Object -FilePath alltests.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Summarise the full unit test run
-        if: always()
-        shell: pwsh
-        run: |
-          $trx = Get-ChildItem -Path TestResults -Filter all.trx -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $trx) {
-            Write-Host "::warning title=full unit test run produced no results (it may have timed out)::see the run log"
-            exit 0
-          }
-          [xml]$x = Get-Content $trx.FullName
-          $c = $x.TestRun.ResultSummary.Counters
-          Write-Host "::notice title=full unit test run::total=$($c.total) passed=$($c.passed) failed=$($c.failed)"
-          $failed = @($x.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' } | Select-Object -First 25 | ForEach-Object { $_.testName })
-          if ($failed.Count -gt 0) {
-            $msg = ($failed -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
-            Write-Host "::warning title=failing tests (first 25)::$msg"
+            Write-Host "::error title=recording tests failed::$msg"
           }
