@@ -1,7 +1,8 @@
 name: Build PlayniteAchievements (.pext)
 
 # Builds the add-on on a GitHub-hosted Windows machine and attaches the installable .pext to the
-# run as an artifact. Compiler errors and unit-test results are also written out as annotations.
+# run as an artifact (it is uploaded right after the build, before any tests run). Compiler errors
+# and unit-test results are also written out as annotations.
 # Runs on pushes to ci/** and feature/** branches only.
 
 on:
@@ -44,41 +45,7 @@ jobs:
           $msg = ($errs -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
           Write-Host "::error title=msbuild failed::$msg"
 
-      - name: Run the unit tests
-        id: tests
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          dotnet test tests/PlayniteAchievements.Tests/PlayniteAchievements.Tests.csproj -c Release --logger "trx;LogFileName=results.trx" --results-directory TestResults 2>&1 | Tee-Object -FilePath test.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Summarise the unit tests as annotations
-        if: always() && steps.build.outcome == 'success'
-        shell: pwsh
-        run: |
-          $trx = Get-ChildItem -Path TestResults -Filter *.trx -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $trx) {
-            $tail = (Get-Content test.log -Tail 25 -ErrorAction SilentlyContinue) -join "`n"
-            $msg = $tail -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
-            Write-Host "::warning title=unit tests produced no results::$msg"
-            exit 0
-          }
-          [xml]$x = Get-Content $trx.FullName
-          $c = $x.TestRun.ResultSummary.Counters
-          Write-Host "::notice title=unit tests::total=$($c.total) passed=$($c.passed) failed=$($c.failed)"
-          $results = @($x.TestRun.Results.UnitTestResult)
-          $mine = 'ThisBuild_RecordsThePrimaryDisplay','DisplayRecordings_TurnEveryWantedVariantIntoOneCleanClip','NoVariantWanted_StaysNoClipForEitherTarget','GameWindowRecordings_KeepTheResolvedVariants','DisplayRecordings_NeverServeScreenshotsFromTheRecordingBuffer','ThisBuild_KeepsScreenshotsOffTheRecordingBuffer'
-          $mineResults = @($results | Where-Object { $mine -contains $_.testName })
-          $okCount = @($mineResults | Where-Object { $_.outcome -eq 'Passed' }).Count
-          Write-Host "::notice title=display-recording tests::$okCount of $($mine.Count) passed ($($mineResults.Count) found)"
-          $failed = @($results | Where-Object { $_.outcome -eq 'Failed' } | Select-Object -First 25 | ForEach-Object { $_.testName })
-          if ($failed.Count -gt 0) {
-            $msg = ($failed -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
-            Write-Host "::warning title=failing unit tests (first 25)::$msg"
-          }
-
       - name: Package the .pext
-        if: steps.build.outcome == 'success'
         shell: pwsh
         run: |
           $out = "source/bin/Release"
@@ -90,10 +57,65 @@ jobs:
           Get-ChildItem *.pext | Select-Object Name, Length
 
       - name: Upload the add-on
-        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: PlayniteAchievements-pext
           path: "*.pext"
           if-no-files-found: error
           retention-days: 30
+
+      - name: Run the display-recording tests
+        id: mytests
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          dotnet test tests/PlayniteAchievements.Tests/PlayniteAchievements.Tests.csproj -c Release --filter "FullyQualifiedName~RecordingCaptureTargetTests" --logger "trx;LogFileName=mine.trx" --results-directory TestResults 2>&1 | Tee-Object -FilePath mytests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Report the display-recording tests as annotations
+        if: always()
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem -Path TestResults -Filter mine.trx -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $trx) {
+            $tail = (Get-Content mytests.log -Tail 30 -ErrorAction SilentlyContinue) -join "`n"
+            $msg = $tail -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+            Write-Host "::warning title=display-recording tests produced no results::$msg"
+            exit 0
+          }
+          [xml]$x = Get-Content $trx.FullName
+          $c = $x.TestRun.ResultSummary.Counters
+          Write-Host "::notice title=display-recording tests::total=$($c.total) passed=$($c.passed) failed=$($c.failed)"
+          $bad = @($x.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -ne 'Passed' } | ForEach-Object { "$($_.testName): $($_.outcome)" })
+          if ($bad.Count -gt 0) {
+            $msg = ($bad -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+            Write-Host "::error title=display-recording tests failed::$msg"
+          }
+
+      - name: Run the rest of the unit tests
+        id: alltests
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          dotnet test tests/PlayniteAchievements.Tests/PlayniteAchievements.Tests.csproj -c Release --no-build --logger "trx;LogFileName=all.trx" --results-directory TestResults 2>&1 | Tee-Object -FilePath alltests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Summarise the full unit test run
+        if: always()
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem -Path TestResults -Filter all.trx -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $trx) {
+            Write-Host "::warning title=full unit test run produced no results (it may have timed out)::see the run log"
+            exit 0
+          }
+          [xml]$x = Get-Content $trx.FullName
+          $c = $x.TestRun.ResultSummary.Counters
+          Write-Host "::notice title=full unit test run::total=$($c.total) passed=$($c.passed) failed=$($c.failed)"
+          $failed = @($x.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' } | Select-Object -First 25 | ForEach-Object { $_.testName })
+          if ($failed.Count -gt 0) {
+            $msg = ($failed -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+            Write-Host "::warning title=failing tests (first 25)::$msg"
+          }
