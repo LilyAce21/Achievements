@@ -1,0 +1,698 @@
+<UserControl x:Class="PlayniteAchievements.Views.FirstTimeLandingPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:converters="clr-namespace:PlayniteAchievements.Views.Converters"
+             mc:Ignorable="d"
+             d:DesignHeight="700"
+             d:DesignWidth="360">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/PlayAchImplicitControlStyles.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/LogoResources.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="LandingPageTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource PlayAch.TextBlock.BaseStyle}">
+                <Setter Property="FontSize" Value="{StaticResource PlayAch.FontSize.ProviderTitle}"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="TextAlignment" Value="Center"/>
+                <Setter Property="TextWrapping" Value="Wrap"/>
+                <Setter Property="Margin" Value="{StaticResource PlayAch.Thickness.Bottom.Compact}"/>
+            </Style>
+
+            <Style x:Key="LandingSectionHeaderTextStyle" TargetType="TextBlock" BasedOn="{StaticResource PlayAch.SectionHeaderTextStyle}">
+                <Setter Property="Margin" Value="0,0,0,10"/>
+                <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Emphasis}"/>
+            </Style>
+
+            <Style x:Key="LandingBodyTextStyle" TargetType="TextBlock" BasedOn="{StaticResource PlayAch.TextBlock.BaseStyle}">
+                <Setter Property="TextWrapping" Value="Wrap"/>
+                <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Subtle}"/>
+            </Style>
+
+            <Style x:Key="LandingCardStyle" TargetType="Border" BasedOn="{StaticResource PlayAch.CardBorderStyle}">
+                <Setter Property="Padding" Value="{StaticResource PlayAch.Thickness.SectionPadding}"/>
+                <Setter Property="Margin" Value="{StaticResource PlayAch.Thickness.Bottom.Md}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource PlayAch.Brush.Border}"/>
+            </Style>
+
+            <Style x:Key="LandingIndicatorCardStyle" TargetType="Border" BasedOn="{StaticResource LandingCardStyle}">
+                <Setter Property="Padding" Value="{StaticResource PlayAch.Thickness.CardPadding}"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="LandingActionTrayStyle" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource PlayAch.Brush.Overlay.Shade.12}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource PlayAch.Brush.Border}"/>
+                <Setter Property="BorderThickness" Value="{StaticResource PlayAch.Thickness.Border}"/>
+                <Setter Property="CornerRadius" Value="{StaticResource PlayAch.Radius.Card}"/>
+                <Setter Property="Padding" Value="8"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="LandingSettingsButtonStyle" TargetType="Button" BasedOn="{StaticResource PlayAch.Button.BaseStyle}">
+                <Setter Property="MinWidth" Value="170"/>
+                <Setter Property="Padding" Value="{StaticResource PlayAch.Thickness.ButtonPadding.Wide}"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="{StaticResource PlayAch.Thickness.Bottom.Lg}"/>
+            </Style>
+
+            <Style x:Key="LandingLanguageComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource PlayAch.ComboBox.BaseStyle}">
+                <Setter Property="Width" Value="280"/>
+                <Setter Property="MinWidth" Value="260"/>
+                <Setter Property="MaxDropDownHeight" Value="360"/>
+                <Setter Property="HorizontalAlignment" Value="Right"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="LandingRefreshModeComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource PlayAch.ComboBox.BaseStyle}">
+                <Setter Property="Width" Value="180"/>
+                <Setter Property="MinWidth" Value="170"/>
+                <Setter Property="MaxDropDownHeight" Value="280"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="LandingProviderCardStyle" TargetType="Border" BasedOn="{StaticResource PlayAch.CardBorderStyle}">
+                <Setter Property="Margin" Value="{StaticResource PlayAch.Thickness.Bottom.Sm}"/>
+                <Setter Property="Padding" Value="12,10"/>
+                <Setter Property="Background" Value="{StaticResource PlayAch.Brush.Overlay.Shade.12}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource PlayAch.Brush.Border}"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsAuthenticated}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource PlayAch.Brush.AuthSuccess}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource PlayAch.Brush.AuthPending}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                        <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Disabled}"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="LandingProviderStatusIconStyle" TargetType="TextBlock" BasedOn="{StaticResource PlayAch.TextBlock.BaseStyle}">
+                <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+                <Setter Property="FontSize" Value="{StaticResource PlayAch.FontSize.InlineIcon}"/>
+                <Setter Property="Foreground" Value="{StaticResource PlayAch.Brush.AuthError}"/>
+                <Setter Property="Margin" Value="0,0,10,0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsAuthenticated}" Value="True">
+                        <Setter Property="Foreground" Value="{StaticResource PlayAch.Brush.AuthSuccess}"/>
+                        <Setter Property="FontWeight" Value="Bold"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                        <Setter Property="Foreground" Value="{StaticResource PlayAch.Brush.AuthPending}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                        <Setter Property="Foreground" Value="{DynamicResource PlayAch.Brush.Text}"/>
+                        <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Placeholder}"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="LandingProviderSubtitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource PlayAch.MutedTextStyle}">
+                <Setter Property="Margin" Value="{StaticResource PlayAch.Thickness.Top.Xs}"/>
+            </Style>
+
+            <Style x:Key="LandingProviderBadgeBorderStyle" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource PlayAch.Brush.Overlay.Shade.20}"/>
+                <Setter Property="CornerRadius" Value="{StaticResource PlayAch.Radius.PillSmall}"/>
+                <Setter Property="Padding" Value="8,3"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="{StaticResource PlayAch.Thickness.Left.Sm}"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsAuthenticated}" Value="True">
+                        <Setter Property="Background" Value="{StaticResource PlayAch.Brush.AuthSuccess}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                        <Setter Property="Background" Value="{StaticResource PlayAch.Brush.AuthPending}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                        <Setter Property="Background" Value="{StaticResource PlayAch.Brush.Overlay.Shade.12}"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="LandingProviderBadgeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource PlayAch.TextBlock.BaseStyle}">
+                <Setter Property="FontSize" Value="{DynamicResource PlayAch.FontSize.Caption}"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Foreground" Value="{DynamicResource PlayAch.Brush.Text}"/>
+                <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Secondary}"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsAuthenticated}" Value="True">
+                        <Setter Property="Foreground" Value="{DynamicResource PlayAch.Brush.Surface}"/>
+                        <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Full}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                        <Setter Property="Foreground" Value="{DynamicResource PlayAch.Brush.Surface}"/>
+                        <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Full}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                        <Setter Property="Opacity" Value="{StaticResource PlayAch.Opacity.Disabled}"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Background="{DynamicResource PlayAch.Brush.Panel}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20,16,20,24">
+
+            <!-- Plugin Icon -->
+            <Image x:Name="PluginIcon"
+                   Source="{StaticResource PlayAch.Image.Logo}"
+                   Width="63"
+                   Height="63"
+                   HorizontalAlignment="Center"
+                   Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"/>
+
+            <!-- Main Title -->
+            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_Title}"
+                       Style="{StaticResource LandingPageTitleTextStyle}"/>
+
+            <!-- Rarity Icons Decoration -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Margin="0,4,0,12">
+                <Image Source="{DynamicResource BadgeRarityCommon}"
+                       Width="28"
+                       Height="28"
+                       Margin="3"
+                       SnapsToDevicePixels="True"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                <Image Source="{DynamicResource BadgeRarityUncommon}"
+                       Width="28"
+                       Height="28"
+                       Margin="3"
+                       SnapsToDevicePixels="True"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                <Image Source="{DynamicResource BadgeRarityRare}"
+                       Width="28"
+                       Height="28"
+                       Margin="3"
+                       SnapsToDevicePixels="True"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                <Image Source="{DynamicResource BadgeRarityUltraRare}"
+                       Width="28"
+                       Height="28"
+                       Margin="3"
+                       SnapsToDevicePixels="True"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                <Image Source="{DynamicResource BadgeRarityCompleted}"
+                       Width="28"
+                       Height="28"
+                       Margin="3"
+                       SnapsToDevicePixels="True"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+            </StackPanel>
+
+            <Button Content="{DynamicResource LOCPlayAch_Landing_OpenSettings}"
+                    Command="{Binding OpenPluginSettingsCommand}"
+                    Style="{StaticResource LandingSettingsButtonStyle}"/>
+
+            <StackPanel MinWidth="800" HorizontalAlignment="Center">
+
+            <!-- Language Selector -->
+            <Border Style="{StaticResource LandingCardStyle}"
+                    Padding="{StaticResource PlayAch.Thickness.SectionPadding}"
+                    Margin="{StaticResource PlayAch.Thickness.Bottom.Lg}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="{DynamicResource LOCPlayAch_Landing_Language}"
+                               FontSize="{DynamicResource PlayAch.FontSize.Body}"
+                               FontWeight="Medium"
+                               Foreground="{DynamicResource PlayAch.Brush.Text}"
+                               VerticalAlignment="Center"
+                               Margin="{StaticResource PlayAch.Thickness.Right.Md}"/>
+
+                    <ComboBox Grid.Column="1"
+                              Style="{StaticResource LandingLanguageComboBoxStyle}"
+                              SelectedValuePath="Tag"
+                              SelectedValue="{Binding GlobalLanguage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                        <ComboBoxItem Content="English" Tag="english"/>
+                        <ComboBoxItem Content="German (Deutsch)" Tag="german"/>
+                        <ComboBoxItem Content="French (Français)" Tag="french"/>
+                        <ComboBoxItem Content="Spanish (Español)" Tag="spanish"/>
+                        <ComboBoxItem Content="Italian (Italiano)" Tag="italian"/>
+                        <ComboBoxItem Content="Portuguese (Português)" Tag="portuguese"/>
+                        <ComboBoxItem Content="Brazilian Portuguese (Português brasileiro)" Tag="brazilian"/>
+                        <ComboBoxItem Content="Russian (Русский)" Tag="russian"/>
+                        <ComboBoxItem Content="Polish (Polski)" Tag="polish"/>
+                        <ComboBoxItem Content="Dutch (Nederlands)" Tag="dutch"/>
+                        <ComboBoxItem Content="Swedish (Svenska)" Tag="swedish"/>
+                        <ComboBoxItem Content="Finnish (Suomi)" Tag="finnish"/>
+                        <ComboBoxItem Content="Danish (Dansk)" Tag="danish"/>
+                        <ComboBoxItem Content="Norwegian (Norsk)" Tag="norwegian"/>
+                        <ComboBoxItem Content="Hungarian (Magyar)" Tag="hungarian"/>
+                        <ComboBoxItem Content="Czech (Čeština)" Tag="czech"/>
+                        <ComboBoxItem Content="Romanian (Română)" Tag="romanian"/>
+                        <ComboBoxItem Content="Turkish (Türkçe)" Tag="turkish"/>
+                        <ComboBoxItem Content="Greek (Ελληνικά)" Tag="greek"/>
+                        <ComboBoxItem Content="Bulgarian (Български)" Tag="bulgarian"/>
+                        <ComboBoxItem Content="Ukrainian (Українська)" Tag="ukrainian"/>
+                        <ComboBoxItem Content="Thai (ไทย)" Tag="thai"/>
+                        <ComboBoxItem Content="Vietnamese (Tiếng Việt)" Tag="vietnamese"/>
+                        <ComboBoxItem Content="Japanese (日本語)" Tag="japanese"/>
+                        <ComboBoxItem Content="Korean (한국어)" Tag="koreana"/>
+                        <ComboBoxItem Content="Simplified Chinese (简体中文)" Tag="schinese"/>
+                        <ComboBoxItem Content="Traditional Chinese (繁體中文)" Tag="tchinese"/>
+                        <ComboBoxItem Content="Arabic (العربية)" Tag="arabic"/>
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="1"
+                               Grid.ColumnSpan="2"
+                               Text="{DynamicResource LOCPlayAch_Settings_LanguageHint}"
+                               Style="{StaticResource LandingBodyTextStyle}"
+                               VerticalAlignment="Center"
+                               Margin="{StaticResource PlayAch.Thickness.Top.Sm}"/>
+                </Grid>
+            </Border>
+
+            <!-- Provider Status List - Always Visible -->
+            <StackPanel Margin="{StaticResource PlayAch.Thickness.Bottom.Lg}">
+                <!-- Section Header -->
+                <TextBlock Text="{DynamicResource LOCPlayAch_Landing_ProviderStatus}"
+                           Style="{StaticResource LandingSectionHeaderTextStyle}"/>
+
+                <!-- Provider Cards -->
+                <ScrollViewer MaxHeight="330"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Providers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource LandingProviderCardStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Status Icon -->
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding StatusIcon}"
+                                                   Style="{StaticResource LandingProviderStatusIconStyle}"/>
+
+                                        <!-- Provider Info -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}"
+                                                       Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                                       FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding StatusSubtitle}"
+                                                       Style="{StaticResource LandingProviderSubtitleTextStyle}"/>
+                                        </StackPanel>
+
+                                        <!-- Enable Toggle -->
+                                        <CheckBox Grid.Column="2"
+                                                  Content="{DynamicResource LOCPlayAch_Landing_EnableProvider}"
+                                                  IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="{StaticResource PlayAch.Thickness.Left.Md}"
+                                                  FontSize="{DynamicResource PlayAch.FontSize.Caption}"
+                                                  Command="{Binding DataContext.ToggleProviderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                  CommandParameter="{Binding ProviderKey}"/>
+
+                                        <!-- Status Badge -->
+                                        <Border Grid.Column="3"
+                                                Style="{StaticResource LandingProviderBadgeBorderStyle}">
+                                            <TextBlock Text="{Binding StatusBadgeText}"
+                                                       Style="{StaticResource LandingProviderBadgeTextStyle}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+
+            <!-- Content states switched via visibility bindings -->
+            <Grid>
+
+                <!-- State 1: No Auth Configured -->
+                <StackPanel x:Name="NoAuthPanel"
+                            Visibility="{Binding ShowNoAuthPanel, Converter={StaticResource BoolToVis}}">
+
+                    <!-- Config Card -->
+                    <Border Style="{StaticResource LandingCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_NoAuthTitle}"
+                                       Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                       FontWeight="SemiBold"
+                                       Margin="{StaticResource PlayAch.Thickness.Bottom.Xs}"/>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_NoAuthMessage}"
+                                       Style="{StaticResource LandingBodyTextStyle}"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+
+                <!-- State 2: Has Auth, No Cache (Needs Refresh) -->
+                <StackPanel x:Name="NeedsRefreshPanel"
+                            Visibility="{Binding ShowNeedsRefreshPanel, Converter={StaticResource BoolToVis}}">
+
+                    <Border Style="{StaticResource LandingCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_Status_ReadyToRefresh}"
+                                       Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                       FontWeight="SemiBold"
+                                       Margin="{StaticResource PlayAch.Thickness.Bottom.Xs}"/>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_NeedsRefreshMessage}"
+                                       Style="{StaticResource LandingBodyTextStyle}"
+                                       Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"/>
+                            <Border Style="{StaticResource LandingActionTrayStyle}">
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center">
+                                <ComboBox x:Name="RefreshModeComboBox"
+                                          Style="{StaticResource LandingRefreshModeComboBoxStyle}"
+                                          ItemsSource="{Binding RefreshModes}"
+                                          DisplayMemberPath="ShortDisplayName"
+                                          SelectedValuePath="Key"
+                                          SelectedValue="{Binding SelectedRefreshMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Margin="{StaticResource PlayAch.Thickness.Right.Sm}"/>
+                                <Button Content="{Binding RefreshActionButtonText}"
+                                        Command="{Binding BeginRefreshCommand}"
+                                        Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                                        MinWidth="130"/>
+                            </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Ready indicator -->
+                    <Border Style="{StaticResource LandingIndicatorCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="&#xE8FB;"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                       Foreground="{StaticResource PlayAch.Brush.AuthSuccess}"
+                                       HorizontalAlignment="Center"
+                                       Margin="{StaticResource PlayAch.Thickness.Bottom.Xs}"/>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_Status_ReadyToRefresh}"
+                                       Style="{StaticResource LandingBodyTextStyle}"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- State 3: Has Auth + Cache (Existing User) -->
+                <StackPanel x:Name="HasDataPanel"
+                            Visibility="{Binding ShowHasDataPanel, Converter={StaticResource BoolToVis}}">
+
+                    <Border Style="{StaticResource LandingCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_HasDataTitle}"
+                                       Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                       FontWeight="SemiBold"
+                                       Margin="{StaticResource PlayAch.Thickness.Bottom.Xs}"/>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_HasDataMessage}"
+                                       Style="{StaticResource LandingBodyTextStyle}"
+                                       Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"/>
+                            <Button Content="{DynamicResource LOCPlayAch_Common_Continue}"
+                                    Command="{Binding ContinueCommand}"
+                                    HorizontalAlignment="Center"
+                                    Padding="{StaticResource PlayAch.Thickness.ButtonPadding.Wide}"
+                                    MinWidth="110"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Existing data indicator -->
+                    <Border Style="{StaticResource LandingIndicatorCardStyle}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Margin="{StaticResource PlayAch.Thickness.Bottom.Compact}">
+                                <Image Source="{DynamicResource BadgeRarityCompleted}"
+                                       Width="20"
+                                       Height="20"
+                                       Margin="1"
+                                       SnapsToDevicePixels="True"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                <Image Source="{DynamicResource BadgeRarityUltraRare}"
+                                       Width="20"
+                                       Height="20"
+                                       Margin="1"
+                                       SnapsToDevicePixels="True"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                <Image Source="{DynamicResource BadgeRarityRare}"
+                                       Width="20"
+                                       Height="20"
+                                       Margin="1"
+                                       SnapsToDevicePixels="True"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                            </StackPanel>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Landing_HasDataFound}"
+                                       Style="{StaticResource LandingBodyTextStyle}"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </Grid>
+
+            <!-- Theme Migration Section - Always Visible -->
+            <StackPanel Margin="0,16,0,0">
+                <!-- Section Header -->
+                <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Title}"
+                           Style="{StaticResource LandingSectionHeaderTextStyle}"/>
+
+                <!-- Migrate Theme Card -->
+                <Border Style="{StaticResource LandingCardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_MigrateLabel}"
+                                   Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                   FontWeight="SemiBold"
+                                   Margin="{StaticResource PlayAch.Thickness.Bottom.Sm}"/>
+
+                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Description}"
+                                   Style="{StaticResource LandingBodyTextStyle}"
+                                   Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"/>
+
+                        <!-- Theme Dropdown -->
+                        <ComboBox x:Name="MigrationThemeComboBox"
+                                  ItemsSource="{Binding AvailableThemes}"
+                                  DisplayMemberPath="BestDisplayName"
+                                  SelectedValuePath="Path"
+                                  SelectedValue="{Binding SelectedThemePath}"
+                                  Width="300"
+                                  HorizontalAlignment="Center"
+                                  Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"
+                                  VerticalContentAlignment="Center"
+                                  IsEnabled="{Binding HasThemesToMigrate}"/>
+
+                        <!-- Migration Buttons -->
+                        <StackPanel x:Name="ThemeMigrationPresetButtons"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Center">
+                            <Button Content="{DynamicResource LOCPlayAch_ThemeMigration_MigrationLimited}"
+                                    Command="{Binding MigrateThemeLimitedCommand}"
+                                    Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                                    MinWidth="100"
+                                    Margin="{StaticResource PlayAch.Thickness.Right.Sm}"
+                                    IsEnabled="{Binding HasThemesToMigrate}"
+                                    ToolTipService.ShowOnDisabled="True">
+                                <Button.ToolTip>
+                                    <ToolTip>
+                                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Description}"
+                                                   TextWrapping="Wrap"
+                                                   MaxWidth="250"/>
+                                    </ToolTip>
+                                </Button.ToolTip>
+                            </Button>
+                            <Button Content="{DynamicResource LOCPlayAch_ThemeMigration_MigrationFull}"
+                                    x:Name="ThemeMigrationFullButton"
+                                    Command="{Binding MigrateThemeFullCommand}"
+                                    Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                                    MinWidth="100"
+                                    IsEnabled="{Binding HasThemesToMigrate}"
+                                    ToolTipService.ShowOnDisabled="True">
+                                <Button.ToolTip>
+                                    <ToolTip>
+                                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Description}"
+                                                   TextWrapping="Wrap"
+                                                   MaxWidth="250"/>
+                                    </ToolTip>
+                                </Button.ToolTip>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Custom Migration Expander -->
+                        <Border Background="{StaticResource PlayAch.Brush.Overlay.Shade.12}"
+                                x:Name="ThemeMigrationCustomContainer"
+                                BorderBrush="{DynamicResource PlayAch.Brush.Border}"
+                                BorderThickness="{StaticResource PlayAch.Thickness.Border}"
+                                CornerRadius="{StaticResource PlayAch.Radius.Card}"
+                                Margin="0,16,0,0"
+                                Padding="{StaticResource PlayAch.Thickness.None}"
+                                IsEnabled="{Binding HasThemesToMigrate}">
+                            <Expander x:Name="ThemeMigrationCustomExpander"
+                                      IsExpanded="False"
+                                      Expanded="ThemeMigrationCustomExpander_Expanded"
+                                      Collapsed="ThemeMigrationCustomExpander_Collapsed"
+                                      Style="{StaticResource PlayAch.MigrationCustomExpanderStyle}"
+                                      Background="Transparent"
+                                      BorderThickness="0">
+                                <Expander.Header>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Common_Custom}"
+                                               Foreground="{DynamicResource PlayAch.Brush.Text}"
+                                               FontWeight="SemiBold"/>
+                                </Expander.Header>
+
+                                <StackPanel Margin="12,0,12,12">
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Description}"
+                                               Foreground="{DynamicResource PlayAch.Brush.Text}"
+                                               Opacity="{StaticResource PlayAch.Opacity.Muted}"
+                                               FontSize="{DynamicResource PlayAch.FontSize.Caption}"
+                                               TextWrapping="Wrap"
+                                               HorizontalAlignment="Left"
+                                               Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"
+                                               MaxWidth="520"/>
+
+                                    <Grid Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"
+                                          HorizontalAlignment="Left">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="176"/>
+                                            <ColumnDefinition Width="108"/>
+                                            <ColumnDefinition Width="54"/>
+                                            <ColumnDefinition Width="108"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button Grid.Column="1"
+                                                Content="{DynamicResource LOCPlayAch_ThemeMigration_AllLegacy}"
+                                                Command="{Binding SetAllMigrationLegacyCommand}"
+                                                Style="{StaticResource MigrationChoiceButtonBaseStyle}"
+                                                Margin="{StaticResource PlayAch.Thickness.Right.Sm}"/>
+                                        <Button Grid.Column="3"
+                                                Content="{DynamicResource LOCPlayAch_ThemeMigration_AllModern}"
+                                                Command="{Binding SetAllMigrationModernCommand}"
+                                                Style="{StaticResource MigrationChoiceButtonBaseStyle}"/>
+                                    </Grid>
+
+                                    <ItemsControl ItemsSource="{Binding ThemeMigrationCustomOptions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,10"
+                                                      HorizontalAlignment="Left">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="176"/>
+                                                        <ColumnDefinition Width="108"/>
+                                                        <ColumnDefinition Width="54"/>
+                                                        <ColumnDefinition Width="108"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               Foreground="{DynamicResource PlayAch.Brush.Text}"
+                                                               VerticalAlignment="Center"
+                                                               Margin="{StaticResource PlayAch.Thickness.Right.Md}"/>
+
+                                                    <Button Grid.Column="1"
+                                                            Content="{DynamicResource LOCPlayAch_ThemeMigration_ModeLegacy}"
+                                                            Style="{StaticResource MigrationChoiceLegacyButtonStyle}"
+                                                            Command="{Binding DataContext.SetMigrationRowLegacyCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Margin="{StaticResource PlayAch.Thickness.Right.Sm}"/>
+
+                                                    <ToggleButton Grid.Column="2"
+                                                                  Style="{StaticResource MigrationSwitchToggleStyle}"
+                                                                  IsChecked="{Binding IsModern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+
+                                                    <Button Grid.Column="3"
+                                                            Content="{DynamicResource LOCPlayAch_ThemeMigration_ModeModern}"
+                                                            Style="{StaticResource MigrationChoiceModernButtonStyle}"
+                                                            Command="{Binding DataContext.SetMigrationRowModernCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Margin="{StaticResource PlayAch.Thickness.Left.Sm}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Button Content="{DynamicResource LOCPlayAch_ThemeMigration_MigrationCustom}"
+                                            Command="{Binding MigrateThemeCustomCommand}"
+                                            Padding="{StaticResource PlayAch.Thickness.ButtonPadding.Wide}"
+                                            Margin="{StaticResource PlayAch.Thickness.Top.Compact}"
+                                            MinWidth="100"
+                                            HorizontalAlignment="Right"
+                                            IsEnabled="{Binding HasThemesToMigrate}"/>
+                                </StackPanel>
+                            </Expander>
+                        </Border>
+
+                        <!-- No themes message -->
+                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_NoThemesMessage}"
+                                   Style="{StaticResource LandingBodyTextStyle}"
+                                   Opacity="{StaticResource PlayAch.Opacity.Muted}"
+                                   FontSize="{DynamicResource PlayAch.FontSize.Caption}"
+                                   HorizontalAlignment="Center"
+                                   Margin="{StaticResource PlayAch.Thickness.Top.Sm}"
+                                   Visibility="{Binding ShowNoThemesMessage, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Revert Theme Card -->
+                <Border Style="{StaticResource LandingCardStyle}"
+                        Margin="{StaticResource PlayAch.Thickness.None}">
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Revert}"
+                                   Style="{StaticResource PlayAch.TextBlock.BaseStyle}"
+                                   FontWeight="SemiBold"
+                                   Margin="{StaticResource PlayAch.Thickness.Bottom.Sm}"/>
+
+                        <!-- Revertable Theme Dropdown and Revert Button -->
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center">
+                            <ComboBox x:Name="RevertThemeComboBox"
+                                      ItemsSource="{Binding RevertableThemes}"
+                                      DisplayMemberPath="BestDisplayName"
+                                      SelectedValuePath="Path"
+                                      SelectedValue="{Binding SelectedRevertThemePath}"
+                                      Width="200"
+                                      Margin="{StaticResource PlayAch.Thickness.Right.Sm}"
+                                      VerticalContentAlignment="Center"
+                                      IsEnabled="{Binding HasRevertableThemes}"/>
+                            <Button Content="{DynamicResource LOCPlayAch_ThemeMigration_RevertButton}"
+                                    Command="{Binding RevertThemeCommand}"
+                                    Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                                    MinWidth="100"
+                                    IsEnabled="{Binding HasRevertableThemes}"/>
+                        </StackPanel>
+
+                        <!-- No revertable themes message -->
+                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_NoRevertableThemes}"
+                                   Style="{StaticResource LandingBodyTextStyle}"
+                                   Opacity="{StaticResource PlayAch.Opacity.Muted}"
+                                   FontSize="{DynamicResource PlayAch.FontSize.Caption}"
+                                   HorizontalAlignment="Center"
+                                   Margin="{StaticResource PlayAch.Thickness.Top.Sm}"
+                                   Visibility="{Binding ShowNoRevertableThemesMessage, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- End constrained content container -->
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+    </Grid>
+</UserControl>
+
+

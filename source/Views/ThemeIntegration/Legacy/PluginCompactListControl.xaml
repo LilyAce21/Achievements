@@ -1,0 +1,140 @@
+<local:ThemeControlBase x:Class="PlayniteAchievements.Views.ThemeIntegration.Legacy.PluginCompactListControl"
+                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                   xmlns:wpftk="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
+                   xmlns:controls="clr-namespace:Playnite.SDK.Controls;assembly=Playnite.SDK"
+                   xmlns:converters="clr-namespace:PlayniteAchievements.Views.Converters"
+                   xmlns:local="clr-namespace:PlayniteAchievements.Views.ThemeIntegration.Base"
+                   xmlns:localLegacy="clr-namespace:PlayniteAchievements.Views.ThemeIntegration.Legacy"
+                   xmlns:localControls="clr-namespace:PlayniteAchievements.Views.ThemeIntegration.Legacy.Controls"
+                   mc:Ignorable="d"
+                   d:DesignHeight="100" d:DesignWidth="300"
+                   MinHeight="{Binding RelativeSource={RelativeSource AncestorType=ContentControl}, Path=MinHeight}"
+                   MaxHeight="{Binding RelativeSource={RelativeSource AncestorType=ContentControl}, Path=MaxHeight}">
+    <!--
+        SuccessStory-compatible compact list control.
+        Matches the original SuccessStory plugin styling.
+        Displays achievement icons in a horizontal wrap panel.
+    -->
+    <local:ThemeControlBase.Style>
+        <Style TargetType="local:ThemeControlBase">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Persisted.EnableAchievementCompactListControl}"
+                             Value="False">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </local:ThemeControlBase.Style>
+
+    <local:ThemeControlBase.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/CommonResources.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </local:ThemeControlBase.Resources>
+
+    <Grid Name="PART_GridContener"
+          Height="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=CompactHeight}"
+          Tag="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=IconHeight}">
+        <ListBox x:Name="lbAchievements"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.CanContentScroll="True"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 Width="{Binding ElementName=PART_GridContener, Path=ActualWidth}"
+                 Height="{Binding ElementName=PART_GridContener, Path=ActualHeight}"
+                 ItemsSource="{Binding LegacyTheme.ListAchievements, Mode=OneWay}">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="{x:Type ListBoxItem}">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                <Grid>
+                                    <Border Padding="{TemplateBinding Padding}" Background="Transparent">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                          Margin="3,0,0,0" />
+                                    </Border>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="Selector.IsSelected" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource PlayAch.Brush.Text.Tertiary}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </ListBox.ItemContainerStyle>
+
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <wpftk:VirtualizingWrapPanel Orientation="Horizontal"
+                                                 VirtualizingPanel.CacheLengthUnit="Item"
+                                                 VirtualizingPanel.VirtualizationMode="Recycling" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid HorizontalAlignment="Left"
+                          Cursor="Hand"
+                          MouseLeftButtonDown="AchievementGrid_MouseLeftButtonDown"
+                          localLegacy:HiddenRevealHelper.IsRevealed="False">
+                        <StackPanel Margin="2" HorizontalAlignment="Left">
+                            <StackPanel.ToolTip>
+                                <MultiBinding Converter="{StaticResource HiddenTitleConverter}">
+                                    <Binding Path="DisplayName" />
+                                    <Binding Path="Hidden" />
+                                    <Binding Path="Unlocked" />
+                                    <Binding RelativeSource="{RelativeSource AncestorType=UserControl}" Path="ShowHiddenIcon" />
+                                    <Binding RelativeSource="{RelativeSource AncestorType=Grid}" Path="(localLegacy:HiddenRevealHelper.IsRevealed)" />
+                                </MultiBinding>
+                            </StackPanel.ToolTip>
+
+                            <localControls:AchievementImage
+                                Width="{Binding ElementName=PART_GridContener, Path=Tag}"
+                                Height="{Binding ElementName=PART_GridContener, Path=Tag}"
+                                IsLocked="{Binding Unlocked, Converter={StaticResource InvertBoolConverter}}"
+                                Percent="{Binding RarityPercentValue}"
+                                HasRarityPercent="{Binding HasRarityPercent}"
+                                Rarity="{Binding Rarity}"
+                                RarityText="{Binding RarityText}"
+                                EnableRaretyIndicator="True"
+                                ShowRarityGlow="{Binding Persisted.ModernCompactListShowRarityGlow, FallbackValue=True}"
+                                IsHardcore="{Binding IsHardcore}"
+                                DisplayRaretyValue="True">
+                                <localControls:AchievementImage.Icon>
+                                    <MultiBinding Converter="{StaticResource HiddenIconConverter}">
+                                        <Binding Path="UnlockedIconDisplay" IsAsync="True" />
+                                        <Binding Path="Hidden" />
+                                        <Binding Path="Unlocked" />
+                                        <Binding RelativeSource="{RelativeSource AncestorType=UserControl}" Path="ShowHiddenIcon" />
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Grid}" Path="(localLegacy:HiddenRevealHelper.IsRevealed)" />
+                                    </MultiBinding>
+                                </localControls:AchievementImage.Icon>
+                                <localControls:AchievementImage.IconCustom>
+                                    <MultiBinding Converter="{StaticResource HiddenIconConverter}">
+                                        <Binding Path="LockedIconDisplay" IsAsync="True" />
+                                        <Binding Path="Hidden" />
+                                        <Binding Path="Unlocked" />
+                                        <Binding RelativeSource="{RelativeSource AncestorType=UserControl}" Path="ShowHiddenIcon" />
+                                        <Binding RelativeSource="{RelativeSource AncestorType=Grid}" Path="(localLegacy:HiddenRevealHelper.IsRevealed)" />
+                                    </MultiBinding>
+                                </localControls:AchievementImage.IconCustom>
+                            </localControls:AchievementImage>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</local:ThemeControlBase>

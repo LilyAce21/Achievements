@@ -1,0 +1,1480 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using PlayniteAchievements.Models;
+using PlayniteAchievements.Models.Achievements;
+using PlayniteAchievements.Models.Settings;
+using PlayniteAchievements.Providers.Exophase;
+using PlayniteAchievements.Providers.Manual;
+using PlayniteAchievements.Providers.RetroAchievements;
+using PlayniteAchievements.Services;
+using PlayniteAchievements.Services.Achievements;
+using PlayniteAchievements.Services.GameCustomData;
+using PlayniteAchievements.Services.Images;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+
+namespace PlayniteAchievements.Services.Tests
+{
+    [TestClass]
+    [DoNotParallelize]
+    public class GameCustomDataStoreTests
+    {
+        [TestMethod]
+        public void CachedUnlockProtectionOverride_PreservesFalseTrueAndInheritance()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            try
+            {
+                foreach (var value in new[] { false, true })
+                {
+                    var store = new GameCustomDataStore(tempDir);
+                    store.Update(gameId, data => data.PreserveCachedUnlocksOnRefreshOverride = value);
+                    Assert.IsTrue(new GameCustomDataStore(tempDir).TryLoad(gameId, out var reloaded));
+                    Assert.AreEqual(value, reloaded.PreserveCachedUnlocksOnRefreshOverride.Value);
+                }
+                var finalStore = new GameCustomDataStore(tempDir);
+                finalStore.Update(gameId, data => data.PreserveCachedUnlocksOnRefreshOverride = null);
+                Assert.IsFalse(finalStore.TryLoad(gameId, out _));
+            }
+            finally { DeleteDirectory(tempDir); }
+        }
+
+        [TestMethod]
+        public void SteamAccountOverrideAlone_SurvivesSaveAndStoreReload()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Update(gameId, data => data.SteamAccountIdOverride = "secondary-account");
+                Assert.IsTrue(store.TryLoad(gameId, out var saved));
+                Assert.AreEqual("secondary-account", saved.SteamAccountIdOverride);
+                var reopened = new GameCustomDataStore(tempDir);
+                Assert.IsTrue(reopened.TryLoad(gameId, out var reloaded));
+                Assert.AreEqual("secondary-account", reloaded.SteamAccountIdOverride);
+                reopened.Update(gameId, data => data.SteamAccountIdOverride = null);
+                Assert.IsFalse(reopened.TryLoad(gameId, out _));
+            }
+            finally { DeleteDirectory(tempDir); }
+        }
+
+        [TestMethod]
+        public void Save_BlankPayloadDoesNotCreateDatabase()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = Guid.NewGuid(),
+                    ManualCapstoneApiName = "   ",
+                    AchievementOrder = new List<string> { " ", null },
+                    AchievementCategoryOverrides = new Dictionary<string, string>
+                    {
+                        [" "] = " "
+                    },
+                    AchievementUnlockedIconOverrides = new Dictionary<string, string>
+                    {
+                        [" "] = " "
+                    },
+                    AchievementLockedIconOverrides = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = " "
+                    },
+                    AchievementNotes = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = " "
+                    },
+                    UseSeparateLockedIconsOverride = false,
+                    ForceUseExophase = false
+                });
+
+                Assert.IsFalse(File.Exists(store.DatabasePath));
+                Assert.IsFalse(store.TryLoad(gameId, out _));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void CustomDataChanged_RaisesForSaveAndDelete()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                var changedGameIds = new List<Guid>();
+                store.CustomDataChanged += (_, args) => changedGameIds.Add(args.PlayniteGameId);
+
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ManualCapstoneApiName = "capstone"
+                });
+
+                store.Delete(gameId);
+
+                CollectionAssert.AreEqual(
+                    new List<Guid> { gameId, gameId },
+                    changedGameIds);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_ManualLinkOnly_IsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ManualLink = new ManualAchievementLink
+                    {
+                        SourceKey = "Steam",
+                        SourceGameId = "123"
+                    }
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_GameSummaryCategoryOnly_RoundTripsAndIsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Update(gameId, customData =>
+                {
+                    customData.GameSummaryCategory = new GameSummaryCategoryData
+                    {
+                        Label = " My Renamed DLC ",
+                        ProviderLabel = "Phantom Liberty"
+                    };
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                Assert.IsNotNull(loaded.GameSummaryCategory);
+                Assert.AreEqual("My Renamed DLC", loaded.GameSummaryCategory.Label);
+                Assert.AreEqual("Phantom Liberty", loaded.GameSummaryCategory.ProviderLabel);
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+
+                store.Update(gameId, customData =>
+                {
+                    customData.GameSummaryCategory = null;
+                });
+
+                if (store.TryLoad(gameId, out var cleared))
+                {
+                    Assert.IsNull(cleared.GameSummaryCategory);
+                }
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_RetroAchievementsOverrideOnly_IsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    RetroAchievementsGameIdOverride = 12345
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                AssertProviderOverride(loaded, "RetroAchievements", "12345");
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_XeniaTitleIdOverrideOnly_IsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    XeniaTitleIdOverride = "0x4d5307e6"
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                AssertProviderOverride(loaded, "Xenia", "4D5307E6");
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_ShadPS4MatchIdOverrideOnly_IsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ShadPS4MatchIdOverride = "npwr12345_00"
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                AssertProviderOverride(loaded, "ShadPS4", "NPWR12345_00");
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_ExophaseIncludeOnly_IsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ForceUseExophase = true
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                AssertProviderOverride(loaded, "Exophase", null);
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_ExophaseSlugOverrideOnly_IsVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ExophaseSlugOverride = "test-slug"
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                AssertProviderOverride(loaded, "Exophase", "test-slug");
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_ExophaseEnrichmentSlugOverrideOnly_RoundTripsWithoutProviderOverride()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ExophaseEnrichmentSlugOverride = "guitar-hero-hits-xbox-360"
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                Assert.AreEqual("guitar-hero-hits-xbox-360", loaded.ExophaseEnrichmentSlugOverride);
+                Assert.IsNull(loaded.ProviderOverride);
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+
+                Assert.IsTrue(GameCustomDataLookup.TryGetExophaseEnrichmentSlugOverride(gameId, out var slug, store));
+                Assert.AreEqual("guitar-hero-hits-xbox-360", slug);
+
+                store.Update(gameId, customData => customData.ExophaseEnrichmentSlugOverride = null);
+                Assert.IsFalse(GameCustomDataLookup.TryGetExophaseEnrichmentSlugOverride(gameId, out _, store));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_ExophaseEnrichmentSlugOverrideAsUrl_LookupExtractsSlug()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ExophaseEnrichmentSlugOverride = "https://www.exophase.com/game/guitar-hero-hits-xbox-360/achievements/"
+                });
+
+                Assert.IsTrue(GameCustomDataLookup.TryGetExophaseEnrichmentSlugOverride(gameId, out var slug, store));
+                Assert.AreEqual("guitar-hero-hits-xbox-360", slug);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_FilterListsOnly_AreVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    FilteredAchievementApiNames = new List<string> { " ach_one ", "ACH_ONE" },
+                    SummaryFilteredAchievementApiNames = new List<string> { " ach_two " }
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                CollectionAssert.AreEqual(new[] { "ach_one" }, loaded.FilteredAchievementApiNames);
+                CollectionAssert.AreEqual(new[] { "ach_two" }, loaded.SummaryFilteredAchievementApiNames);
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_AchievementNotesOnly_AreNormalizedAndVisibleCustomization()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var longNote = new string('x', AchievementNoteHelper.MaxNoteLength + 20);
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    AchievementNotes = new Dictionary<string, string>
+                    {
+                        [" ach_one "] = " first note ",
+                        ["ACH_ONE"] = " second note\r\nline ",
+                        ["ach_empty"] = " ",
+                        [" ach_long "] = longNote
+                    }
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var loaded));
+                Assert.AreEqual(2, loaded.AchievementNotes.Count);
+                Assert.AreEqual("second note\nline", loaded.AchievementNotes["ach_one"]);
+                Assert.AreEqual(AchievementNoteHelper.MaxNoteLength, loaded.AchievementNotes["ach_long"].Length);
+                Assert.AreEqual("second note\nline", GameCustomDataLookup.GetAchievementNote(gameId, "ACH_ONE", store: store));
+                Assert.IsTrue(GameCustomDataNormalizer.HasVisibleCustomization(loaded));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void TryGetSteamAppIdOverride_ReadsCanonicalProviderOverride()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ProviderOverride = new ProviderOverrideData
+                    {
+                        ProviderKey = "Steam",
+                        Value = "480"
+                    }
+                });
+
+                Assert.IsTrue(GameCustomDataLookup.TryGetSteamAppIdOverride(gameId, out var appId, store));
+                Assert.AreEqual(480, appId);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void Save_UrlOverride_PrunesCustomCacheButKeepsExpectedManagedCustomFile()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            const string apiName = "ach_one";
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                var diskImageService = new DiskImageService(logger: null, cacheRoot: tempDir);
+                var managedCustomIconService = new ManagedCustomIconService(diskImageService, logger: null);
+                store.AttachManagedCustomIconService(managedCustomIconService);
+
+                var fileStem = AchievementIconCachePathBuilder.BuildFileStems(new[] { apiName })[apiName];
+                var expectedManagedPath = managedCustomIconService.GetAchievementCustomIconPath(
+                    gameId.ToString("D"),
+                    fileStem,
+                    AchievementIconVariant.Unlocked);
+                WritePlaceholderFile(expectedManagedPath);
+
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    AchievementUnlockedIconOverrides = new Dictionary<string, string>
+                    {
+                        [apiName] = "https://example.com/unlocked.png"
+                    }
+                });
+
+                Assert.IsTrue(File.Exists(expectedManagedPath));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void NotificationAppearance_PaZip_RoundTripsAllSlotsAndCleansGameOwnedFiles()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var importedGameId = Guid.NewGuid();
+
+            try
+            {
+                var diskImageService = new DiskImageService(logger: null, cacheRoot: tempDir);
+                var imageStore = new NotificationImageStore(diskImageService, logger: null);
+                var store = new GameCustomDataStore(tempDir);
+                store.AttachNotificationImageStore(imageStore);
+
+                var sourcePaths = Enumerable.Range(0, 6)
+                    .Select(index => Path.Combine(tempDir, "source_" + index + ".png"))
+                    .ToList();
+                foreach (var sourcePath in sourcePaths)
+                {
+                    WritePngFile(sourcePath);
+                }
+
+                var style = NotificationStyleSettings.CreateDefault();
+                style.Toast.ShowDescription = false;
+                style.ToastBackgroundImagePath = sourcePaths[0];
+                style.Toast.BadgeImages.CommonPath = sourcePaths[1];
+                style.Toast.BadgeImages.UncommonPath = sourcePaths[2];
+                style.Toast.BadgeImages.RarePath = sourcePaths[3];
+                style.Toast.BadgeImages.UltraRarePath = sourcePaths[4];
+                style.Toast.BadgeImages.CompletionPath = sourcePaths[5];
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    NotificationAppearanceOverride = new GameNotificationAppearanceOverride
+                    {
+                        Style = style,
+                        ToastUseThemeStyling = false,
+                        FrameUseThemeStyling = true
+                    }
+                });
+
+                var packagePath = Path.Combine(tempDir, "notification.pa");
+                store.ExportPortablePackage(gameId, packagePath);
+                Assert.IsFalse(store.IsCustomAchievementsPackage(packagePath), "A whole-game package replaces, it does not merge.");
+                using (var archive = ZipFile.OpenRead(packagePath))
+                {
+                    var entryNames = archive.Entries.Select(entry => entry.FullName).ToList();
+                    foreach (var stem in new[]
+                    {
+                        "notification_background",
+                        "notification_badge_common",
+                        "notification_badge_uncommon",
+                        "notification_badge_rare",
+                        "notification_badge_ultrarare",
+                        "notification_badge_completion"
+                    })
+                    {
+                        CollectionAssert.Contains(entryNames, "images/" + stem + ".png");
+                    }
+                }
+
+                var imported = store.ImportReplacePortable(importedGameId, packagePath).ImportedData;
+                var importedStyle = imported.NotificationAppearanceOverride.Style;
+                var importedPaths = new[]
+                {
+                    importedStyle.ToastBackgroundImagePath,
+                    importedStyle.Toast.BadgeImages.CommonPath,
+                    importedStyle.Toast.BadgeImages.UncommonPath,
+                    importedStyle.Toast.BadgeImages.RarePath,
+                    importedStyle.Toast.BadgeImages.UltraRarePath,
+                    importedStyle.Toast.BadgeImages.CompletionPath
+                };
+                var expectedDirectorySuffix = Path.Combine(
+                    "notification_images",
+                    "games",
+                    importedGameId.ToString("D"));
+                foreach (var importedPath in importedPaths)
+                {
+                    Assert.IsTrue(File.Exists(importedPath));
+                    Assert.IsTrue(Path.GetDirectoryName(importedPath).EndsWith(
+                        expectedDirectorySuffix,
+                        StringComparison.OrdinalIgnoreCase));
+                }
+
+                Assert.IsFalse(imported.NotificationAppearanceOverride.ToastUseThemeStyling);
+                Assert.IsTrue(imported.NotificationAppearanceOverride.FrameUseThemeStyling);
+                Assert.IsFalse(importedStyle.Toast.ShowDescription);
+
+                var staleBadgePath = importedStyle.Toast.BadgeImages.CommonPath;
+                store.Update(importedGameId, data =>
+                    data.NotificationAppearanceOverride.Style.Toast.BadgeImages.CommonPath = null);
+                Assert.IsFalse(File.Exists(staleBadgePath));
+
+                var gameImageDirectory = Path.GetDirectoryName(importedStyle.ToastBackgroundImagePath);
+                store.Delete(importedGameId);
+                Assert.IsFalse(Directory.Exists(gameImageDirectory));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void NotificationAppearance_PaZip_RejectsTraversalSlotEntry()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var diskImageService = new DiskImageService(logger: null, cacheRoot: tempDir);
+                var store = new GameCustomDataStore(tempDir);
+                store.AttachNotificationImageStore(
+                    new NotificationImageStore(diskImageService, logger: null));
+
+                var packagePath = Path.Combine(tempDir, "evil.pa.zip");
+                using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
+                {
+                    var manifest = archive.CreateEntry(
+                        GameCustomDataStore.PortablePackageManifestEntryName);
+                    using (var writer = new StreamWriter(manifest.Open()))
+                    {
+                        writer.Write(JsonConvert.SerializeObject(
+                            new GameCustomDataPortableFile
+                            {
+                                NotificationAppearanceOverride =
+                                    new GameNotificationAppearanceOverride
+                                    {
+                                        Style = NotificationStyleSettings.CreateDefault()
+                                    }
+                            }));
+                    }
+
+                    WritePackageImageEntry(
+                        archive,
+                        "images/notification_background./../secret.png");
+                }
+
+                Assert.ThrowsException<InvalidOperationException>(() =>
+                    store.ImportReplacePortable(gameId, packagePath));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ExportPortablePackage_AndImportReplacePortable_RoundTripBundledImages()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var importedGameId = Guid.NewGuid();
+            const string apiName = "ach_one";
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                var diskImageService = new DiskImageService(logger: null, cacheRoot: tempDir);
+                var managedCustomIconService = new ManagedCustomIconService(diskImageService, logger: null);
+                store.AttachManagedCustomIconService(managedCustomIconService);
+
+                var fileStem = AchievementIconCachePathBuilder.BuildFileStems(new[] { apiName })[apiName];
+                var unlockedManagedPath = managedCustomIconService.GetAchievementCustomIconPath(
+                    gameId.ToString("D"),
+                    fileStem,
+                    AchievementIconVariant.Unlocked);
+                var lockedManagedPath = managedCustomIconService.GetAchievementCustomIconPath(
+                    gameId.ToString("D"),
+                    fileStem,
+                    AchievementIconVariant.Locked);
+                WritePlaceholderFile(unlockedManagedPath);
+                WritePlaceholderFile(lockedManagedPath);
+
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    AchievementUnlockedIconOverrides = new Dictionary<string, string>
+                    {
+                        [apiName] = unlockedManagedPath
+                    },
+                    AchievementLockedIconOverrides = new Dictionary<string, string>
+                    {
+                        [apiName] = lockedManagedPath
+                    },
+                    AchievementNotes = new Dictionary<string, string>
+                    {
+                        [apiName] = "package note"
+                    },
+                    ProviderOverride = new ProviderOverrideData
+                    {
+                        ProviderKey = "Steam",
+                        Value = "480"
+                    }
+                });
+
+                var packagePath = Path.Combine(tempDir, "portable.pa");
+                store.ExportPortablePackage(gameId, packagePath);
+
+                using (var archive = ZipFile.OpenRead(packagePath))
+                {
+                    var entryNames = archive.Entries.Select(entry => entry.FullName).ToList();
+                    CollectionAssert.Contains(entryNames, GameCustomDataStore.PortablePackageManifestEntryName);
+                    CollectionAssert.Contains(entryNames, "images/" + fileStem + ".png");
+                    CollectionAssert.Contains(entryNames, "images/" + fileStem + ".locked.png");
+
+                    using (var reader = new StreamReader(archive.GetEntry(GameCustomDataStore.PortablePackageManifestEntryName).Open()))
+                    {
+                        var portable = JsonConvert.DeserializeObject<GameCustomDataPortableFile>(reader.ReadToEnd());
+                        Assert.AreEqual("images/" + fileStem + ".png", portable.AchievementUnlockedIconOverrides[apiName]);
+                        Assert.AreEqual("images/" + fileStem + ".locked.png", portable.AchievementLockedIconOverrides[apiName]);
+                        Assert.AreEqual("package note", portable.AchievementNotes[apiName]);
+                        AssertProviderOverride(portable, "Steam", "480");
+                    }
+                }
+
+                var importResult = store.ImportReplacePortable(importedGameId, packagePath);
+                var imported = importResult.ImportedData;
+                Assert.IsNotNull(imported);
+                Assert.IsFalse(importResult.HasIgnoredPackageImages);
+                Assert.IsTrue(imported.AchievementUnlockedIconOverrides[apiName].EndsWith(Path.Combine("icon_cache", importedGameId.ToString("D"), "custom", fileStem + ".png")));
+                Assert.IsTrue(imported.AchievementLockedIconOverrides[apiName].EndsWith(Path.Combine("icon_cache", importedGameId.ToString("D"), "custom", fileStem + ".locked.png")));
+                Assert.AreEqual("package note", imported.AchievementNotes[apiName]);
+                Assert.IsTrue(File.Exists(imported.AchievementUnlockedIconOverrides[apiName]));
+                Assert.IsTrue(File.Exists(imported.AchievementLockedIconOverrides[apiName]));
+                AssertProviderOverride(imported, "Steam", "480");
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ImportReplace_PreservesInternalExclusionsAndRewritesGameId()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var foreignGameId = Guid.NewGuid();
+            var importPath = Path.Combine(tempDir, "custom-name.json");
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ExcludedFromRefreshes = true,
+                    ExcludedFromSummaries = true,
+                    UseSeparateLockedIconsOverride = true,
+                    ManualCapstoneApiName = "old-capstone",
+                    ProviderOverride = new ProviderOverrideData
+                    {
+                        ProviderKey = "RetroAchievements",
+                        Value = "11"
+                    }
+                });
+
+                File.WriteAllText(
+                    importPath,
+                    JsonConvert.SerializeObject(
+                        new GameCustomDataPortableFile
+                        {
+                            PlayniteGameId = foreignGameId,
+                            ManualCapstoneApiName = " imported-capstone ",
+                            AchievementUnlockedIconOverrides = new Dictionary<string, string>
+                            {
+                                [" ach_one "] = " https://example.com/new-unlocked.png "
+                            },
+                            AchievementLockedIconOverrides = new Dictionary<string, string>
+                            {
+                                ["ach_one"] = " https://example.com/new-locked.png "
+                            },
+                            AchievementNotes = new Dictionary<string, string>
+                            {
+                                [" ach_one "] = " imported note "
+                            },
+                            ProviderOverride = new ProviderOverrideData
+                            {
+                                ProviderKey = "Steam",
+                                Value = "480"
+                            }
+                        }));
+
+                store.ImportReplace(gameId, importPath);
+
+                Assert.IsTrue(store.TryLoad(gameId, out var imported));
+                Assert.AreEqual(gameId, imported.PlayniteGameId);
+                Assert.IsTrue(imported.ExcludedFromRefreshes == true);
+                Assert.IsTrue(imported.ExcludedFromSummaries == true);
+                Assert.IsTrue(imported.CapstonesMaterialized);
+                Assert.AreEqual("imported-capstone", imported.Capstones.Single().ApiName);
+                Assert.AreEqual("https://example.com/new-unlocked.png", imported.AchievementUnlockedIconOverrides["ach_one"]);
+                Assert.AreEqual("https://example.com/new-locked.png", imported.AchievementLockedIconOverrides["ach_one"]);
+                Assert.AreEqual("imported note", imported.AchievementNotes["ach_one"]);
+                AssertProviderOverride(imported, "Steam", "480");
+                Assert.IsNull(imported.UseSeparateLockedIconsOverride);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ImportReplace_LegacyPortableProviderField_NormalizesToCanonicalOverride()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var importPath = Path.Combine(tempDir, "legacy-provider.json");
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+
+                File.WriteAllText(
+                    importPath,
+                    JsonConvert.SerializeObject(
+                        new GameCustomDataPortableFile
+                        {
+                            PlayniteGameId = Guid.NewGuid(),
+                            RetroAchievementsGameIdOverride = 444
+                        }));
+
+                var imported = store.ImportReplace(gameId, importPath);
+
+                AssertProviderOverride(imported, "RetroAchievements", "444");
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ImportReplacePortable_ImageOnlyPackage_ImportsMatchingApiNameImages_AndWarnsOnMismatches()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var packagePath = Path.Combine(tempDir, "image-only.pa.zip");
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                var diskImageService = new DiskImageService(logger: null, cacheRoot: tempDir);
+                var managedCustomIconService = new ManagedCustomIconService(diskImageService, logger: null);
+                var achievementDataService = new AchievementDataService();
+                achievementDataService.GameDataById[gameId] = new GameAchievementData
+                {
+                    PlayniteGameId = gameId,
+                    Achievements = new List<AchievementDetail>
+                    {
+                        new AchievementDetail { ApiName = "ach_one" },
+                        new AchievementDetail { ApiName = "ach_two" }
+                    }
+                };
+
+                store.AttachManagedCustomIconService(managedCustomIconService);
+                store.AttachAchievementDataService(achievementDataService);
+
+                using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
+                {
+                    WritePackageImageEntry(archive, "ach_one.png");
+                    WritePackageImageEntry(archive, "images/ach_two.locked.png");
+                    WritePackageImageEntry(archive, "missing_api.png");
+                }
+
+                var importResult = store.ImportReplacePortable(gameId, packagePath);
+                var imported = importResult.ImportedData;
+
+                Assert.IsNotNull(imported);
+                Assert.IsTrue(importResult.HasIgnoredPackageImages);
+                Assert.AreEqual(1, importResult.IgnoredPackageImageCount);
+                Assert.AreEqual(1, imported.AchievementUnlockedIconOverrides.Count);
+                Assert.AreEqual(1, imported.AchievementLockedIconOverrides.Count);
+                Assert.IsTrue(File.Exists(imported.AchievementUnlockedIconOverrides["ach_one"]));
+                Assert.IsTrue(File.Exists(imported.AchievementLockedIconOverrides["ach_two"]));
+                Assert.IsFalse(imported.AchievementUnlockedIconOverrides.ContainsKey("missing_api"));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ImportReplacePortable_ImageOnlyPackage_RejectsWhenNoImagesMatchAchievementApiNames()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var packagePath = Path.Combine(tempDir, "image-only.pa.zip");
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                var diskImageService = new DiskImageService(logger: null, cacheRoot: tempDir);
+                var managedCustomIconService = new ManagedCustomIconService(diskImageService, logger: null);
+                var achievementDataService = new AchievementDataService();
+                achievementDataService.GameDataById[gameId] = new GameAchievementData
+                {
+                    PlayniteGameId = gameId,
+                    Achievements = new List<AchievementDetail>
+                    {
+                        new AchievementDetail { ApiName = "ach_one" }
+                    }
+                };
+
+                store.AttachManagedCustomIconService(managedCustomIconService);
+                store.AttachAchievementDataService(achievementDataService);
+
+                using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
+                {
+                    WritePackageImageEntry(archive, "missing_api.png");
+                }
+
+                Assert.ThrowsException<InvalidOperationException>(() => store.ImportReplacePortable(gameId, packagePath));
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ImportReplace_RejectsPortableJsonWithoutPortableData()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var importPath = Path.Combine(tempDir, "empty.json");
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ExcludedFromRefreshes = true
+                });
+
+                File.WriteAllText(
+                    importPath,
+                    JsonConvert.SerializeObject(new GameCustomDataPortableFile
+                    {
+                        PlayniteGameId = Guid.NewGuid()
+                    }));
+
+                Assert.ThrowsException<InvalidOperationException>(() => store.ImportReplace(gameId, importPath));
+
+                Assert.IsTrue(store.TryLoad(gameId, out var current));
+                Assert.IsTrue(current.ExcludedFromRefreshes == true);
+                Assert.IsNull(current.ManualCapstoneApiName);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void MigrateLegacyConfig_CreatesMergedRowsRemovesLegacyFieldsAndPrefersExistingData()
+        {
+            var tempDir = CreateTempDirectory();
+            var existingGameId = Guid.NewGuid();
+            var legacyOnlyGameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(existingGameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = existingGameId,
+                    UseSeparateLockedIconsOverride = true,
+                    ManualCapstoneApiName = "existing-capstone"
+                });
+
+                var persisted = new JObject
+                {
+                    ["ExcludedGameIds"] = new JArray(existingGameId.ToString("D"), legacyOnlyGameId.ToString("D")),
+                    ["ExcludedFromSummariesGameIds"] = new JArray(legacyOnlyGameId.ToString("D")),
+                    ["SeparateLockedIconEnabledGameIds"] = new JArray(legacyOnlyGameId.ToString("D")),
+                    ["ManualCapstones"] = new JObject
+                    {
+                        [existingGameId.ToString("D")] = "legacy-capstone",
+                        [legacyOnlyGameId.ToString("D")] = "legacy-only-capstone"
+                    },
+                    ["AchievementOrderOverrides"] = new JObject
+                    {
+                        [legacyOnlyGameId.ToString("D")] = new JArray("ach_one", " ACH_ONE ", "ach_two")
+                    },
+                    ["AchievementCategoryOverrides"] = new JObject
+                    {
+                        [legacyOnlyGameId.ToString("D")] = new JObject
+                        {
+                            ["ach_one"] = " Main "
+                        }
+                    },
+                    ["AchievementCategoryTypeOverrides"] = new JObject
+                    {
+                        [legacyOnlyGameId.ToString("D")] = new JObject
+                        {
+                            ["ach_one"] = "dlc | single player | ignored | dlc",
+                            ["ach_two"] = "summary ignored"
+                        }
+                    }
+                };
+
+                persisted["ProviderSettings"] = new JObject
+                {
+                    ["RetroAchievements"] = new JObject
+                    {
+                        ["RaGameIdOverrides"] = new JObject
+                        {
+                            [existingGameId.ToString("D")] = 222,
+                            [legacyOnlyGameId.ToString("D")] = 333
+                        }
+                    },
+                    ["Exophase"] = new JObject
+                    {
+                        ["IncludedGames"] = new JArray(legacyOnlyGameId.ToString("D")),
+                        ["SlugOverrides"] = new JObject
+                        {
+                            [legacyOnlyGameId.ToString("D")] = " legacy-slug "
+                        }
+                    },
+                    ["Manual"] = new JObject
+                    {
+                        ["AchievementLinks"] = new JObject
+                        {
+                            [legacyOnlyGameId.ToString("D")] = JObject.FromObject(new ManualAchievementLink
+                            {
+                                SourceKey = "Steam",
+                                SourceGameId = "999",
+                                UnlockStates = new Dictionary<string, bool>
+                                {
+                                    ["ach_one"] = true,
+                                    ["ach_two"] = false
+                                },
+                                UnlockTimes = new Dictionary<string, DateTime?>
+                                {
+                                    ["ach_one"] = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+                                },
+                                CreatedUtc = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                                LastModifiedUtc = new DateTime(2025, 1, 3, 0, 0, 0, DateTimeKind.Utc)
+                            })
+                        }
+                    }
+                };
+
+                var rawJson = new JObject
+                {
+                    ["Persisted"] = persisted
+                }.ToString(Formatting.None);
+
+                var migratedJson = store.MigrateLegacyConfig(rawJson);
+                var migratedRoot = JObject.Parse(migratedJson);
+                var migratedPersisted = (JObject)migratedRoot["Persisted"];
+                var migratedProviderSettings = (JObject)migratedPersisted["ProviderSettings"];
+
+                Assert.IsNull(migratedPersisted["ExcludedGameIds"]);
+                Assert.IsNull(migratedPersisted["ExcludedFromSummariesGameIds"]);
+                Assert.IsNull(migratedPersisted["SeparateLockedIconEnabledGameIds"]);
+                Assert.IsNull(migratedPersisted["ManualCapstones"]);
+                Assert.IsNull(migratedPersisted["AchievementOrderOverrides"]);
+                Assert.IsNull(migratedPersisted["AchievementCategoryOverrides"]);
+                Assert.IsNull(migratedPersisted["AchievementCategoryTypeOverrides"]);
+                Assert.IsNull(((JObject)migratedProviderSettings["RetroAchievements"])["RaGameIdOverrides"]);
+                Assert.IsNull(((JObject)migratedProviderSettings["Exophase"])["IncludedGames"]);
+                Assert.IsNull(((JObject)migratedProviderSettings["Exophase"])["SlugOverrides"]);
+                Assert.IsNull(((JObject)migratedProviderSettings["Manual"])["AchievementLinks"]);
+
+                Assert.IsTrue(store.TryLoad(existingGameId, out var existing));
+                Assert.AreEqual("existing-capstone", existing.Capstones.Single().ApiName);
+                Assert.IsTrue(existing.UseSeparateLockedIconsOverride == true);
+                Assert.IsTrue(existing.ExcludedFromRefreshes == true);
+                AssertProviderOverride(existing, "RetroAchievements", "222");
+
+                Assert.IsTrue(store.TryLoad(legacyOnlyGameId, out var legacyOnly));
+                Assert.IsTrue(legacyOnly.ExcludedFromRefreshes == true);
+                Assert.IsTrue(legacyOnly.ExcludedFromSummaries == true);
+                Assert.IsTrue(legacyOnly.UseSeparateLockedIconsOverride == true);
+                Assert.AreEqual("legacy-only-capstone", legacyOnly.Capstones.Single().ApiName);
+                CollectionAssert.AreEqual(new[] { "ach_one", "ach_two" }, legacyOnly.AchievementOrder);
+                Assert.AreEqual("Main", legacyOnly.AchievementCategoryOverrides["ach_one"]);
+                Assert.AreEqual("DLC|Singleplayer", legacyOnly.AchievementCategoryTypeOverrides["ach_one"]);
+                CollectionAssert.AreEqual(new[] { "ach_one" }, legacyOnly.FilteredAchievementApiNames);
+                CollectionAssert.AreEqual(new[] { "ach_two" }, legacyOnly.SummaryFilteredAchievementApiNames);
+                AssertProviderOverride(legacyOnly, "RetroAchievements", "333");
+                Assert.IsNotNull(legacyOnly.ManualLink);
+                Assert.AreEqual("Steam", legacyOnly.ManualLink.SourceKey);
+                Assert.AreEqual("999", legacyOnly.ManualLink.SourceGameId);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void AttachRuntimeSettings_DoesNotProjectRuntimeCachesFromDatabase()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var settings = new PlayniteAchievementsSettings();
+                var store = new GameCustomDataStore(tempDir);
+
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ExcludedFromRefreshes = true,
+                    ExcludedFromSummaries = true,
+                    UseSeparateLockedIconsOverride = true,
+                    ManualCapstoneApiName = "capstone",
+                    AchievementOrder = new List<string> { "ach_one", "ach_two" },
+                    AchievementCategoryOverrides = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = "Category"
+                    },
+                    AchievementCategoryTypeOverrides = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = "DLC"
+                    },
+                    AchievementUnlockedIconOverrides = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = "https://example.com/unlocked.png"
+                    },
+                    AchievementLockedIconOverrides = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = "https://example.com/locked.png"
+                    },
+                    RetroAchievementsGameIdOverride = 9876,
+                    ForceUseExophase = true,
+                    ExophaseSlugOverride = "slug",
+                    ManualLink = new ManualAchievementLink
+                    {
+                        SourceKey = "Steam",
+                        SourceGameId = "123"
+                    }
+                });
+
+                store.AttachRuntimeSettings(settings);
+
+                Assert.AreEqual(0, settings.Persisted.ExcludedGameIds.Count);
+                Assert.AreEqual(0, settings.Persisted.ExcludedFromSummariesGameIds.Count);
+                Assert.AreEqual(0, settings.Persisted.SeparateLockedIconEnabledGameIds.Count);
+                Assert.AreEqual(0, settings.Persisted.ManualCapstones.Count);
+                Assert.AreEqual(0, settings.Persisted.AchievementOrderOverrides.Count);
+                Assert.AreEqual(0, settings.Persisted.AchievementCategoryOverrides.Count);
+                Assert.AreEqual(0, settings.Persisted.AchievementCategoryTypeOverrides.Count);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void ImportReplace_AcceptsPortableJsonContainingOnlyIconOverrides()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+            var importPath = Path.Combine(tempDir, "icon-only.json");
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+
+                File.WriteAllText(
+                    importPath,
+                    JsonConvert.SerializeObject(
+                        new GameCustomDataPortableFile
+                        {
+                            PlayniteGameId = Guid.NewGuid(),
+                            AchievementUnlockedIconOverrides = new Dictionary<string, string>
+                            {
+                                [" ach_one "] = " https://example.com/unlocked.png "
+                            },
+                            AchievementLockedIconOverrides = new Dictionary<string, string>
+                            {
+                                ["ach_one"] = " https://example.com/locked.png "
+                            }
+                        }));
+
+                var imported = store.ImportReplace(gameId, importPath);
+
+                Assert.IsNotNull(imported);
+                Assert.AreEqual(gameId, imported.PlayniteGameId);
+                Assert.AreEqual("https://example.com/unlocked.png", imported.AchievementUnlockedIconOverrides["ach_one"]);
+                Assert.AreEqual("https://example.com/locked.png", imported.AchievementLockedIconOverrides["ach_one"]);
+                Assert.IsFalse(imported.ExcludedFromRefreshes.HasValue);
+                Assert.IsFalse(imported.ExcludedFromSummaries.HasValue);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void GetExcludedSummaryGameIds_UsesDatabaseAsSourceOfTruthButKeepsFallbackForUnmigratedGames()
+        {
+            var tempDir = CreateTempDirectory();
+            var fallbackOverriddenGameId = Guid.NewGuid();
+            var fallbackOnlyGameId = Guid.NewGuid();
+            var databaseOnlyGameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                var fallbackSettings = new PersistedSettings
+                {
+                    ExcludedFromSummariesGameIds = new HashSet<Guid>
+                    {
+                        fallbackOverriddenGameId,
+                        fallbackOnlyGameId
+                    }
+                };
+
+                store.Save(fallbackOverriddenGameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = fallbackOverriddenGameId,
+                    UseSeparateLockedIconsOverride = true
+                });
+                store.Save(databaseOnlyGameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = databaseOnlyGameId,
+                    ExcludedFromSummaries = true
+                });
+
+                var excluded = GameCustomDataLookup.GetExcludedSummaryGameIds(fallbackSettings, store);
+
+                Assert.IsFalse(excluded.Contains(fallbackOverriddenGameId));
+                Assert.IsTrue(excluded.Contains(fallbackOnlyGameId));
+                Assert.IsTrue(excluded.Contains(databaseOnlyGameId));
+                Assert.AreEqual(2, excluded.Count);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void TryLoad_AfterDeleteAndResave_ReturnsCurrentDatabaseValue()
+        {
+            var tempDir = CreateTempDirectory();
+            var gameId = Guid.NewGuid();
+
+            try
+            {
+                var store = new GameCustomDataStore(tempDir);
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ManualCapstoneApiName = "capstone_one"
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var initial));
+                Assert.AreEqual("capstone_one", initial.Capstones.Single().ApiName);
+
+                store.Delete(gameId);
+                Assert.IsFalse(store.TryLoad(gameId, out _));
+
+                store.Save(gameId, new GameCustomDataFile
+                {
+                    PlayniteGameId = gameId,
+                    ManualCapstoneApiName = "capstone_two"
+                });
+
+                Assert.IsTrue(store.TryLoad(gameId, out var updated));
+                Assert.AreEqual("capstone_two", updated.Capstones.Single().ApiName);
+            }
+            finally
+            {
+                DeleteDirectory(tempDir);
+            }
+        }
+
+        [TestMethod]
+        public void PersistedSettingsSerialization_OmitsRuntimeProjectedCustomDataFields()
+        {
+            var gameId = Guid.NewGuid();
+            var persisted = new PersistedSettings
+            {
+                GlobalLanguage = "english",
+                ExcludedGameIds = new HashSet<Guid> { gameId },
+                ExcludedFromSummariesGameIds = new HashSet<Guid> { gameId },
+                SeparateLockedIconEnabledGameIds = new HashSet<Guid> { gameId },
+                ManualCapstones = new Dictionary<Guid, string>
+                {
+                    [gameId] = "capstone"
+                },
+                AchievementOrderOverrides = new Dictionary<Guid, List<string>>
+                {
+                    [gameId] = new List<string> { "ach_one" }
+                },
+                AchievementCategoryOverrides = new Dictionary<Guid, Dictionary<string, string>>
+                {
+                    [gameId] = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = "Category"
+                    }
+                },
+                AchievementCategoryTypeOverrides = new Dictionary<Guid, Dictionary<string, string>>
+                {
+                    [gameId] = new Dictionary<string, string>
+                    {
+                        ["ach_one"] = "DLC"
+                    }
+                }
+            };
+
+            var json = JsonConvert.SerializeObject(persisted);
+
+            Assert.IsTrue(json.Contains(nameof(PersistedSettings.GlobalLanguage)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.ExcludedGameIds)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.ExcludedFromSummariesGameIds)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.SeparateLockedIconEnabledGameIds)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.ManualCapstones)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.AchievementOrderOverrides)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.AchievementCategoryOverrides)));
+            Assert.IsFalse(json.Contains(nameof(PersistedSettings.AchievementCategoryTypeOverrides)));
+        }
+
+        [TestMethod]
+        public void ProviderSettingsSerialization_OmitsRuntimeProjectedCustomDataFields()
+        {
+            var gameId = Guid.NewGuid();
+
+            var raSettings = new RetroAchievementsSettings
+            {
+                RaUsername = "user",
+                RaGameIdOverrides = new Dictionary<Guid, int>
+                {
+                    [gameId] = 1234
+                }
+            };
+            var exophaseSettings = new ExophaseSettings
+            {
+                UserId = "user",
+                ManagedProviders = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "origin" },
+                IncludedGames = new HashSet<Guid> { gameId },
+                SlugOverrides = new Dictionary<Guid, string>
+                {
+                    [gameId] = "slug"
+                }
+            };
+            var manualSettings = new ManualSettings
+            {
+                ManualTrackingOverrideEnabled = true,
+                AchievementLinks = new Dictionary<Guid, ManualAchievementLink>
+                {
+                    [gameId] = new ManualAchievementLink
+                    {
+                        SourceKey = "Steam",
+                        SourceGameId = "123"
+                    }
+                }
+            };
+
+            var raJson = raSettings.SerializeToJson();
+            var exophaseJson = exophaseSettings.SerializeToJson();
+            var manualJson = manualSettings.SerializeToJson();
+
+            Assert.IsTrue(raJson.Contains(nameof(RetroAchievementsSettings.RaUsername)));
+            Assert.IsFalse(raJson.Contains(nameof(RetroAchievementsSettings.RaGameIdOverrides)));
+
+            Assert.IsTrue(exophaseJson.Contains(nameof(ExophaseSettings.ManagedProviders)));
+            Assert.IsFalse(exophaseJson.Contains(nameof(ExophaseSettings.IncludedGames)));
+            Assert.IsFalse(exophaseJson.Contains(nameof(ExophaseSettings.SlugOverrides)));
+
+            Assert.IsTrue(manualJson.Contains(nameof(ManualSettings.ManualTrackingOverrideEnabled)));
+            Assert.IsFalse(manualJson.Contains(nameof(ManualSettings.AchievementLinks)));
+        }
+
+        private static void AssertProviderOverride(
+            GameCustomDataFile data,
+            string providerKey,
+            string value)
+        {
+            Assert.IsNotNull(data);
+            Assert.IsNotNull(data.ProviderOverride);
+            Assert.AreEqual(providerKey, data.ProviderOverride.ProviderKey);
+            Assert.AreEqual(value, data.ProviderOverride.Value);
+            Assert.IsNull(data.RetroAchievementsGameIdOverride);
+            Assert.IsNull(data.XeniaTitleIdOverride);
+            Assert.IsNull(data.ShadPS4MatchIdOverride);
+            Assert.IsNull(data.ForceUseExophase);
+            Assert.IsNull(data.ExophaseSlugOverride);
+        }
+
+        private static void AssertProviderOverride(
+            GameCustomDataPortableFile data,
+            string providerKey,
+            string value)
+        {
+            Assert.IsNotNull(data);
+            Assert.IsNotNull(data.ProviderOverride);
+            Assert.AreEqual(providerKey, data.ProviderOverride.ProviderKey);
+            Assert.AreEqual(value, data.ProviderOverride.Value);
+            Assert.IsNull(data.RetroAchievementsGameIdOverride);
+            Assert.IsNull(data.XeniaTitleIdOverride);
+            Assert.IsNull(data.ShadPS4MatchIdOverride);
+            Assert.IsNull(data.ForceUseExophase);
+            Assert.IsNull(data.ExophaseSlugOverride);
+        }
+
+        private static string CreateTempDirectory()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "PlayniteAchievementsTests",
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(path);
+            return path;
+        }
+
+        private static void DeleteDirectory(string path)
+        {
+            if (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+
+        private static void WritePlaceholderFile(string path)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllBytes(path, new byte[] { 1, 2, 3, 4 });
+        }
+
+        private static void WritePngFile(string path)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllBytes(
+                path,
+                Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NkYGD4DwABBAEAgh8sXQAAAABJRU5ErkJggg=="));
+        }
+
+        private static void WritePackageImageEntry(ZipArchive archive, string entryName)
+        {
+            using (var stream = archive.CreateEntry(entryName, CompressionLevel.Optimal).Open())
+            {
+                var pngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NkYGD4DwABBAEAgh8sXQAAAABJRU5ErkJggg==");
+                stream.Write(pngBytes, 0, pngBytes.Length);
+            }
+        }
+    }
+}

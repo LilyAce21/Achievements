@@ -1,0 +1,1011 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using PlayniteAchievements.Models;
+using PlayniteAchievements.Models.Achievements;
+using PlayniteAchievements.Providers.Local;
+using PlayniteAchievements.Services;
+using PlayniteAchievements.Services.GameCustomData;
+using PlayniteAchievements.Services.Refresh;
+using PlayniteAchievements.ViewModels;
+using PlayniteAchievements.Views;
+using Playnite.SDK;
+using Playnite.SDK.Models;
+using Playnite.SDK.Plugins;
+
+namespace PlayniteAchievements
+{
+    public partial class PlayniteAchievementsPlugin
+    {
+        private static string PluginGameMenuSection => ResourceProvider.GetString("LOCPlayAch_Title_PluginName");
+        // Nested "Maintenance" submenu under the plugin's game-menu section (Playnite uses | to nest).
+        private static string PluginGameMaintenanceSection =>
+            PluginGameMenuSection + "|" + ResourceProvider.GetString("LOCPlayAch_Settings_Maintenance_Title");
+        private static string PluginLocalGameMenuSection => PluginGameMenuSection + "|Local Saves";
+        private static string PluginMainMenuSection => "@" + ResourceProvider.GetString("LOCPlayAch_Title_PluginName");
+        private int _fullscreenMenuGlobalProgressActive;
+
+        private bool IsRefreshInProgress()
+        {
+            return _refreshService?.IsRebuilding == true;
+        }
+
+        private bool IsFullscreenMode()
+        {
+            try
+            {
+                return PlayniteApi?.ApplicationInfo?.Mode == ApplicationMode.Fullscreen;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool IsFullscreenMenuGlobalProgressActive()
+        {
+            return Volatile.Read(ref _fullscreenMenuGlobalProgressActive) == 1;
+        }
+
+        private void SetFullscreenMenuGlobalProgressActive(bool active)
+        {
+            Interlocked.Exchange(ref _fullscreenMenuGlobalProgressActive, active ? 1 : 0);
+        }
+
+        private string GetMenuRefreshErrorLogMessage(RefreshRequest request)
+        {
+            var refreshName = GetMenuRefreshDisplayName(request);
+            var format = ResourceProvider.GetString("LOCPlayAch_Error_RefreshFailed");
+            if (!string.IsNullOrWhiteSpace(format) && !string.IsNullOrWhiteSpace(refreshName))
+            {
+                return string.Format(format, refreshName);
+            }
+
+            return ResourceProvider.GetString("LOCPlayAch_Error_RebuildFailed");
+        }
+
+        private string GetMenuRefreshDisplayName(RefreshRequest request)
+        {
+            if (request?.SingleGameId.HasValue == true ||
+                (request?.GameIds?.Count ?? 0) == 1 ||
+                request?.Mode == RefreshModeType.Single)
+            {
+                return ResourceProvider.GetString(RefreshModeType.Single.GetResourceKey());
+            }
+
+            if ((request?.GameIds?.Count ?? 0) > 1)
+            {
+                return ResourceProvider.GetString(RefreshModeType.LibrarySelected.GetResourceKey());
+            }
+
+            if (request?.Mode.HasValue == true)
+            {
+                return ResourceProvider.GetString(request.Mode.Value.GetResourceKey());
+            }
+
+            if (!string.IsNullOrWhiteSpace(request?.ModeKey) &&
+                Enum.TryParse(request.ModeKey.Trim(), ignoreCase: true, out RefreshModeType parsedMode))
+            {
+                return ResourceProvider.GetString(parsedMode.GetResourceKey());
+            }
+
+            return null;
+        }
+
+        private Task StartMenuRefreshAsync(RefreshRequest request, Guid? singleGameId = null)
+        {
+            var progressSingleGameId = singleGameId ?? request?.SingleGameId;
+            if (!IsFullscreenMode())
+            {
+                return _refreshCoordinator.ExecuteAsync(
+                    request,
+                    RefreshExecutionPolicy.ProgressWindow(progressSingleGameId));
+            }
+
+            SetFullscreenMenuGlobalProgressActive(true);
+            if (_themeIntegrationService != null)
+            {
+                return _themeIntegrationService.RunFullscreenRefreshRequestAsync(
+                    request,
+                    GetMenuRefreshErrorLogMessage(request),
+                    validateAuthentication: true,
+                    onCompleted: success => SetFullscreenMenuGlobalProgressActive(false));
+            }
+
+            return _windowService.RunRefreshWithGlobalProgressAsync(
+                request,
+                GetMenuRefreshErrorLogMessage(request),
+                validateAuthentication: true,
+                onCompleted: success => SetFullscreenMenuGlobalProgressActive(false));
+        }
+
+        private IEnumerable<GameMenuItem> GetRefreshInProgressGameMenuHeader(Guid? singleGameRefreshId = null)
+        {
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Menu_RefreshInProgress"),
+                MenuSection = PluginGameMenuSection
+            };
+
+            if (!IsFullscreenMenuGlobalProgressActive())
+            {
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Common_View"),
+                    MenuSection = PluginGameMenuSection,
+                    Action = (a) =>
+                    {
+                        ShowRefreshProgressControl(singleGameRefreshId);
+                    }
+                };
+            }
+
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Button_Cancel"),
+                MenuSection = PluginGameMenuSection,
+                Action = (a) =>
+                {
+                    _refreshService.CancelCurrentRebuild();
+                }
+            };
+
+            yield return new GameMenuItem
+            {
+                Description = "-",
+                MenuSection = PluginGameMenuSection
+            };
+        }
+
+        private IEnumerable<MainMenuItem> GetRefreshInProgressMainMenuHeader()
+        {
+            yield return new MainMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Menu_RefreshInProgress"),
+                MenuSection = PluginMainMenuSection
+            };
+
+            if (!IsFullscreenMenuGlobalProgressActive())
+            {
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Common_View"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        ShowRefreshProgressControl();
+                    }
+                };
+            }
+
+            yield return new MainMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Button_Cancel"),
+                MenuSection = PluginMainMenuSection,
+                Action = (a) =>
+                {
+                    _refreshService.CancelCurrentRebuild();
+                }
+            };
+        }
+
+        public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
+        {
+            if (args?.Games == null || args.Games.Count == 0)
+            {
+                yield break;
+            }
+
+            var refreshInProgress = IsRefreshInProgress();
+
+            // Multiple games selected.
+            if (args.Games.Count > 1)
+            {
+                var selectedGames = GetDistinctValidGames(args.Games);
+                if (selectedGames.Count == 0)
+                {
+                    yield break;
+                }
+
+                if (refreshInProgress)
+                {
+                    foreach (var item in GetRefreshInProgressGameMenuHeader())
+                    {
+                        yield return item;
+                    }
+                }
+
+                if (!refreshInProgress)
+                {
+                    yield return new GameMenuItem
+                    {
+                        Description = ResourceProvider.GetString("LOCPlayAch_Menu_RefreshSelected"),
+                        MenuSection = PluginGameMenuSection,
+                        Action = (a) =>
+                        {
+                            var selectedIds = selectedGames.Select(g => g.Id).ToList();
+                            _ = StartMenuRefreshAsync(new RefreshRequest { GameIds = selectedIds });
+                        }
+                    };
+
+                    yield return new GameMenuItem
+                    {
+                        Description = "-",
+                        MenuSection = PluginGameMenuSection,
+                    };
+                }
+
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Menu_ClearData"),
+                    MenuSection = PluginGameMaintenanceSection,
+                    Action = (a) =>
+                    {
+                        ClearSelectedGamesData(selectedGames);
+                    }
+                };
+
+                var allExcludedFromSummaries = selectedGames.All(g => IsGameExcludedFromSummaries(g.Id));
+                yield return new GameMenuItem
+                {
+                    Description = allExcludedFromSummaries
+                        ? ResourceProvider.GetString("LOCPlayAch_Common_Action_IncludeInSummaries")
+                        : ResourceProvider.GetString("LOCPlayAch_Common_Action_ExcludeFromSummaries"),
+                    MenuSection = PluginGameMaintenanceSection,
+                    Action = (a) =>
+                    {
+                        ToggleExcludedFromSummaries(selectedGames);
+                    }
+                };
+
+                var allExcludedFromRefreshes = selectedGames.All(g => IsGameExcluded(g.Id));
+                yield return new GameMenuItem
+                {
+                    Description = allExcludedFromRefreshes
+                        ? ResourceProvider.GetString("LOCPlayAch_Menu_IncludeInRefreshes")
+                        : ResourceProvider.GetString("LOCPlayAch_Menu_ExcludeFromRefreshes"),
+                    MenuSection = PluginGameMaintenanceSection,
+                    Action = (a) =>
+                    {
+                        ToggleExcludedFromRefreshes(selectedGames, clearDataWhenExcluding: false, confirmWhenClearingData: false);
+                    }
+                };
+
+                yield return new GameMenuItem
+                {
+                    Description = allExcludedFromRefreshes
+                        ? ResourceProvider.GetString("LOCPlayAch_Menu_IncludeInRefreshesAndRefresh")
+                        : ResourceProvider.GetString("LOCPlayAch_Menu_ExcludeFromRefreshesAndClearData"),
+                    MenuSection = PluginGameMaintenanceSection,
+                    Action = (a) =>
+                    {
+                        ToggleExcludedFromRefreshesAndRefresh(selectedGames);
+                    }
+                };
+
+                yield break;
+            }
+
+            // Single game selected
+            var game = args.Games.FirstOrDefault(g => g != null);
+            if (game == null)
+            {
+                yield break;
+            }
+
+            if (refreshInProgress)
+            {
+                foreach (var item in GetRefreshInProgressGameMenuHeader(game.Id))
+                {
+                    yield return item;
+                }
+            }
+
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Menu_ViewAchievements"),
+                MenuSection = PluginGameMenuSection,
+                Action = (a) =>
+                {
+                    OpenViewAchievementsWindow(game.Id);
+                }
+            };
+
+            if (_settingsViewModel?.Settings?.Persisted?.EnableFriendsFeatures == true)
+            {
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Menu_ViewFriendsAchievements"),
+                    MenuSection = PluginGameMenuSection,
+                    Action = (a) =>
+                    {
+                        OpenViewFriendsAchievementsWindow(game.Id);
+                    }
+                };
+            }
+
+            if (!refreshInProgress)
+            {
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Menu_RefreshGame"),
+                    MenuSection = PluginGameMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(
+                            new RefreshRequest
+                            {
+                                Mode = RefreshModeType.Single,
+                                SingleGameId = game.Id,
+                                SurfaceUserNotices = true
+                            },
+                            game.Id);
+                    }
+                };
+            }
+
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Menu_ManageAchievements"),
+                MenuSection = PluginGameMenuSection,
+                Action = (a) =>
+                {
+                    OpenManageAchievementsView(game.Id);
+                }
+            };
+
+            // Only shown when the game actually has saved captures (Playnite menu items can't be
+            // greyed out, so absence is the "inactive" state here).
+            if (_captureLibraryService?.GameHasCaptures(game.Name) == true)
+            {
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Menu_ViewCaptures"),
+                    MenuSection = PluginGameMenuSection,
+                    Action = (a) =>
+                    {
+                        OpenCapturesViewerForGame(game.Name);
+                    }
+                };
+            }
+
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Menu_LocalExpectedJson_Download"),
+                MenuSection = PluginLocalGameMenuSection,
+                Action = _ => DownloadExpectedAchievementsJson(game)
+            };
+
+            var hasLocalAppIdOverride = LocalSavesProvider.TryGetAppIdOverride(game.Id, out _);
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString(hasLocalAppIdOverride
+                    ? "LOCPlayAch_Menu_LocalAppId_Change"
+                    : "LOCPlayAch_Menu_LocalAppId_Set"),
+                MenuSection = PluginLocalGameMenuSection,
+                Action = _ => SetLocalSteamAppIdOverride(game)
+            };
+            if (hasLocalAppIdOverride)
+            {
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Menu_LocalAppId_Clear"),
+                    MenuSection = PluginLocalGameMenuSection,
+                    Action = _ => ClearLocalSteamAppIdOverride(game)
+                };
+            }
+
+            var selectedLocalUser = LocalSavesProvider.TryGetSteamAppCacheUserOverride(
+                game.Id,
+                out var localUserOverride)
+                ? localUserOverride
+                : string.Empty;
+            var localUserSection = PluginLocalGameMenuSection + "|" +
+                ResourceProvider.GetString("LOCPlayAch_Menu_LocalSteamUser_Change");
+            yield return new GameMenuItem
+            {
+                Description = FormatLocalProviderMenuLabel(
+                    ResourceProvider.GetString("LOCPlayAch_Menu_LocalSteamUser_Automatic"),
+                    string.IsNullOrWhiteSpace(selectedLocalUser)),
+                MenuSection = localUserSection,
+                Action = _ => ChangeLocalSteamUserOverride(game, null)
+            };
+            var localProvider = Providers?.OfType<LocalSavesProvider>().FirstOrDefault();
+            foreach (var user in localProvider?.GetAvailableSteamAppCacheUsersForMenu() ??
+                     Enumerable.Empty<LocalSteamAppCacheUserOption>())
+            {
+                var userId = user.UserId;
+                var userLabel = string.IsNullOrWhiteSpace(user.DisplayName) ? userId : user.DisplayName;
+                yield return new GameMenuItem
+                {
+                    Description = FormatLocalProviderMenuLabel(
+                        userLabel,
+                        string.Equals(selectedLocalUser, userId, StringComparison.OrdinalIgnoreCase)),
+                    MenuSection = localUserSection,
+                    Action = _ => ChangeLocalSteamUserOverride(game, userId)
+                };
+            }
+
+            var hasLocalFolderOverride = LocalSavesProvider.TryGetFolderOverride(game.Id, out _);
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString(hasLocalFolderOverride
+                    ? "LOCPlayAch_Menu_LocalFolder_Change"
+                    : "LOCPlayAch_Menu_LocalFolder_Set"),
+                MenuSection = PluginLocalGameMenuSection,
+                Action = _ => SetLocalFolderOverride(game)
+            };
+            if (hasLocalFolderOverride)
+            {
+                yield return new GameMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_Menu_LocalFolder_Clear"),
+                    MenuSection = PluginLocalGameMenuSection,
+                    Action = _ => ClearLocalFolderOverride(game)
+                };
+            }
+
+            var preferredProvider = GameCustomDataLookup.TryGetProviderOverride(
+                game.Id,
+                out var providerOverride)
+                    ? providerOverride?.ProviderKey
+                    : null;
+            var providerSection = PluginLocalGameMenuSection + "|" +
+                ResourceProvider.GetString("LOCPlayAch_Menu_LocalProvider_Change");
+            yield return new GameMenuItem
+            {
+                Description = FormatLocalProviderMenuLabel(
+                    ResourceProvider.GetString("LOCPlayAch_Menu_LocalProvider_Automatic"),
+                    string.IsNullOrWhiteSpace(preferredProvider)),
+                MenuSection = providerSection,
+                Action = _ => ChangePreferredProvider(game, null)
+            };
+            foreach (var providerKey in GetSelectableProviderKeys())
+            {
+                var capturedProviderKey = providerKey;
+                var providerLabel = PlayniteAchievements.Providers.ProviderRegistry.GetLocalizedName(
+                    capturedProviderKey);
+                yield return new GameMenuItem
+                {
+                    Description = FormatLocalProviderMenuLabel(
+                        providerLabel,
+                        string.Equals(
+                            preferredProvider,
+                            capturedProviderKey,
+                            StringComparison.OrdinalIgnoreCase)),
+                    MenuSection = providerSection,
+                    Action = _ => ChangePreferredProvider(game, capturedProviderKey)
+                };
+            }
+
+            yield return new GameMenuItem
+            {
+                Description = "-",
+                MenuSection = PluginGameMenuSection
+            };
+
+            yield return new GameMenuItem
+            {
+                Description = ResourceProvider.GetString("LOCPlayAch_Menu_ClearData"),
+                MenuSection = PluginGameMaintenanceSection,
+                Action = (a) =>
+                {
+                    ClearSingleGameData(game);
+                }
+            };
+
+            var excludedFromSummaries = IsGameExcludedFromSummaries(game.Id);
+            yield return new GameMenuItem
+            {
+                Description = excludedFromSummaries
+                    ? ResourceProvider.GetString("LOCPlayAch_Common_Action_IncludeInSummaries")
+                    : ResourceProvider.GetString("LOCPlayAch_Common_Action_ExcludeFromSummaries"),
+                MenuSection = PluginGameMaintenanceSection,
+                Action = (a) =>
+                {
+                    ToggleExcludedFromSummaries(new[] { game });
+                }
+            };
+
+            var excludedFromRefreshes = IsGameExcluded(game.Id);
+            yield return new GameMenuItem
+            {
+                Description = excludedFromRefreshes
+                    ? ResourceProvider.GetString("LOCPlayAch_Menu_IncludeInRefreshes")
+                    : ResourceProvider.GetString("LOCPlayAch_Menu_ExcludeFromRefreshes"),
+                MenuSection = PluginGameMaintenanceSection,
+                Action = (a) =>
+                {
+                    ToggleExcludedFromRefreshes(new[] { game }, clearDataWhenExcluding: false, confirmWhenClearingData: false);
+                }
+            };
+
+            yield return new GameMenuItem
+            {
+                Description = excludedFromRefreshes
+                    ? ResourceProvider.GetString("LOCPlayAch_Menu_IncludeInRefreshesAndRefresh")
+                    : ResourceProvider.GetString("LOCPlayAch_Menu_ExcludeFromRefreshesAndClearData"),
+                MenuSection = PluginGameMaintenanceSection,
+                Action = (a) =>
+                {
+                    ToggleExcludedFromRefreshesAndRefresh(new[] { game });
+                }
+            };
+        }
+
+        private static List<Game> GetDistinctValidGames(IEnumerable<Game> games)
+        {
+            return games?
+                .Where(g => g != null && g.Id != Guid.Empty)
+                .GroupBy(g => g.Id)
+                .Select(g => g.First())
+                .ToList() ?? new List<Game>();
+        }
+
+        private void ExcludeGamesFromSummaries(IEnumerable<Game> games)
+        {
+            var targets = GetDistinctValidGames(games);
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var game in targets)
+            {
+                _achievementOverridesService.SetExcludedFromSummaries(game.Id, true);
+            }
+        }
+
+        private void ExcludeGamesFromRefreshes(
+            IEnumerable<Game> games,
+            bool clearDataWhenExcluding,
+            bool confirmWhenClearingData)
+        {
+            var targets = GetDistinctValidGames(games);
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            if (clearDataWhenExcluding && confirmWhenClearingData)
+            {
+                var confirmText = targets.Count == 1
+                    ? string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_Exclude_ConfirmSingle"), targets[0].Name)
+                    : string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_Exclude_ConfirmSelected"), targets.Count);
+
+                var result = PlayniteApi?.Dialogs?.ShowMessage(
+                    confirmText,
+                    ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) ?? MessageBoxResult.None;
+
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            foreach (var game in targets)
+            {
+                _achievementOverridesService.SetExcludedByUser(
+                    game.Id,
+                    excluded: true,
+                    clearCachedDataWhenExcluding: clearDataWhenExcluding);
+            }
+        }
+
+        private void ToggleExcludedFromSummaries(IEnumerable<Game> games)
+        {
+            var targets = GetDistinctValidGames(games);
+            foreach (var game in targets)
+            {
+                var isExcluded = IsGameExcludedFromSummaries(game.Id);
+                _achievementOverridesService.SetExcludedFromSummaries(game.Id, !isExcluded);
+            }
+        }
+
+        private void ToggleExcludedFromRefreshes(IEnumerable<Game> games, bool clearDataWhenExcluding, bool confirmWhenClearingData)
+        {
+            var targets = GetDistinctValidGames(games);
+            foreach (var game in targets)
+            {
+                var isExcluded = IsGameExcluded(game.Id);
+                if (isExcluded)
+                {
+                    _achievementOverridesService.SetExcludedByUser(game.Id, false, clearCachedDataWhenExcluding: false);
+                }
+                else
+                {
+                    if (clearDataWhenExcluding && confirmWhenClearingData)
+                    {
+                        var confirmText = string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_Exclude_ConfirmSingle"), game.Name);
+                        var result = PlayniteApi?.Dialogs?.ShowMessage(
+                            confirmText,
+                            ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Warning) ?? MessageBoxResult.None;
+                        if (result != MessageBoxResult.Yes) continue;
+                    }
+                    _achievementOverridesService.SetExcludedByUser(game.Id, true, clearCachedDataWhenExcluding: clearDataWhenExcluding);
+                }
+            }
+        }
+
+        private void ToggleExcludedFromRefreshesAndRefresh(IEnumerable<Game> games)
+        {
+            var targets = GetDistinctValidGames(games);
+            var gameIdsToRefresh = new List<Guid>();
+            var gamesToExclude = new List<Game>();
+
+            // First pass: categorize games
+            foreach (var game in targets)
+            {
+                var isExcluded = IsGameExcluded(game.Id);
+                if (isExcluded)
+                {
+                    _achievementOverridesService.SetExcludedByUser(game.Id, false, clearCachedDataWhenExcluding: false);
+                    gameIdsToRefresh.Add(game.Id);
+                }
+                else
+                {
+                    gamesToExclude.Add(game);
+                }
+            }
+
+            // Single batch confirmation for all exclusions
+            if (gamesToExclude.Count > 0)
+            {
+                var confirmText = gamesToExclude.Count == 1
+                    ? string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_Exclude_ConfirmSingle"), gamesToExclude[0].Name)
+                    : string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_Exclude_ConfirmSelected"), gamesToExclude.Count);
+                var result = PlayniteApi?.Dialogs?.ShowMessage(
+                    confirmText,
+                    ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) ?? MessageBoxResult.None;
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    foreach (var game in gamesToExclude)
+                    {
+                        _achievementOverridesService.SetExcludedByUser(game.Id, true, clearCachedDataWhenExcluding: true);
+                    }
+                }
+            }
+
+            // Refresh un-excluded games
+            if (gameIdsToRefresh.Count == 1)
+            {
+                var gameId = gameIdsToRefresh[0];
+                _ = StartMenuRefreshAsync(
+                    new RefreshRequest
+                    {
+                        Mode = RefreshModeType.Single,
+                        SingleGameId = gameId,
+                        SurfaceUserNotices = true
+                    },
+                    gameId);
+            }
+            else if (gameIdsToRefresh.Count > 1)
+            {
+                _ = StartMenuRefreshAsync(new RefreshRequest { GameIds = gameIdsToRefresh });
+            }
+        }
+
+        private void ClearSingleGameData(Game game)
+        {
+            if (game == null || game.Id == Guid.Empty)
+            {
+                return;
+            }
+
+            var result = PlayniteApi?.Dialogs?.ShowMessage(
+                string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_ClearData_ConfirmSingle"), game.Name),
+                ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) ?? MessageBoxResult.None;
+
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                if (_achievementOverridesService != null)
+                {
+                    _achievementOverridesService.ClearGameData(game.Id, game.Name);
+                }
+                else
+                {
+                    _cacheManager.RemoveGameCache(game.Id);
+                }
+
+                PlayniteApi?.Dialogs?.ShowMessage(
+                    ResourceProvider.GetString("LOCPlayAch_Status_Succeeded"),
+                    ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, $"Failed to clear cached data for game '{game.Name}' ({game.Id}).");
+                PlayniteApi?.Dialogs?.ShowMessage(
+                    string.Format(ResourceProvider.GetString("LOCPlayAch_Status_Failed"), ex.Message),
+                    ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private void ClearSelectedGamesData(IEnumerable<Game> selectedGames)
+        {
+            var targets = selectedGames?
+                .Where(g => g != null && g.Id != Guid.Empty)
+                .GroupBy(g => g.Id)
+                .Select(g => g.First())
+                .ToList() ?? new List<Game>();
+
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            var result = PlayniteApi?.Dialogs?.ShowMessage(
+                string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_ClearData_ConfirmSelected"), targets.Count),
+                ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) ?? MessageBoxResult.None;
+
+            if (result != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var clearedCount = 0;
+            foreach (var game in targets)
+            {
+                try
+                {
+                    if (_achievementOverridesService != null)
+                    {
+                        _achievementOverridesService.ClearGameData(game.Id, game.Name);
+                    }
+                    else
+                    {
+                        _cacheManager.RemoveGameCache(game.Id);
+                    }
+
+                    clearedCount++;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn(ex, $"Failed to clear cached data for game '{game.Name}' ({game.Id}).");
+                }
+            }
+
+            PlayniteApi?.Dialogs?.ShowMessage(
+                ResourceProvider.GetString("LOCPlayAch_Status_Succeeded"),
+                ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        public bool IsGameExcluded(Guid gameId)
+        {
+            return GameCustomDataLookup.IsExcludedFromRefreshes(
+                gameId,
+                _settingsViewModel?.Settings?.Persisted,
+                _gameCustomDataStore);
+        }
+
+        public bool IsGameExcludedFromSummaries(Guid gameId)
+        {
+            return GameCustomDataLookup.IsExcludedFromSummaries(
+                gameId,
+                _settingsViewModel?.Settings?.Persisted,
+                _gameCustomDataStore);
+        }
+
+        public void ToggleGameExclusion(Guid gameId)
+        {
+            var isExcluded = IsGameExcluded(gameId);
+
+            // Only show confirmation when excluding (not when including)
+            if (!isExcluded)
+            {
+                var game = PlayniteApi?.Database?.Games?.Get(gameId);
+                var gameName = game?.Name ?? ResourceProvider.GetString("LOCPlayAch_Text_UnknownGame");
+
+                var result = PlayniteApi?.Dialogs?.ShowMessage(
+                    string.Format(ResourceProvider.GetString("LOCPlayAch_Menu_Exclude_ConfirmSingle"), gameName),
+                    ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) ?? MessageBoxResult.None;
+
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            _achievementOverridesService.SetExcludedByUser(gameId, !isExcluded, clearCachedDataWhenExcluding: !isExcluded);
+        }
+
+        public override IEnumerable<MainMenuItem> GetMainMenuItems(GetMainMenuItemsArgs args)
+        {
+            var refreshInProgress = IsRefreshInProgress();
+            if (refreshInProgress)
+            {
+                foreach (var item in GetRefreshInProgressMainMenuHeader())
+                {
+                    yield return item;
+                }
+            }
+
+            if (!refreshInProgress)
+            {
+                // Fullscreen-only: overview window (desktop uses the overview panel).
+                var isFullscreen = IsFullscreenMode();
+
+                if (isFullscreen)
+                {
+                    yield return new MainMenuItem
+                    {
+                        Description = ResourceProvider.GetString("LOCPlayAch_Menu_OpenOverview"),
+                        MenuSection = PluginMainMenuSection,
+                        Action = (a) =>
+                        {
+                            OpenOverviewWindow();
+                        }
+                    };
+
+                    // Fullscreen can't open Playnite's native plugin-settings dialog
+                    // (OpenSettingsView is a no-op there), so host the plugin's settings UI in a
+                    // managed popout instead — giving fullscreen access to the notification
+                    // appearance editor and fire-tests. Closing the window saves.
+                    yield return new MainMenuItem
+                    {
+                        Description = ResourceProvider.GetString("LOCPlayAch_Landing_OpenSettings"),
+                        MenuSection = PluginMainMenuSection,
+                        Action = (a) =>
+                        {
+                            OpenSettingsWindow();
+                        }
+                    };
+
+                    yield return new MainMenuItem
+                    {
+                        Description = "-",
+                        MenuSection = PluginMainMenuSection
+                    };
+                }
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_RefreshMode_Recent"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(new RefreshRequest { Mode = RefreshModeType.Recent });
+                    }
+                };
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_RefreshMode_Full"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(new RefreshRequest { Mode = RefreshModeType.Full });
+                    }
+                };
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_RefreshMode_Installed"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(new RefreshRequest { Mode = RefreshModeType.Installed });
+                    }
+                };
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_RefreshMode_Favorites"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(new RefreshRequest { Mode = RefreshModeType.Favorites });
+                    }
+                };
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_RefreshMode_Selected"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(new RefreshRequest { Mode = RefreshModeType.LibrarySelected });
+                    }
+                };
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_RefreshMode_Missing"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        _ = StartMenuRefreshAsync(new RefreshRequest { Mode = RefreshModeType.Missing });
+                    }
+                };
+
+                yield return new MainMenuItem
+                {
+                    Description = ResourceProvider.GetString("LOCPlayAch_CustomRefresh_MenuItem"),
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) =>
+                    {
+                        if (!CustomRefreshControl.TryShowDialog(
+                            PlayniteApi,
+                            _refreshService,
+                            PersistSettingsForUi,
+                            _settingsViewModel.Settings,
+                            _logger,
+                            out var customOptions))
+                        {
+                            return;
+                        }
+
+                        _ = StartMenuRefreshAsync(
+                            new RefreshRequest
+                            {
+                                Mode = RefreshModeType.Custom,
+                                Options = RefreshOptions.FromCustom(customOptions)
+                            });
+                    }
+                };
+            }
+
+            // Developer-only diagnostic, hidden unless the hardcoded PerfScope.PerfTracingEnabled
+            // flag is on (never shown in a tracing-off build). Deliberately not localized.
+            // Available mid-refresh: capturing memory state during and after large scans is the
+            // point. The compacting collect logs a managed-vs-native breakdown of residual memory.
+            if (Common.MemoryDiagnostics.Enabled)
+            {
+                yield return new MainMenuItem
+                {
+                    Description = "Log Memory Diagnostics",
+                    MenuSection = PluginMainMenuSection,
+                    Action = (a) => _ = Task.Run(() =>
+                    {
+                        try
+                        {
+                            var before = Common.MemoryDiagnostics.Log(_logger, "manual", "trigger=menu");
+                            System.Runtime.GCSettings.LargeObjectHeapCompactionMode =
+                                System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                            GC.Collect();
+                            GC.WaitForPendingFinalizers();
+                            GC.Collect();
+                            Common.MemoryDiagnostics.Log(_logger, "manual.afterGC", before, "trigger=menu");
+
+                            // Process totals say memory grew; the retention report says which
+                            // graph is still rooted. It forces its own blocking collect, so the
+                            // per-cache and live= counts mean "still reachable".
+                            LogRetentionDiagnostics("manual.retention");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.Debug(ex, "Manual memory diagnostics failed.");
+                        }
+                    })
+                };
+            }
+        }
+    }
+}

@@ -1,0 +1,608 @@
+{
+    "schemaVersion":  1,
+    "generatedUtc":  "2026-10-05T13:53:35.1149263Z",
+    "baselineRef":  "upstream/main",
+    "baselineCommit":  "79108753e3f8ddc775aa569ff8f5ed0362f3f22b",
+    "protectedPaths":  [
+                           "AddonDBManifest.yaml",
+                           "README.md",
+                           "source/extension.yaml",
+                           "InstallerManifest.yaml"
+                       ],
+    "patch":  {
+                  "path":  "fork-changes.patch",
+                  "sha256":  "7587920919763CB851767A03AAF9AEB3BBE1B6C49588717158B2BAB4486F9597"
+              },
+    "localizationRecipes":  {
+                                "path":  "localization-recipes.json",
+                                "sha256":  "27C41D78F15A14CEF9DECC6EE272EF1A097C952D122A3E8AD8CBCF32CC64B1D2",
+                                "fileCount":  1,
+                                "entryCount":  385
+                            },
+    "overlayFiles":  [
+                         {
+                             "path":  "ACHIEVEMENT_NOTIFICATIONS_GUIDE.md",
+                             "sha256":  "6A39FD788D91C704E254E2DFB5B2F63A1883F011CEDF7019977C0A90FA012694"
+                         },
+                         {
+                             "path":  "Images/AchievementNotificationMenu.png",
+                             "sha256":  "C74A952D58217DC2B3CDC92685F1A1B26155F5F0074E40C2C8EC79E957D3C8B6"
+                         },
+                         {
+                             "path":  "Images/AchievementNotificationTest.png",
+                             "sha256":  "DFC6468DFB8B4E371414485DC28D7FD4540D85A70EC6477BE10A92BD01C146E1"
+                         },
+                         {
+                             "path":  "Images/aniki-remake2.png",
+                             "sha256":  "6C94B03414846E44D8A62E6B8D9AF6E2A54F53C219D26EB0020DC038E61F3481"
+                         },
+                         {
+                             "path":  "Images/aniki-remake3.png",
+                             "sha256":  "B1416362A4D9479F838CBB61BE9F1DE35FE06830F1FFE9444756914016F067C9"
+                         },
+                         {
+                             "path":  "Images/LocalAchivementsFolders.png",
+                             "sha256":  "E3F60463A4F64CED7CEF157713CC8881466A968FF987A4F700FA77A16A983F7D"
+                         },
+                         {
+                             "path":  "Images/LocalAchivementsGamesImport.png",
+                             "sha256":  "BC534196FD6C50CC49CB4BE50BBC75F94325A9CF1F60AA9B9C30284DF88306DC"
+                         },
+                         {
+                             "path":  "Images/LocalAchivementsNotification.png",
+                             "sha256":  "B39F0217C367CA9E464927043CFDD604A1698A612B85D25AD191A5C88169CA07"
+                         },
+                         {
+                             "path":  "Images/LocalAchivementsOverrides.png",
+                             "sha256":  "A8F3444E6437DB467FBA6827CDF905A9C8026E24602AA3770F65D62FF1875C41"
+                         },
+                         {
+                             "path":  "Images/LocalAchivementsRightClickOptions.png",
+                             "sha256":  "BB2FFFEC7CE810CACD871FF16CD3133004345C7CE7E0D326F930A18BF97B68E6"
+                         },
+                         {
+                             "path":  "Images/overview-view1.png",
+                             "sha256":  "BF4BA25C65D910D551D288EC72BBB5033B61F4826082E01921D42A3F9192F663"
+                         },
+                         {
+                             "path":  "Images/overview-view2.png",
+                             "sha256":  "4A6C33E1CA3BDC78D513F4CE767858D87004BBFE44159BCFBA0390EA7D9C7BEE"
+                         },
+                         {
+                             "path":  "Images/sidebar-view2.png",
+                             "sha256":  "4A6C33E1CA3BDC78D513F4CE767858D87004BBFE44159BCFBA0390EA7D9C7BEE"
+                         },
+                         {
+                             "path":  "Images/ThemeMigration.png",
+                             "sha256":  "53C544299B8F33EAFCDE83D2DA658120CE95367D55B50F68BD5BD731BA7C515F"
+                         },
+                         {
+                             "path":  "LOCAL_PROVIDER_TROUBLESHOOTING.md",
+                             "sha256":  "478DD3D64FF6988A27E6E6A7444E921557CAABF2A07655B7D77856F6ED8B080B"
+                         },
+                         {
+                             "path":  "source/Models/Achievements/ProviderKeyResolver.cs",
+                             "sha256":  "49B738DF988DA572AE0D317E916258477F4A0329B2F5D97C858690AE5C61ADA8"
+                         },
+                         {
+                             "path":  "source/Models/Settings/GamesOverviewSortMode.cs",
+                             "sha256":  "1BBE2374B4701F9CB3917403872F4C1693A318D79CC8F146AB87747EA7DF6AE2"
+                         },
+                         {
+                             "path":  "source/Models/Settings/NotificationOverlayTemplateFile.cs",
+                             "sha256":  "714CCD8510BE1D2998C17FFC40143DB75A8680C6E985C693F825F95269C8E407"
+                         },
+                         {
+                             "path":  "source/Models/Settings/PersistedSettings.ForkCompatibility.cs",
+                             "sha256":  "5187E077BED570FB7C93099604AFD92AEA44492893FF71F69C28CD0EBE6A7523"
+                         },
+                         {
+                             "path":  "source/Models/Settings/SanScreenshotView.cs",
+                             "sha256":  "46010F5A622B362D241E6AB3E44D0F7213F4518CA8742896A1220BA433D5D34C"
+                         },
+                         {
+                             "path":  "source/PlayniteAchievementsPlugin.LocalMenus.cs",
+                             "sha256":  "060712A45728B4D32663A658DEFF5050485310DC6414EE612724FF0087246C0E"
+                         },
+                         {
+                             "path":  "source/Providers/ImportedGameMetadata/ImportedGameMetadataApplier.cs",
+                             "sha256":  "5AD7A2753B4557F50E1CD9BA93B6EBE422BF6B7783CA71A94D4AE2343D0723AC"
+                         },
+                         {
+                             "path":  "source/Providers/ImportedGameMetadata/ImportedGameMetadataSourceCatalog.cs",
+                             "sha256":  "21E46A920CA4CDB7F851507EA5442D11716C6415F8E90AB0CB61D29EF569C583"
+                         },
+                         {
+                             "path":  "source/Providers/IRefreshTargetFilter.cs",
+                             "sha256":  "DF347BE33DC83C65256F8234CE9B547A4FA70BA9B526CE8B695CBC1E9F6FE65B"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalFolderGamesImporter.cs",
+                             "sha256":  "1188122501AACA95807EDB9DD7CAA9C9E2A4D332E223659863D5E850328E9F36"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalImportProgressControl.xaml",
+                             "sha256":  "347B6F7B8D12A9E04A5B8513802192FD9C39AA115AC757639706D706F015431D"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalImportProgressControl.xaml.cs",
+                             "sha256":  "687F17FFFAD87061FBC1C14C4281A782894D24671BAA26936E4FD86E806D89FD"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalImportTargetDialog.xaml",
+                             "sha256":  "64EE2EB021D8578AB9B4A43008569AA511615CBE1A45718CAC512FE139DD542C"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalImportTargetDialog.xaml.cs",
+                             "sha256":  "34F5B058EB7079A8E71DB713F5F68F42A68FE47E208FB15350BCF07678FA2BD6"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalSavesProvider.cs",
+                             "sha256":  "E5F9BCEA690E3A61975A661386698543CB3C32172AB7B3C9BCE005F217A3D459"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalSettings.cs",
+                             "sha256":  "617DBEC280687A16F1204A43BC33ACE19DBC9FAC32A2528DFCCC24BAED7516F3"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalSettingsView.xaml",
+                             "sha256":  "CBD82F4AC5C02640A9720BA50F42092E7C9DA36AA8687606F288E8CB3516401C"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalSettingsView.xaml.cs",
+                             "sha256":  "A949099929CC6B9B43E0C64080A3F00504D8C219D6C9995AFA9F5FB32DE6C353"
+                         },
+                         {
+                             "path":  "source/Providers/Local/LocalSuccessStoryImportService.cs",
+                             "sha256":  "BB482172F1200D67C7A8784DA67F1B1884B5E22E2BA79634FA8D7FDE25F225AD"
+                         },
+                         {
+                             "path":  "source/Providers/Steam/SteamApiTokenService.cs",
+                             "sha256":  "A7681D291C2237DFDDB94BF68316A68FBA56A49550B778BDCA38087058153D44"
+                         },
+                         {
+                             "path":  "source/Providers/Steam/SteamAsyncConfigTokenHelper.cs",
+                             "sha256":  "4C574EA386DB5F91D922C0E5766CEFFEAF0E90813A96FBACE300F3A86F619AC3"
+                         },
+                         {
+                             "path":  "source/Providers/Steam/SteamOwnedGamesImporter.cs",
+                             "sha256":  "141EEB7766629B709E5982210819C7842A91657D82151E4D09AC63B2B2679764"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Android 9 Notification Popcorn.wav",
+                             "sha256":  "F7E05C7EF2A9721E205E97EF9D09D02231C628C2E9103304CDE8C808B04A9A5D"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/GOG Galaxy.wav",
+                             "sha256":  "357539429BB840D206F6D69C59957620C2520D10D42CA692B83E3F8D03F0A014"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Playstation.wav",
+                             "sha256":  "3FDC2397941E241C31EFE91C108347E1D1E3EAA635383D7335594743776319D6"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Playstation5 Platinum.wav",
+                             "sha256":  "D8EE4DFFBF03199EC554220184EE5E577559ABB1E7464D08B23E5C61B4873746"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Playstation5.wav",
+                             "sha256":  "E64FE8200BC2117954622E7DFDC8D1D915F09EBCCA2F57F2090BC24DE5D0EE7F"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/README.txt",
+                             "sha256":  "C846AC8A15C8D4ECB53259EB9D9DD401C959D8A91D6D197930A7CBB5B98292CE"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Steam Deck.wav",
+                             "sha256":  "C8406580C67CA36F8D23B0175E7AA2EFFB0B20E524A810FC8BA97C6A315EDDBA"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Windows 10.wav",
+                             "sha256":  "4CED3C85A00D1E747EDBC0BD8B699A8E952EBFA80B625A2F1679CDB9629F95A8"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Windows 11.wav",
+                             "sha256":  "2FE09E9AAA34FF473DC40FE7B62F277E395A787DA0E76E0D6F94D3BD31FC6540"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Windows 8.wav",
+                             "sha256":  "9AB438C4274EF49C52AE2E5ACDBA88562413ADB15BA715714E4FF30A03EDA3F0"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Xbox Rare.wav",
+                             "sha256":  "353D3CDE848C11DA75CE4C4B83839807F87AC8298B0897B3A7E474361DB2E486"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalSounds/Xbox.wav",
+                             "sha256":  "5966D6103792DE4B6B39824672590E57642C796190266A02B128BDDFFE2B6C15"
+                         },
+                         {
+                             "path":  "source/Resources/AdditionalTemplates/notification-custom-style.template.json",
+                             "sha256":  "9726EC36FF30B8EC50D9C7AF0BFD57E95045AA0DE9250320B7BD349ED115E888"
+                         },
+                         {
+                             "path":  "source/Resources/Sounds/Steam.wav",
+                             "sha256":  "EE586B8D18BB66547F9F3F996EEEAFC6A843DF2467E3BC5A52BAA9A595035D6A"
+                         },
+                         {
+                             "path":  "source/Resources/StartPage/StartPagePlugin.dll",
+                             "sha256":  "1F756C6D59E12029B329AF90651E927449FBEA3FEC37E7F350C607F97AB2340F"
+                         },
+                         {
+                             "path":  "source/Services/Exophase/ExophaseGameAchievementMonitor.cs",
+                             "sha256":  "5C374747F81C18BBF25CB9EEE90673C5772B0E49097AF5A9EAEB0E1AD6834E4D"
+                         },
+                         {
+                             "path":  "source/Services/Local/ActiveGameAchievementMonitor.cs",
+                             "sha256":  "034590F9631AA7399E1DC62327B75166421C4A045C3ED1CA1613173F77DC6652"
+                         },
+                         {
+                             "path":  "source/Services/Local/LocalAchievementScreenshotService.cs",
+                             "sha256":  "DFA4C5AB619E6EB7D5E9B1693366D3D20EE0A44108B6125093779CFB6D017C65"
+                         },
+                         {
+                             "path":  "source/Services/Logging/AchievementNotificationDebugLog.cs",
+                             "sha256":  "4A8399F32C38DBC0671814DCE3F07BBFA4611BFF44597F6266784D10989D7ABA"
+                         },
+                         {
+                             "path":  "source/Services/Logging/RealtimePollingLogScope.cs",
+                             "sha256":  "31C5DB7A1FFE77DB66C1EAA1DDA046A9D1464257C323C1C23E89339BAC3BF62B"
+                         },
+                         {
+                             "path":  "source/Services/Refresh/CustomRefreshGameMatcher.cs",
+                             "sha256":  "83E25307FB58E1D2D60148233666F2DB03862E284EDE8B61A2E5153A39D14EAE"
+                         },
+                         {
+                             "path":  "source/Services/Refresh/NewGameAutoRefreshPolicy.cs",
+                             "sha256":  "F7BD2C45188A65AAFCA2CC698B5FC5FC0ABF267DCB340137C6D01AE36BC53201"
+                         },
+                         {
+                             "path":  "source/Services/Refresh/SteamRefreshTargeting.cs",
+                             "sha256":  "7572C3304D97DA4F3A4BED0627551F68CD57CB6814708655D587F275FC83A17C"
+                         },
+                         {
+                             "path":  "source/Services/ReleaseMonitoring/ForkReleaseMonitor.cs",
+                             "sha256":  "8EA41FDEF21F6EDCB3B5774D4298BE7AF9F96CDC0DA5E40FEC16DCC13D05F567"
+                         },
+                         {
+                             "path":  "source/Services/ReleaseMonitoring/UpstreamReleaseMonitor.cs",
+                             "sha256":  "3E190F092D73EBD3D013202C9B482112C2F0F7730D9B21DAE8BB00375B2664A0"
+                         },
+                         {
+                             "path":  "source/Services/RetroAchievements/RetroAchievementsGameAchievementMonitor.cs",
+                             "sha256":  "611A763AA65F32BCB069D3CE79FDB87DA210E590C3F756AE327BA32645FFAF6E"
+                         },
+                         {
+                             "path":  "source/Services/ThemeMigration/StartPageCompatibilityService.cs",
+                             "sha256":  "1AEB0FDAD6A73D8160117DB0A1D6DADF8F15FE9659BF9DEE9A9C88096041F4F6"
+                         },
+                         {
+                             "path":  "source/Services/ThemeMigration/StartPageGameContextMenuBridge.cs",
+                             "sha256":  "277A0D951E668BB1C6608913D3F6DEBBEBBE4996CDFAA50D577AEABF77E18475"
+                         },
+                         {
+                             "path":  "source/ViewModels/GameOptionsCustomSchemaTab.cs",
+                             "sha256":  "1708FF13A186FB419370637691735C583CF733BF42B6E07D0CCE0F7CE41A0D7A"
+                         },
+                         {
+                             "path":  "source/ViewModels/GameOptionsLocalOverrideTab.cs",
+                             "sha256":  "ED840806E7CEB0E72F59CC054E640F433085CEDA7B26047459CFF5CE31B93D63"
+                         },
+                         {
+                             "path":  "source/ViewModels/GameOptionsOverrideTab.cs",
+                             "sha256":  "2D97D8DADD8E5B1A3DDB803DDA57791C06DA48B21EB5D0E248D2E98990F4476B"
+                         },
+                         {
+                             "path":  "source/ViewModels/LocalAchievementEditorViewModel.cs",
+                             "sha256":  "521E63F80C7990B544DB42D74B7D037A7D19B17788F1034328D9B62CF0B8E283"
+                         },
+                         {
+                             "path":  "source/ViewModels/ManageAchievements/ManageAchievementsViewModel.RetroAchievementsSubsets.cs",
+                             "sha256":  "BC8FEB10B4DFAEBB3AFBFD454AFEE0DBE98C358386C5A57891FD5158C0305A6B"
+                         },
+                         {
+                             "path":  "source/ViewModels/ManageAchievementsViewModel.CustomSchema.cs",
+                             "sha256":  "E04C646732B9DDC80899781ADFF41450F5B21F12298F9611CAD692A31E6FBF99"
+                         },
+                         {
+                             "path":  "source/ViewModels/ManageAchievementsViewModel.ForkOverrides.cs",
+                             "sha256":  "A71F60C692E53D7CFB22B0220D848DADB76231E59710DA857D0F2468EA122148"
+                         },
+                         {
+                             "path":  "source/Views/GameOptionsLocalOverridesSection.xaml",
+                             "sha256":  "270197FD656C5B04DAD43916D05AD840EC4120C4E6D6F181B9AC54CD84050F8E"
+                         },
+                         {
+                             "path":  "source/Views/GameOptionsLocalOverridesSection.xaml.cs",
+                             "sha256":  "DF32A96E562C699FAEE45D9FA4B017155B2ADD5F4B82CEF284147FC9582A2106"
+                         },
+                         {
+                             "path":  "source/Views/LegacyNotificationSettingsControl.xaml",
+                             "sha256":  "4C7721317E442BD091391B086A39C1308B2BE847DE420560A56D1A0FDE736058"
+                         },
+                         {
+                             "path":  "source/Views/LegacyNotificationSettingsControl.xaml.cs",
+                             "sha256":  "E8755551F4AD37B4C1360871590798AB999E687380CADC364152146809C3BBD0"
+                         },
+                         {
+                             "path":  "source/Views/LocalAchievementEditorControl.xaml",
+                             "sha256":  "3DC651522A12E4A8530F5381EB0289DE2153007FC32DE20304F4DCC0895C8091"
+                         },
+                         {
+                             "path":  "source/Views/LocalAchievementEditorControl.xaml.cs",
+                             "sha256":  "7CAAA603B22436C039D550DDCC0B5DA30501B6F0993066E67BE567CFC7B91A89"
+                         },
+                         {
+                             "path":  "source/Views/ManageAchievements/ManageAchievementsCustomSchemaTab.xaml",
+                             "sha256":  "E27152E5856CC59ED91912FC8EEF8F1735EE6479B4664DE023EC10DF1DF6BF8B"
+                         },
+                         {
+                             "path":  "source/Views/ManageAchievements/ManageAchievementsCustomSchemaTab.xaml.cs",
+                             "sha256":  "1A8355CF168F701FB30CACB1D99FE4D2C6DC3EE70308D91B2BA8C31832D15A69"
+                         },
+                         {
+                             "path":  "source/Views/ManageAchievements/ManageAchievementsOverridesTab.xaml",
+                             "sha256":  "C1678F445D2C232EBDE07A06A6E3E5EC32A8451236A9945F6047E2B9A86AF60C"
+                         },
+                         {
+                             "path":  "source/Views/ManageAchievements/ManageAchievementsOverridesTab.xaml.cs",
+                             "sha256":  "B4369BC5F7DA322C3549FFC6802C52992C138AF74D8E4F0F4A0572D52FDA8426"
+                         },
+                         {
+                             "path":  "source/Views/ManualAchievementSortDialog.xaml",
+                             "sha256":  "CBDDE34B699BFEA5DEA50915C8F859E2DB9ED0D952CE241771E226226043CF58"
+                         },
+                         {
+                             "path":  "source/Views/ManualAchievementSortDialog.xaml.cs",
+                             "sha256":  "B984FF0DDE83794901F7994862AF7D5AFC009FE4BD9F43C64D0D5DBE688A6E10"
+                         },
+                         {
+                             "path":  "tests/PlayniteAchievements.Tests/Models/LocalNotificationTypographySettingsTests.cs",
+                             "sha256":  "A17794A597B882860E303D07AE29E2EE564C73EC7B6930A19A8505F1673FD37A"
+                         },
+                         {
+                             "path":  "tests/PlayniteAchievements.Tests/Services/NewGameAutoRefreshPolicyTests.cs",
+                             "sha256":  "478BA33685EC8CD25CFFA1C7551ED02F907331848A3FFF716786A787BB6A2BC9"
+                         },
+                         {
+                             "path":  "tests/PlayniteAchievements.Tests/Steam/SteamAsyncConfigTokenHelperTests.cs",
+                             "sha256":  "1456844C879D1CD7FA072327FC55E527E4E321D98293813925FD275FB3263FEC"
+                         },
+                         {
+                             "path":  "tests/PlayniteAchievements.Tests/TestSupport/LocalSavesProviderStub.cs",
+                             "sha256":  "89155B28C860334C0D342A72ADBD9CFBCEA7082F1C034A78FD380C4500C6CB6D"
+                         },
+                         {
+                             "path":  "tools/notification-template-builder.html",
+                             "sha256":  "8FE7AB3733BCBCBEA2C2726022308A2C1DAD26E0D7C9686855BF2D4F8BB10B4B"
+                         },
+                         {
+                             "path":  "tools/NotificationTemplates/README.md",
+                             "sha256":  "532D64C7FC3E00A8147E9EC1DBA05EEE5216956710A4D8A7625AAF2DB413C9CC"
+                         },
+                         {
+                             "path":  "tools/SAN-source/dist/app/global.css",
+                             "sha256":  "B84BB47046FAB8E74851C631BCA1FB182DA0388991CF0A2323B06DFF9B3972A7"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/JetBrainsMono-Light.ttf",
+                             "sha256":  "277AE2D96548D91AD0B6ADC67073CFFF49B8C35AC42E65A07FECF856297432A6"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/Mandali-Regular.ttf",
+                             "sha256":  "824378EED85842026A07358DF628AB8FDEE22B412F0DEF36948BDE7053B8D055"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/NotoSans-ExtraLight.ttf",
+                             "sha256":  "DEFFD9E53BEB4E3F059B0F063048AD9BDCEFA227ABAB5DA492EC682F49D62E70"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/NotoSans-Light.ttf",
+                             "sha256":  "9AD3EAC2298DCC17B94C76234E9308F73D02211B80322C28D0D8226D736B4317"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/NotoSans-Medium.ttf",
+                             "sha256":  "2931199120FC5C13CCCA9BAF29F5BBD927C75A36BC0EC8147E92293EBBD0316E"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/OpenSans-Medium.ttf",
+                             "sha256":  "0AC55B07DD271115B5B44576258803D9035B3C80377349FA6229DDBC29411CE3"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/Roboto-Medium.ttf",
+                             "sha256":  "ECF88DA1F85FA75DFCE5AA0D9DD2973DD40E5702CE351D4DE3CCFE58206044CE"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/SourceSansPro-ExtraLight.ttf",
+                             "sha256":  "03DF6C5EAA19316B67E24C88DEC42EC7EE028BAA9FAE62727D58EB84CEF27703"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/SourceSansPro-Light.ttf",
+                             "sha256":  "7A7C2FBA49F03D651268F0AFCDE934AF7E1D2BEF57787F8CA3F44F0064FF7EF8"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/TitilliumWeb-Regular.ttf",
+                             "sha256":  "486E78BE7CA7596376418B5120443EE1A359E95488DA17F7A88282D82F34D51C"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/TitilliumWeb-SemiBold.ttf",
+                             "sha256":  "3A285881FAADBB793538867D008DC972EC70A7244099B6ED84BB5691C519BE28"
+                         },
+                         {
+                             "path":  "tools/SAN-source/fonts/VT323-Regular.ttf",
+                             "sha256":  "CEE34B1D391E4B77B07B514F2C9C98FB2F60B49D4936FDE107D212CCEAC5E012"
+                         },
+                         {
+                             "path":  "tools/SAN-source/icon/lock.svg",
+                             "sha256":  "E8E84E7DDF09100C4F56D5AF6251483D0D6D6784AD3CE92AACBA3025B2AE797F"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/achicon.png",
+                             "sha256":  "E33C726DCE505DF05E96AD8995BD711F58C39084A590AFE97F6D4DCC86E4389B"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/base64.png",
+                             "sha256":  "F26D07D9B1D86C46A7185943D927EAF239040AB0D343C8B0165F065DA59A8560"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/ribbonbw.svg",
+                             "sha256":  "A70A2AA673429C1B8DBFDC737013E1F8CEE3FD167AA38E19AE8B7DA7B98A02B7"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/s.svg",
+                             "sha256":  "DFB74585A5D795122D560822223058D4AD56B978D3EB58D608A329FD6E7B32AA"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanimgbg.png",
+                             "sha256":  "F85EE61812168A880D13F9FB93A4976B09C0D1800397F70F9B8473DD64A63CEA"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanlogo.svg",
+                             "sha256":  "ED913998979D4B76A1B627F231376C893719AABADEDDCD29BABA24B312E2FA53"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanlogotrophy.svg",
+                             "sha256":  "4A328721B2A87CDD263E4EFEFDEC1002090838DBA9FB4D6A00BE704C2CC57D37"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanlogotrophy_bronze.svg",
+                             "sha256":  "841950198F2EFA098E4EEDF9C823FF58103B138AC3E2C428F220039A0934FD91"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanlogotrophy_gold.svg",
+                             "sha256":  "EFC6DC84C971016A1BAE5D29ED2E9A567301A9B2D07AE11EB99488AAB71E0D8F"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanlogotrophy_silver.svg",
+                             "sha256":  "53E3614975EE12881199E5E9C53AD8CD1885001D18BD0B504EF3C590DB807DAC"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/sanlogotrophy_small.svg",
+                             "sha256":  "58AAC3E3F376B7AE21CBFC6C58D99FAF8FAA1604F607D753E7F3E34FB4A281CC"
+                         },
+                         {
+                             "path":  "tools/SAN-source/img/steamlogonew.svg",
+                             "sha256":  "2C1B8D6F7F7CFB70CE65B1B719B4709C93E446E0AE92CF0A83854F7477C66759"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/base.css",
+                             "sha256":  "03FA6122F2DF89F7E4C0B63D1BAFA916A17817D037BFCBA2BF4877C43D2949A4"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/base.html",
+                             "sha256":  "CF337B5DA7078B9579D53D68BB8C2B6FA86FBCC2C87E4F8BBDE9CBAC32DF5AAE"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/baseanim.css",
+                             "sha256":  "70AC861DD583CC2F369531AE5888590BF1E2B7251FD6679457AFCBE22735E0BA"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/default/index.html",
+                             "sha256":  "48DB0F1E38C941D5281F54E30B8FB07B592BD5723060A29DB6BC75261F2BBAB2"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/default/styles.css",
+                             "sha256":  "AECCB86AAC1CBF8CAE1194ED000318D16474786EEFFE6615CD696338C27B85FB"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/epicgames/index.html",
+                             "sha256":  "7788F3E624621254F25C2294FC15E42D8D85B7F966CA3BE81D4DE113F03F9061"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/epicgames/styles.css",
+                             "sha256":  "FE43A553EBA762609EF9DFCF171D78DEAF5E26D797D99B565F923CFDD54EF578"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/gfwl/index.html",
+                             "sha256":  "CB7F2A70522814F00554EB5B399BA0E81061795AD90F2D7CB3EB4F2BC1C903BF"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/gfwl/styles.css",
+                             "sha256":  "518660C70BDFE0384CF0C5CEDFCCEABCCDE192B052E7928D26DAF8D3DABAEE27"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/presets.json",
+                             "sha256":  "012934D92CFC72550FC66A51FA86C4426128F91BC77E1B7F4166E4FE84E91024"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/ps3/index.html",
+                             "sha256":  "DA6BD408C54C479573D1EC6D8FE42E5A5FB60BE27F5691513CDD76572D70AB11"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/ps3/styles.css",
+                             "sha256":  "3092FD4241E77592102B34A814D1FBA495AC2EE3EFA451561844FA616F3D5737"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/ps4/index.html",
+                             "sha256":  "D51EEBEF4CB9420590EDF7F41191DF216A57D4F562C5F379D0A944B5E6B56199"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/ps4/styles.css",
+                             "sha256":  "56D4417E34B33C30D37130B29DD3DFE93A735BB9E6EC679B5FB16350B8770975"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/ps5/index.html",
+                             "sha256":  "E422D8E3CC2358AC1ECD7D9FAEB115572A5425252DE3E1E4A8539487C114F2E5"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/ps5/styles.css",
+                             "sha256":  "44AD5BA951DE7C1D2B29F04E71E47911D83CDFA13DA3230D90D3AD85B498584A"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/steamdeck/index.html",
+                             "sha256":  "13CE8B4A5BBC339EF671A764767C80A2B034FCDD61D71A77BE4221A38D577C64"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/steamdeck/styles.css",
+                             "sha256":  "6CEB4DE598638E73F016AFABB8529A29C14BB2AD01A1985576B29599BB732EA8"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/windows/index.html",
+                             "sha256":  "FC1F22658880BE0F4676EF9800C2DD4129E77AEC05A9D5DDDC6DFD2EADA6ED36"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/windows/styles.css",
+                             "sha256":  "FB2F732FB41B7BA45C710E582458C4478DBD4C988BEBA1F31157F41951E68293"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/xbox360/index.html",
+                             "sha256":  "309AF53090BF6DB8776369943D206008F62E6C45B255734D2A43728032FF25A5"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/xbox360/styles.css",
+                             "sha256":  "DBBF955FDB03EC2210E7B2A31089884114873C62BDA7EA84FC5242C73AB88D2F"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/xboxone/index.html",
+                             "sha256":  "CC8BD9120493F445ADDA6625B971030F60114CD328BE125713D02727B9D5EFE0"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/xboxone/styles.css",
+                             "sha256":  "6C50E08E3E9F7335CFF48EB2879E42C593C3FC493E93CA1EBA43662EE30A45A9"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/xqjan/index.html",
+                             "sha256":  "9A6A4D22686A35F1B3B6D06838932C36C8356DDF6A8F1E02DF3A87515677ADF6"
+                         },
+                         {
+                             "path":  "tools/SAN-source/notify/presets/xqjan/styles.css",
+                             "sha256":  "E83F9BB8637D999553BE4C0C571EE412DF0C468EB31153A5AE945090FA0AF259"
+                         },
+                         {
+                             "path":  "tools/SAN-source/sound/notify.wav",
+                             "sha256":  "50080D415816437B19570E7591BC1AA27862A2B396154E643658B34BE35A81C9"
+                         },
+                         {
+                             "path":  "tools/StartPageCompatibility/Patch-GlobalRecentAchievements.ps1",
+                             "sha256":  "C6C60AE0718EE6E8F3015EBDD9921E42DF271C99C3AB732E5E0BD93D887F05A7"
+                         },
+                         {
+                             "path":  "tools/StartPageCompatibility/README.md",
+                             "sha256":  "AAFC229F07FB13DDF86FC051118F9A2FFCE9E4F9F98B955BB22CB9FB2F437C21"
+                         },
+                         {
+                             "path":  "UPSTREAM_V4.0.1_CONFLICT_REVIEW.md",
+                             "sha256":  "6AB778A834EAE3CBFE770E701C23C2F0A514DBFEAA874D39652ABCBEE420E36C"
+                         }
+                     ]
+}

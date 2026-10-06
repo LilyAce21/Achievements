@@ -1,0 +1,67 @@
+<local:CompactAchievementControlBase x:Class="PlayniteAchievements.Views.ThemeIntegration.Legacy.PluginCompactLockedControl"
+                   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                   xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                   xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                   xmlns:controls="clr-namespace:Playnite.SDK.Controls;assembly=Playnite.SDK"
+                   xmlns:converters="clr-namespace:PlayniteAchievements.Views.Converters"
+                   xmlns:local="clr-namespace:PlayniteAchievements.Views.ThemeIntegration.Base"
+                   xmlns:localControls="clr-namespace:PlayniteAchievements.Views.ThemeIntegration.Legacy.Controls"
+                   mc:Ignorable="d"
+                   d:DesignHeight="100" d:DesignWidth="300"
+                   MinHeight="{Binding RelativeSource={RelativeSource AncestorType=ContentControl}, Path=MinHeight}"
+                   MaxHeight="{Binding RelativeSource={RelativeSource AncestorType=ContentControl}, Path=MaxHeight}">
+    <!--
+        SuccessStory-compatible compact locked control for theme integration.
+        Programmatically creates grid columns to fit achievements, with "+X more" in the last column.
+    -->
+    <local:CompactAchievementControlBase.Style>
+        <Style TargetType="local:CompactAchievementControlBase">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Persisted.EnableAchievementCompactLockedListControl}"
+                             Value="False">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </local:CompactAchievementControlBase.Style>
+
+    <local:CompactAchievementControlBase.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/CommonResources.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </local:CompactAchievementControlBase.Resources>
+
+    <Grid>
+        <Border CornerRadius="{DynamicResource ControlCornerRadius}"
+                BorderThickness="{DynamicResource ControlBorderThickness}"
+                Background="Transparent"
+                Padding="5"
+                BorderBrush="{DynamicResource PlayAch.Brush.Border}">
+            <Grid Name="PART_GridContener"
+                  MinHeight="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=IconHeight}"
+                  Tag="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=IconHeight}">
+                <Grid Name="PART_ScCompactView" x:FieldModifier="protected" />
+
+                <!-- Empty state message -->
+                <TextBlock Text="{DynamicResource LOCPlayAch_NoLockedAchievements}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource PlayAch.Brush.Text.Secondary}">
+                    <TextBlock.Style>
+                        <Style TargetType="{x:Type TextBlock}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=HasLocked}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                            <Setter Property="Visibility" Value="Visible" />
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </Border>
+    </Grid>
+</local:CompactAchievementControlBase>

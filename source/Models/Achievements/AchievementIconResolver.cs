@@ -1,0 +1,403 @@
+using System;
+using System.IO;
+using PlayniteAchievements.Services.Images;
+
+namespace PlayniteAchievements.Models.Achievements
+{
+    /// <summary>
+    /// Icon resolution utilities for achievement display.
+    /// </summary>
+    public static class AchievementIconResolver
+    {
+        private const string DefaultIconPackUri = "pack://application:,,,/PlayniteAchievements;component/Resources/HiddenAchIcon.png";
+        private const string DefaultUnlockedIconPackUri = "pack://application:,,,/PlayniteAchievements;component/Resources/UnlockedAchIcon.png";
+        private const string GrayPrefix = "gray:";
+        private const string CacheBustPrefix = "cachebust|";
+
+        /// <summary>
+        /// Supplies the user's custom locked cover image path, or null/blank for the built-in
+        /// placeholder. Assigned once at plugin startup. Read through on every call so a settings
+        /// dialog's in-flight edits and its cancel-time instance swap are both picked up without
+        /// depending on PropertyChanged handler ordering.
+        /// </summary>
+        public static Func<string> LockedFallbackPathAccessor { get; set; }
+
+        /// <summary>
+        /// Supplies the user's custom hidden cover image path, or null/blank for the built-in
+        /// placeholder. See <see cref="LockedFallbackPathAccessor"/>.
+        /// </summary>
+        public static Func<string> HiddenFallbackPathAccessor { get; set; }
+
+        /// <summary>
+        /// Get the built-in placeholder pack URI. This is the "no image" thumbnail used by the
+        /// icon editors and the stand-in for an achievement with no artwork at all, so it ignores
+        /// the user's cover settings; the masked states use <see cref="GetLockedFallbackIcon"/> and
+        /// <see cref="GetHiddenFallbackIcon"/> instead.
+        /// </summary>
+        public static string GetDefaultIcon() => DefaultIconPackUri;
+
+        public static string GetDefaultUnlockedIcon() => DefaultUnlockedIconPackUri;
+
+        public static string NormalizeIconPath(string iconPath) => NormalizeDisplaySource(iconPath);
+
+        /// <summary>
+        /// The cover drawn over a locked achievement's icon while it is masked, that is, while
+        /// ShowLockedIcon is off and the row has not been revealed. Clicking the cover reveals the
+        /// real icon underneath, which never uses this image.
+        /// </summary>
+        public static string GetLockedFallbackIcon() =>
+            ResolveCustomFallback(LockedFallbackPathAccessor) ?? DefaultIconPackUri;
+
+        /// <summary>
+        /// The cover drawn over a hidden achievement's icon while it is masked. Takes precedence
+        /// over the locked cover when a row is both hidden and locked-masked.
+        /// </summary>
+        public static string GetHiddenFallbackIcon() =>
+            ResolveCustomFallback(HiddenFallbackPathAccessor) ?? DefaultIconPackUri;
+
+        /// <summary>
+        /// The icon for one grid row: the hidden cover when the row's icon is hidden-masked, the
+        /// locked cover when it is locked-masked, otherwise the real artwork. Hidden is tested
+        /// first so the more spoiler-sensitive state wins when both apply.
+        ///
+        /// AchievementDisplayItem.DisplayIcon deliberately keeps its own expanded copy of this
+        /// decision rather than delegating here: a source-text test
+        /// (AchievementSpoilerVisibilityDefinitionTests) asserts on its literal branch lines.
+        /// </summary>
+        public static string ResolveRowDisplayIcon(
+            bool isIconHidden,
+            bool isLockedIconHidden,
+            bool unlocked,
+            string unlockedIconPath,
+            string lockedIconPath)
+        {
+            if (isIconHidden)
+            {
+                return GetHiddenFallbackIcon();
+            }
+
+            if (isLockedIconHidden)
+            {
+                return GetLockedFallbackIcon();
+            }
+
+            return unlocked
+                ? GetUnlockedDisplayIcon(unlockedIconPath)
+                : GetLockedDisplayIcon(unlockedIconPath, lockedIconPath);
+        }
+
+        /// <summary>
+        /// Resolves a configured cover path into a display source, or null when unset or the
+        /// file is gone. Routed through <see cref="BuildDisplayIcon"/> so the managed file picks up
+        /// a cache-bust token: the slot filename is fixed, so replacing the image overwrites the
+        /// same path and would otherwise keep serving the previously decoded bitmap.
+        /// </summary>
+        private static string ResolveCustomFallback(Func<string> accessor)
+        {
+            if (accessor == null)
+            {
+                return null;
+            }
+
+            string configured;
+            try
+            {
+                configured = accessor();
+            }
+            catch
+            {
+                return null;
+            }
+
+            var normalized = NormalizeDisplaySource(configured);
+            if (string.IsNullOrWhiteSpace(normalized) || !IsUsableDisplayPath(normalized))
+            {
+                return null;
+            }
+
+            var candidate = BuildDisplayIcon(normalized, gray: false);
+            return string.IsNullOrWhiteSpace(candidate) ? null : candidate;
+        }
+
+        /// <summary>
+        /// Returns a plain path/pack URI without cache-busting or grayscale prefixes.
+        /// This preserves compatibility with legacy themes that bind directly to Image.Source.
+        /// </summary>
+        public static string GetLegacyCompatibleIcon(string iconPath)
+        {
+            var normalized = NormalizeDisplaySource(iconPath);
+            return string.IsNullOrWhiteSpace(normalized)
+                ? DefaultIconPackUri
+                : normalized;
+        }
+
+        public static string GetUnlockedDisplayIcon(string unlockedIconPath) =>
+            string.IsNullOrWhiteSpace(unlockedIconPath)
+                ? DefaultIconPackUri
+                : BuildDisplayIcon(unlockedIconPath, gray: false);
+
+        /// <summary>
+        /// The real artwork for a locked achievement: an explicit locked icon when one exists,
+        /// otherwise the grayscaled unlocked icon, otherwise the built-in placeholder.
+        ///
+        /// The user's custom locked image is deliberately not consulted here. It is cover art for
+        /// the masked state only (<see cref="GetLockedFallbackIcon"/>), so revealing a cover shows
+        /// the achievement's own artwork rather than the same custom image again.
+        /// </summary>
+        public static string GetLockedDisplayIcon(string unlockedIconPath, string lockedIconPath)
+        {
+            if (HasExplicitLockedIcon(lockedIconPath, unlockedIconPath))
+            {
+                return BuildDisplayIcon(lockedIconPath, gray: false);
+            }
+
+            var candidate = BuildDisplayIcon(unlockedIconPath, gray: true);
+            return string.IsNullOrWhiteSpace(candidate) ? DefaultIconPackUri : candidate;
+        }
+
+        /// <summary>
+        /// The locked slot's art to draw, or null when the locked look should be derived from the
+        /// unlocked icon instead.
+        /// </summary>
+        /// <remarks>
+        /// "Use separate locked icons" is about the provider's second image, so turning it off
+        /// derives the locked look from the unlocked icon. A locked icon the user chose is not
+        /// that image and survives the toggle either way.
+        ///
+        /// So only the provider's own cached locked file is dropped, rather than keeping what sits
+        /// in the custom folder: a locked override can also be a URL, or the path just picked and
+        /// not yet copied in, and the setting has no business discarding either.
+        ///
+        /// Applied where the icon is drawn rather than only where the cache is written, so the
+        /// toggle takes effect immediately instead of waiting for the next refresh to re-resolve
+        /// every path.
+        /// </remarks>
+        public static string ResolveLockedArtPath(string lockedIconPath, bool useSeparateLockedIcons)
+        {
+            if (useSeparateLockedIcons || string.IsNullOrWhiteSpace(lockedIconPath))
+            {
+                return lockedIconPath;
+            }
+
+            var normalized = NormalizeDisplaySource(lockedIconPath);
+            var isProviderCachedLockedArt =
+                AchievementIconCachePathBuilder.IsCachedIconPath(normalized) &&
+                !AchievementIconCachePathBuilder.IsCustomIconPath(normalized);
+
+            return isProviderCachedLockedArt ? null : lockedIconPath;
+        }
+
+        /// <summary>
+        /// Whether the locked slot holds a locked icon of its own, as opposed to a copy of the
+        /// unlocked one that the locked look should be derived from instead.
+        /// </summary>
+        /// <remarks>
+        /// Answered from the file name, because that is where the answer is kept: every locked
+        /// icon is stored under the locked name, the provider's own art and a custom one alike,
+        /// and nothing else is. Comparing the two paths instead gets both of the cases that matter
+        /// wrong.
+        ///
+        /// One image chosen for both slots is one image in two files, so comparing the paths reads
+        /// it as no locked icon and grays an icon somebody picked. And a game with separate locked
+        /// icons off stores the unlocked path in both slots, so a custom unlocked icon leaves that
+        /// copy behind pointing at the art it replaced -- which compares as different, and showed
+        /// the provider's original back in full colour for everything still locked.
+        ///
+        /// The comparison is kept for a path from outside the icon cache, which carries no name of
+        /// ours to read: a locked path typed by hand counts while it differs from the unlocked one,
+        /// as it always has.
+        /// </remarks>
+        public static bool HasExplicitLockedIcon(string lockedIconPath, string unlockedIconPath)
+        {
+            var normalizedLockedIconPath = NormalizeDisplaySource(lockedIconPath);
+            if (string.IsNullOrWhiteSpace(normalizedLockedIconPath))
+            {
+                return false;
+            }
+
+            if (!IsUsableDisplayPath(normalizedLockedIconPath))
+            {
+                return false;
+            }
+
+            if (AchievementIconCachePathBuilder.IsCachedIconPath(normalizedLockedIconPath))
+            {
+                return AchievementIconCachePathBuilder.IsLockedVariantPath(normalizedLockedIconPath);
+            }
+
+            var normalizedUnlockedIconPath = NormalizeDisplaySource(unlockedIconPath);
+            if (string.IsNullOrWhiteSpace(normalizedUnlockedIconPath))
+            {
+                return true;
+            }
+
+            return !string.Equals(
+                NormalizeIcon(normalizedLockedIconPath),
+                NormalizeIcon(normalizedUnlockedIconPath),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Wraps a local file path with a cache-bust token derived from the file's
+        /// last write time and length so overwriting the file at the same path
+        /// produces a new cache key. Idempotent: any existing token is replaced
+        /// and an existing grayscale marker is preserved.
+        /// Non-file sources are returned normalized and unwrapped.
+        /// </summary>
+        public static string ApplyCacheBust(string path) => BuildDisplayIcon(path, gray: ContainsGrayMarker(path));
+
+        private static bool ContainsGrayMarker(string value)
+        {
+            var normalized = NormalizeIcon(value);
+            while (!string.IsNullOrWhiteSpace(normalized) &&
+                   normalized.StartsWith(CacheBustPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var firstSeparator = normalized.IndexOf('|');
+                var secondSeparator = firstSeparator >= 0 ? normalized.IndexOf('|', firstSeparator + 1) : -1;
+                if (secondSeparator < 0 || secondSeparator + 1 >= normalized.Length)
+                {
+                    break;
+                }
+
+                normalized = normalized.Substring(secondSeparator + 1);
+            }
+
+            return normalized?.StartsWith(GrayPrefix, StringComparison.OrdinalIgnoreCase) == true;
+        }
+
+        /// <summary>
+        /// Prefixes the icon identifier with "gray:" when not already prefixed.
+        /// </summary>
+        public static string ApplyGrayPrefix(string icon)
+        {
+            var normalized = NormalizeDisplaySource(icon);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+
+            return normalized.StartsWith(GrayPrefix, StringComparison.OrdinalIgnoreCase)
+                ? normalized
+                : GrayPrefix + normalized;
+        }
+
+        private static string NormalizeIcon(string value) => value?.Trim();
+
+        private static bool IsUsableDisplayPath(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            if (value.StartsWith("pack://", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (value.StartsWith(GrayPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // A remote source is usable: MemoryImageService downloads http(s) URIs through the disk
+            // cache and grayscales afterwards. Requiring File.Exists here made a URL-valued locked
+            // override fall through to the grayscaled unlocked icon, while an identical unlocked
+            // override rendered fine because GetUnlockedDisplayIcon never checked at all.
+            if (IsHttpUrl(value))
+            {
+                return true;
+            }
+
+            return File.Exists(value);
+        }
+
+        private static bool IsHttpUrl(string value) =>
+            value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+        private static string BuildDisplayIcon(string iconPath, bool gray)
+        {
+            var normalized = NormalizeDisplaySource(iconPath);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+
+            var candidate = gray ? ApplyGrayPrefix(normalized) : normalized;
+            var cacheBustToken = TryGetCacheBustToken(candidate);
+            return string.IsNullOrWhiteSpace(cacheBustToken)
+                ? candidate
+                : string.Concat(CacheBustPrefix, cacheBustToken, "|", candidate);
+        }
+
+        // One stat, not two. This runs on the UI thread for every DisplayIcon read, which means
+        // once per row the editor's grid realizes, and File.Exists followed by a fresh FileInfo
+        // asked the filesystem for the same entry twice. FileInfo caches its metadata on first
+        // access, so Exists, LastWriteTimeUtc and Length all come from the one lookup.
+        private static string TryGetCacheBustToken(string value)
+        {
+            var normalized = NormalizeDisplaySource(value);
+            if (string.IsNullOrWhiteSpace(normalized) || !Path.IsPathRooted(normalized))
+            {
+                return null;
+            }
+
+            try
+            {
+                var fileInfo = new FileInfo(normalized);
+                if (!fileInfo.Exists)
+                {
+                    return null;
+                }
+
+                return string.Concat(fileInfo.LastWriteTimeUtc.Ticks.ToString(), ":", fileInfo.Length.ToString());
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string NormalizeDisplaySource(string value)
+        {
+            var normalized = NormalizeIcon(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+
+            while (true)
+            {
+                var changed = false;
+
+                if (normalized.StartsWith(CacheBustPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    var firstSeparator = normalized.IndexOf('|');
+                    if (firstSeparator >= 0)
+                    {
+                        var secondSeparator = normalized.IndexOf('|', firstSeparator + 1);
+                        if (secondSeparator >= 0 && secondSeparator + 1 < normalized.Length)
+                        {
+                            normalized = normalized.Substring(secondSeparator + 1);
+                            changed = true;
+                        }
+                    }
+                }
+
+                if (normalized.StartsWith(GrayPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    normalized = normalized.Substring(GrayPrefix.Length);
+                    changed = true;
+                }
+
+                if (!changed)
+                {
+                    break;
+                }
+            }
+
+            return NormalizeIcon(normalized);
+        }
+    }
+}

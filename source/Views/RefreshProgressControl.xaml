@@ -1,0 +1,141 @@
+<UserControl x:Class="PlayniteAchievements.Views.RefreshProgressControl"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:converters="clr-namespace:PlayniteAchievements.Views.Converters"
+        mc:Ignorable="d"
+        d:DesignHeight="280"
+        d:DesignWidth="400">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/CommonResources.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/LogoResources.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <converters:WholePercentToTextConverter x:Key="WholePercentToText"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource PlayAch.Brush.Window.Background}" Padding="8">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Section -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource PlayAch.Brush.Surface}"
+                BorderBrush="{DynamicResource PlayAch.Brush.Border}"
+                BorderThickness="0,0,0,1"
+                Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Plugin Logo -->
+                <Image Grid.Column="0"
+                       Source="{StaticResource PlayAch.Image.Logo}"
+                       Width="32"
+                       Height="32"
+                       Margin="{StaticResource PlayAch.Thickness.Right.Md}"
+                       VerticalAlignment="Center"/>
+
+                <!-- Title -->
+                <TextBlock Grid.Column="1"
+                           Text="{DynamicResource LOCPlayAch_Title_PluginName}"
+                           Style="{DynamicResource PlayAch.TextBlock.BaseStyle}"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource PlayAch.Brush.Text}"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- Progress Section -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource PlayAch.Brush.Surface}"
+                BorderBrush="{DynamicResource PlayAch.Brush.Border}"
+                BorderThickness="0,0,0,1"
+                Padding="16,14">
+            <StackPanel VerticalAlignment="Top">
+                <!-- Progress Message -->
+                <TextBlock Text="{Binding ProgressMessage}"
+                           Style="{DynamicResource PlayAch.TextBlock.BaseStyle}"
+                           Foreground="{DynamicResource PlayAch.Brush.Text}"
+                           Opacity="{StaticResource PlayAch.Opacity.Secondary}"
+                           TextWrapping="Wrap"
+                           Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"
+                           MinHeight="40"/>
+
+                <!-- Progress Bar with Percentage -->
+                <Grid Margin="{StaticResource PlayAch.Thickness.Bottom.Md}">
+                    <ProgressBar Value="{Binding ProgressPercent}"
+                                 Style="{StaticResource GameProgressBar}"
+                                 Height="22"/>
+                    <TextBlock Text="{Binding ProgressPercent, Converter={StaticResource WholePercentToText}}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Style="{DynamicResource PlayAch.TextBlock.BaseStyle}"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource PlayAch.Brush.Text}"/>
+                </Grid>
+
+                <!-- Hint Text -->
+                <TextBlock Text="{Binding RefreshRunningNote}"
+                           Style="{DynamicResource PlayAch.TextBlock.BaseStyle}"
+                           Foreground="{DynamicResource PlayAch.Brush.Text}"
+                           Opacity="{StaticResource PlayAch.Opacity.Muted}"
+                           FontSize="11"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons Section -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource PlayAch.Brush.Surface}"
+                Padding="16,12">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right">
+                <Button Content="{DynamicResource LOCPlayAch_Common_Hide}"
+                        Command="{Binding HideCommand}"
+                        Style="{StaticResource PlayAch.Button.BaseStyle}"
+                        Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                        MinWidth="80"
+                        Margin="{StaticResource PlayAch.Thickness.Right.Compact}"
+                        Visibility="{Binding ShowInProgressButtons, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                <Button Content="{DynamicResource LOCPlayAch_Button_Cancel}"
+                        Command="{Binding CancelCommand}"
+                        Style="{StaticResource PlayAch.Button.BaseStyle}"
+                        Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                        MinWidth="80"
+                        Margin="{StaticResource PlayAch.Thickness.Right.Compact}"
+                        Visibility="{Binding ShowInProgressButtons, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                <Button Content="{DynamicResource LOCPlayAch_Common_Continue}"
+                        Command="{Binding ContinueCommand}"
+                        Style="{StaticResource PlayAch.Button.BaseStyle}"
+                        Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                        MinWidth="80"
+                        Margin="{StaticResource PlayAch.Thickness.Right.Compact}"
+                        IsDefault="True"
+                        Visibility="{Binding ShowCompleteButtons, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                <Button Content="{DynamicResource LOCPlayAch_Menu_ViewAchievements}"
+                        Command="{Binding OpenViewAchievementsCommand}"
+                        Style="{StaticResource PlayAch.Button.BaseStyle}"
+                        Padding="{StaticResource PlayAch.Thickness.ButtonPadding}"
+                        MinWidth="120"
+                        Visibility="{Binding ShowOpenViewAchievementsButton, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+    </Border>
+</UserControl>
+
+

@@ -1,0 +1,128 @@
+<!-- SettingsControl.xaml -->
+<UserControl x:Class="PlayniteAchievements.Views.SettingsControl"
+             x:Name="SettingsControlRoot"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:nav="clr-namespace:PlayniteAchievements.Views.Settings.Navigation"
+             mc:Ignorable="d"
+             d:DesignHeight="600"
+             d:DesignWidth="700"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+
+    <!-- UseLayoutRounding/SnapsToDevicePixels are declared on this root rather than left to the
+         host window, because the usual host is Playnite's own Settings dialog, which the plugin does
+         not create and cannot configure. The popout path already gets them from
+         PlayniteUiProvider.CreateExtensionWindow, which carries the full rationale. -->
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/SettingsScopedControlStyles.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/RarityBadges.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Margin="24,20,24,24">
+        <TabControl x:Name="SettingsTabControl" SelectionChanged="TabControl_SelectionChanged" BorderThickness="0">
+            <!-- ================== TAB: GENERAL SETTINGS ================== -->
+            <TabItem x:Name="GeneralTab" AutomationProperties.Name="{DynamicResource LOCPlayAch_Common_General}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xE713;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_Common_General}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="GeneralSettingsContent"/>
+            </TabItem>
+
+            <!-- ================== TAB: PROVIDERS ================== -->
+            <TabItem x:Name="ProvidersTab" AutomationProperties.Name="{DynamicResource LOCPlayAch_CustomRefresh_ProvidersHeader}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xE753;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_CustomRefresh_ProvidersHeader}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <nav:SettingsMasterDetailControl
+                    ItemsSource="{Binding ProviderNavigationItems, ElementName=SettingsControlRoot}"
+                    SelectedItem="{Binding SelectedProviderNavigationItem, ElementName=SettingsControlRoot, Mode=TwoWay}"
+                    ShowSearch="True"
+                    EnableGrouping="True"/>
+            </TabItem>
+
+            <!-- ================== TAB: FRIENDS ================== -->
+            <TabItem x:Name="FriendsTab" AutomationProperties.Name="{DynamicResource LOCPlayAch_Settings_Friends}"
+                     Visibility="{Binding Persisted.EnableFriendsFeatures, Converter={StaticResource BoolToVis}}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xE716;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Friends}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="FriendsSettingsContent"/>
+            </TabItem>
+
+            <!-- Fork notification editor retained alongside the v3 settings pages. -->
+            <TabItem x:Name="AchievementNotificationsTab" AutomationProperties.Name="Achievement Notifications">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xECA7;"/>
+                        <TextBlock Text="Achievement Notifications" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="AchievementNotificationsContent"/>
+            </TabItem>
+
+            <!-- Fork migration workflow retained as a separate page alongside v3 migration. -->
+            <TabItem x:Name="ForkThemeMigrationTab"
+                     AutomationProperties.Name="{DynamicResource LOCPlayAch_ThemeMigration_Title}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xEFD2;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_ThemeMigration_Title}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="ForkThemeMigrationContent"/>
+            </TabItem>
+
+            <!-- ================== TAB: DISPLAY ================== -->
+            <TabItem x:Name="DisplayTab" AutomationProperties.Name="{DynamicResource LOCPlayAch_Settings_TabDisplay}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xE7F4;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_TabDisplay}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="DisplaySettingsContent"/>
+            </TabItem>
+
+            <!-- ================== TAB: THEMES ================== -->
+            <TabItem x:Name="ThemesTab" AutomationProperties.Name="{DynamicResource LOCPlayAch_Settings_Display_Themes}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xE771;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Display_Themes}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="ThemesSettingsContent"/>
+            </TabItem>
+
+            <!-- ================== TAB: NOTIFICATIONS ================== -->
+            <TabItem x:Name="NotificationsTab" AutomationProperties.Name="{DynamicResource LOCPlayAch_Settings_TabNotifications}">
+                <TabItem.Header>
+                    <StackPanel Style="{StaticResource TabHeaderWithIconStyle}">
+                        <TextBlock Style="{StaticResource HeaderIconStyle}" Text="&#xEA8F;"/>
+                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_TabNotifications}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+                <ContentControl x:Name="NotificationsSettingsContent"/>
+            </TabItem>
+
+        </TabControl>
+    </Grid>
+</UserControl>

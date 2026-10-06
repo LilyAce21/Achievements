@@ -1,0 +1,52 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace PlayniteAchievements.Services.ThemeMigration
+{
+    /// <summary>
+    /// Defines which legacy theme elements should be modernized during a custom migration.
+    /// Unselected elements remain in their legacy form.
+    /// </summary>
+    public sealed class CustomMigrationSelection
+    {
+        public CustomMigrationSelection(IEnumerable<string> modernControlNames = null, bool modernizeBindings = false)
+        {
+            ModernControlNames = new HashSet<string>(
+                modernControlNames ?? Enumerable.Empty<string>(),
+                StringComparer.Ordinal);
+            ModernizeBindings = modernizeBindings;
+        }
+
+        /// <summary>
+        /// Gets the legacy control names that should be replaced with modern controls.
+        /// </summary>
+        public HashSet<string> ModernControlNames { get; }
+
+        /// <summary>
+        /// Gets or sets whether LegacyData bindings should be replaced with Theme bindings.
+        /// </summary>
+        public bool ModernizeBindings { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether compact achievement list controls should be migrated to
+        /// the scrollable modern controls. When false, they remain in the legacy +X layout.
+        /// </summary>
+        public bool ModernizeCompactAchievementLists { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets whether the modern unlocked-achievement list shows its newest
+        /// achievement as a larger featured row above the horizontal scroller.
+        /// </summary>
+        public bool HighlightLatestUnlockedAchievement { get; set; } = true;
+
+        public bool ShouldModernizeControl(string legacyControlName)
+        {
+            return !string.IsNullOrWhiteSpace(legacyControlName) &&
+                   ModernControlNames.Contains(legacyControlName) &&
+                   (ModernizeCompactAchievementLists ||
+                    !ControlMappings.CompactAchievementListControlNames.Contains(legacyControlName));
+        }
+    }
+}
+

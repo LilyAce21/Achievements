@@ -1,0 +1,156 @@
+using System;
+using System.Collections.Generic;
+
+namespace PlayniteAchievements.Models.Settings
+{
+    /// <summary>
+    /// Portable import/export representation for per-game custom data.
+    /// Internal exclusion flags are intentionally omitted.
+    /// </summary>
+    public sealed class GameCustomDataPortableFile
+    {
+        public int SchemaVersion { get; set; } = 8;
+
+        public Guid PlayniteGameId { get; set; }
+
+        public bool? UseSeparateLockedIconsOverride { get; set; }
+
+        public string ManualCapstoneApiName { get; set; }
+
+        /// <inheritdoc cref="GameCustomDataFile.CapstonesMaterialized"/>
+        public bool CapstonesMaterialized { get; set; }
+
+        /// <inheritdoc cref="GameCustomDataFile.Capstones"/>
+        public List<CapstoneAssignment> Capstones { get; set; }
+
+        /// <inheritdoc cref="GameCustomDataFile.AutoCapstoneGenerated"/>
+        public bool AutoCapstoneGenerated { get; set; }
+
+        public List<string> AchievementOrder { get; set; }
+
+        public Dictionary<string, string> AchievementCategoryOverrides { get; set; }
+
+        public Dictionary<string, string> AchievementCategoryTypeOverrides { get; set; }
+
+        public List<string> AchievementCategoryOrder { get; set; }
+
+        public Dictionary<string, CategoryImageOverrideData> AchievementCategoryImageOverrides { get; set; }
+
+        public GameSummaryCategoryData GameSummaryCategory { get; set; }
+
+        public List<string> FilteredAchievementApiNames { get; set; }
+
+        public List<string> SummaryFilteredAchievementApiNames { get; set; }
+
+        public List<string> GoalAchievementApiNames { get; set; }
+
+        public Dictionary<string, string> AchievementUnlockedIconOverrides { get; set; }
+
+        public Dictionary<string, string> AchievementLockedIconOverrides { get; set; }
+
+        public Dictionary<string, string> AchievementNotes { get; set; }
+
+        /// <summary>
+        /// Per-achievement user customization, keyed by ApiName. Schema 8 onward; the legacy
+        /// scalar maps above carry schema-7 exports and are folded in on import.
+        /// </summary>
+        public Dictionary<string, AchievementOverride> AchievementOverrides { get; set; }
+
+        public int? RetroAchievementsGameIdOverride { get; set; }
+
+        public List<int> RetroAchievementsSelectedSubsetGameIds { get; set; }
+
+        public string XeniaTitleIdOverride { get; set; }
+
+        public string ShadPS4MatchIdOverride { get; set; }
+
+        public bool? ForceUseExophase { get; set; }
+
+        public string ExophaseSlugOverride { get; set; }
+
+        public GameNotificationAppearanceOverride NotificationAppearanceOverride { get; set; }
+
+        public ProviderOverrideData ProviderOverride { get; set; }
+
+        public string ExophaseEnrichmentSlugOverride { get; set; }
+
+        public ManualAchievementLink ManualLink { get; set; }
+
+        public List<CustomAchievementDefinition> CustomAchievements { get; set; }
+
+        public string CustomProviderId { get; set; }
+
+        /// <summary>
+        /// Snapshot of the assigned custom provider (name, color, icon path data) so a package
+        /// imported on another machine can recreate it. A local definition with the same id wins
+        /// on import.
+        /// </summary>
+        public CustomProviderDefinition CustomProvider { get; set; }
+
+        public GameCustomDataPortableFile Clone()
+        {
+            return new GameCustomDataPortableFile
+            {
+                SchemaVersion = SchemaVersion,
+                PlayniteGameId = PlayniteGameId,
+                UseSeparateLockedIconsOverride = UseSeparateLockedIconsOverride,
+                ManualCapstoneApiName = ManualCapstoneApiName,
+                CapstonesMaterialized = CapstonesMaterialized,
+                AutoCapstoneGenerated = AutoCapstoneGenerated,
+                Capstones = Capstones != null
+                    ? Capstones.ConvertAll(item => item?.Clone()).FindAll(item => item != null)
+                    : null,
+                AchievementOrder = AchievementOrder != null
+                    ? new List<string>(AchievementOrder)
+                    : null,
+                AchievementCategoryOverrides = AchievementCategoryOverrides != null
+                    ? new Dictionary<string, string>(AchievementCategoryOverrides, StringComparer.OrdinalIgnoreCase)
+                    : null,
+                AchievementCategoryTypeOverrides = AchievementCategoryTypeOverrides != null
+                    ? new Dictionary<string, string>(AchievementCategoryTypeOverrides, StringComparer.OrdinalIgnoreCase)
+                    : null,
+                AchievementCategoryOrder = AchievementCategoryOrder != null
+                    ? new List<string>(AchievementCategoryOrder)
+                    : null,
+                AchievementCategoryImageOverrides = GameCustomDataFile.CloneCategoryImageOverrideMap(AchievementCategoryImageOverrides),
+                GameSummaryCategory = GameSummaryCategory?.Clone(),
+                FilteredAchievementApiNames = FilteredAchievementApiNames != null
+                    ? new List<string>(FilteredAchievementApiNames)
+                    : null,
+                SummaryFilteredAchievementApiNames = SummaryFilteredAchievementApiNames != null
+                    ? new List<string>(SummaryFilteredAchievementApiNames)
+                    : null,
+                GoalAchievementApiNames = GoalAchievementApiNames != null
+                    ? new List<string>(GoalAchievementApiNames)
+                    : null,
+                AchievementUnlockedIconOverrides = AchievementUnlockedIconOverrides != null
+                    ? new Dictionary<string, string>(AchievementUnlockedIconOverrides, StringComparer.OrdinalIgnoreCase)
+                    : null,
+                AchievementLockedIconOverrides = AchievementLockedIconOverrides != null
+                    ? new Dictionary<string, string>(AchievementLockedIconOverrides, StringComparer.OrdinalIgnoreCase)
+                    : null,
+                AchievementNotes = AchievementNotes != null
+                    ? new Dictionary<string, string>(AchievementNotes, StringComparer.OrdinalIgnoreCase)
+                    : null,
+                AchievementOverrides = GameCustomDataFile.CloneAchievementOverrideMap(AchievementOverrides),
+                RetroAchievementsGameIdOverride = RetroAchievementsGameIdOverride,
+                RetroAchievementsSelectedSubsetGameIds = RetroAchievementsSelectedSubsetGameIds != null
+                    ? new List<int>(RetroAchievementsSelectedSubsetGameIds)
+                    : null,
+                XeniaTitleIdOverride = XeniaTitleIdOverride,
+                ShadPS4MatchIdOverride = ShadPS4MatchIdOverride,
+                ForceUseExophase = ForceUseExophase,
+                ExophaseSlugOverride = ExophaseSlugOverride,
+                NotificationAppearanceOverride = NotificationAppearanceOverride?.Clone(),
+                ProviderOverride = ProviderOverride?.Clone(),
+                ExophaseEnrichmentSlugOverride = ExophaseEnrichmentSlugOverride,
+                ManualLink = ManualLink?.Clone(),
+                CustomAchievements = CustomAchievements != null
+                    ? CustomAchievements.ConvertAll(item => item?.Clone()).FindAll(item => item != null)
+                    : null,
+                CustomProviderId = CustomProviderId,
+                CustomProvider = CustomProvider?.Clone()
+            };
+        }
+    }
+}

@@ -1,0 +1,1324 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Input;
+using System.Windows.Threading;
+using PlayniteAchievements.Common;
+using PlayniteAchievements.Models;
+using PlayniteAchievements.Models.Achievements;
+using PlayniteAchievements.Models.Settings;
+using PlayniteAchievements.Providers.Local;
+using PlayniteAchievements.Services;
+using PlayniteAchievements.Services.Achievements;
+using PlayniteAchievements.Services.Cache;
+using PlayniteAchievements.Services.Friends;
+using PlayniteAchievements.Services.Refresh;
+using PlayniteAchievements.Services.Summaries;
+using PlayniteAchievements.ViewModels.Items;
+using PlayniteAchievements.Views.Helpers;
+using Playnite.SDK;
+
+using ObservableObject = PlayniteAchievements.Common.ObservableObject;
+using RelayCommand = PlayniteAchievements.Common.RelayCommand;
+
+namespace PlayniteAchievements.ViewModels
+{
+    public class ViewAchievementsViewModel : ObservableObject, IDisposable
+    {
+        private readonly RefreshRuntime _refreshService;
+        private readonly AchievementDataService _achievementDataService;
+        private readonly IPlayniteAPI _playniteApi;
+        private readonly ILogger _logger;
+        private readonly PlayniteAchievementsSettings _settings;
+        private readonly GameSummaryItemBuilder _summaryBuilder;
+        private readonly Services.Captures.CaptureLibraryService _captureLibrary;
+        private readonly Services.GameCustomData.GameCustomDataStore _customDataStore;
+        private readonly Guid _gameId;
+
+        // Coalesces a burst of customization writes for this game into one reload.
+        private static readonly TimeSpan CustomDataReloadDelay = TimeSpan.FromMilliseconds(250);
+        private DispatcherTimer _customDataReloadTimer;
+        private bool _isDisposed;
+        private Guid? _activeRefreshOperationId;
+        private bool _isApplyingTimelineState;
+        private DispatcherTimer _timelinePersistTimer;
+
+        // Standard refresh-progress UI state (mirrors OverviewViewModel). The progress bar stays
+        // visible while a refresh runs, lingers at 100% briefly on completion, then auto-hides.
+        private static readonly TimeSpan ProgressHideDelay = TimeSpan.FromSeconds(3);
+        private DispatcherTimer _progressHideTimer;
+        private bool _refreshInitiated;
+        private bool _showCompletedProgress;
+
+        // Sort state tracking for quick reverse
+        private string _currentSortPath;
+        private ListSortDirection _currentSortDirection;
+
+        // Search and filter state. The control bar (search box, Unlocked/Locked/Hidden
+        // toggles, Type/Category filters) and its filter predicate live in the shared adapter.
+        private readonly AchievementGridControlBarAdapter _controlBar = new AchievementGridControlBarAdapter();
+
+        // Compare-friend selection: enriches the self rows with a friend's unlock state.
+        public FriendCompareController FriendCompare { get; }
+        private List<AchievementDisplayItem> _allAchievements = new List<AchievementDisplayItem>();
+        private List<AchievementDisplayItem> _orderedAchievements = new List<AchievementDisplayItem>();
+        private List<AchievementDisplayItem> _filteredAchievements = new List<AchievementDisplayItem>();
+        private bool _canEditLocalAchievements;
+        private bool _hasCustomAchievementOrder;
+
+        // In-memory sort/filter state for the most recently viewed game. Restored when the
+        // window reopens for the same game, overwritten on every close, and reset when a
+        // different game is opened. Process-lifetime only; clears on Playnite restart.
+        private sealed class GridStateSnapshot
+        {
+            public Guid GameId;
+            public string SortPath;
+            public ListSortDirection SortDirection;
+            public GridControlBarFilterState Filters;
+        }
+
+        private static GridStateSnapshot _lastGridState;
+
+        internal ViewAchievementsViewModel(
+            Guid gameId,
+            RefreshRuntime refreshRuntime,
+            AchievementDataService achievementDataService,
+            IPlayniteAPI playniteApi,
+            ILogger logger,
+            PlayniteAchievementsSettings settings,
+            IFriendCacheManager friendCache = null)
+        {
+            _gameId = gameId;
+            _refreshService = refreshRuntime ?? throw new ArgumentNullException(nameof(refreshRuntime));
+            _achievementDataService = achievementDataService ?? throw new ArgumentNullException(nameof(achievementDataService));
+            _playniteApi = playniteApi;
+            _logger = logger;
+            _settings = settings;
+            _summaryBuilder = new GameSummaryItemBuilder(_playniteApi, _logger);
+            FriendCompare = new FriendCompareController(friendCache, settings, logger);
+            _controlBar.AttachFriendCompare(FriendCompare);
+            FriendCompare.SetGame(gameId, null);
+
+            Timeline = new TimelineViewModel();
+            ApplySavedTimelineState();
+            Timeline.PropertyChanged += Timeline_PropertyChanged;
+            LocalDayRollover.Subscribe(OnLocalDayChanged);
+            OnPropertyChanged(nameof(Timeline));
+
+            _controlBar.FilterChanged += (_, __) => ApplySearchFilter();
+
+            // Initialize commands
+            RevealAchievementCommand = new RelayCommand(param => RevealAchievement(param as AchievementDisplayItem));
+            OpenGameInLibraryCommand = new RelayCommand(_ => OpenGameInLibrary());
+
+            _progressHideTimer = new DispatcherTimer { Interval = ProgressHideDelay };
+            _progressHideTimer.Tick += OnProgressHideTimerTick;
+
+            RefreshGameCommand = new RelayCommand(
+                async (param) =>
+                {
+                    if (IsRefreshing) return;
+
+                    IsRefreshing = true;
+                    _refreshInitiated = true;
+                    _activeRefreshOperationId = null;
+                    CancelProgressHideTimer(clearCompletedProgress: false);
+                    _showCompletedProgress = false;
+                    ProgressPercent = 0;
+                    ProgressMessage = ResourceProvider.GetString("LOCPlayAch_Status_Refreshing");
+                    OnPropertyChanged(nameof(ShowProgress));
+
+                    try
+                    {
+                        await ExecuteSingleGameRefreshAsync();
+
+                        // Load updated data
+                        LoadGameData();
+
+                        // Surface a final snapshot so the bar reaches 100% before auto-hiding.
+                        ProgressPercent = 100;
+                        ProgressMessage = ResourceProvider.GetString("LOCPlayAch_Status_RefreshComplete");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, $"Failed to refresh game {_gameId}.");
+                        ProgressMessage = string.Format(
+                            ResourceProvider.GetString("LOCPlayAch_Error_RefreshFailed"),
+                            ex.Message);
+                    }
+                    finally
+                    {
+                        IsRefreshing = false;
+                        _activeRefreshOperationId = null;
+
+                        // Linger at the final state, then auto-hide (matches Overview behavior).
+                        if (_refreshInitiated)
+                        {
+                            _showCompletedProgress = true;
+                            StartProgressHideTimer();
+                        }
+                        OnPropertyChanged(nameof(ShowProgress));
+                    }
+                },
+                _ => !_refreshService.IsRebuilding);
+
+            // Subscribe to settings changes
+            if (_settings != null)
+            {
+                _settings.PropertyChanged += OnSettingsChanged;
+                if (_settings.Persisted != null)
+                {
+                    _settings.Persisted.PropertyChanged += OnPersistedSettingsChanged;
+                }
+            }
+            _refreshService.GameCacheUpdated += OnGameCacheUpdated;
+            _refreshService.CacheDeltaUpdated += OnCacheDeltaUpdated;
+            _refreshService.RebuildProgress += OnRebuildProgress;
+            _captureLibrary = PlayniteAchievementsPlugin.Instance?.CaptureLibraryService;
+            if (_captureLibrary != null)
+            {
+                _captureLibrary.CapturesChanged += OnCapturesChanged;
+            }
+
+            // Customizations - categories above all - reach this window only through the store:
+            // they are not a cache update, and most of them do not affect summary data, so
+            // neither refresh event above fires for them.
+            _customDataStore = PlayniteAchievementsPlugin.Instance?.GameCustomDataStore;
+            if (_customDataStore != null)
+            {
+                _customDataStore.CustomDataChanged += OnCustomDataChanged;
+            }
+
+            // Restore the previous session's sort/filter state for this game (if any) before
+            // the initial load so the first display reflects it.
+            RestoreGridStateIfMatching();
+
+            // Resolve the game name synchronously so the window title is correct at
+            // creation, then load achievement data in the background so the window
+            // can render immediately instead of blocking the UI thread on the load.
+            GameName = _playniteApi?.Database?.Games?.Get(_gameId)?.Name;
+            IsLoading = true;
+            Task.Run(() =>
+            {
+                try
+                {
+                    LoadGameData();
+                }
+                finally
+                {
+                    IsLoading = false;
+                }
+            });
+        }
+
+        private void RestoreGridStateIfMatching()
+        {
+            var snapshot = _lastGridState;
+            if (snapshot == null || snapshot.GameId != _gameId)
+            {
+                return;
+            }
+
+            // Restore silently to avoid triggering ApplySearchFilter repeatedly;
+            // LoadGameData applies the combined state once.
+            _currentSortPath = snapshot.SortPath;
+            _currentSortDirection = snapshot.SortDirection;
+            _controlBar.RestoreState(snapshot.Filters, raiseChanged: false);
+        }
+
+        private void SaveGridState()
+        {
+            _lastGridState = new GridStateSnapshot
+            {
+                GameId = _gameId,
+                SortPath = _currentSortPath,
+                SortDirection = _currentSortDirection,
+                Filters = _controlBar.CaptureState(),
+            };
+        }
+
+        private async Task ExecuteSingleGameRefreshAsync()
+        {
+            var coordinator = PlayniteAchievementsPlugin.Instance?.RefreshEntryPoint;
+            if (coordinator == null)
+            {
+                throw new InvalidOperationException("RefreshEntryPoint is not available.");
+            }
+
+            await coordinator.ExecuteAsync(
+                new RefreshRequest
+                {
+                    Mode = RefreshModeType.Single,
+                    SingleGameId = _gameId,
+                    SurfaceUserNotices = true
+                },
+                new RefreshExecutionPolicy
+                {
+                    ValidateAuthentication = true,
+                    UseProgressWindow = false,
+                    SwallowExceptions = false
+                });
+        }
+
+        #region Properties
+
+        private string _gameName;
+        public string GameName
+        {
+            get => _gameName;
+            private set => SetValue(ref _gameName, value);
+        }
+
+        // Category the achievement grid is currently drilled into (null when not drilled), pushed
+        // up from AchievementDataGridControl so a breadcrumb header can be shown above the grid.
+        private string _selectedCategoryName;
+        public string SelectedCategoryName
+        {
+            get => _selectedCategoryName;
+            set
+            {
+                if (SetValueAndReturn(ref _selectedCategoryName, value))
+                {
+                    OnPropertyChanged(nameof(IsCategorySelected));
+                }
+            }
+        }
+
+        public bool IsCategorySelected => !string.IsNullOrEmpty(SelectedCategoryName);
+
+        public Guid GameId => _gameId;
+
+        public bool CanEditLocalAchievements
+        {
+            get => _canEditLocalAchievements;
+            private set => SetValue(ref _canEditLocalAchievements, value);
+        }
+
+        private int _totalAchievements;
+        public int TotalAchievements
+        {
+            get => _totalAchievements;
+            private set
+            {
+                if (SetValueAndReturn(ref _totalAchievements, value))
+                {
+                    OnPropertyChanged(nameof(HasAchievements));
+                    OnPropertyChanged(nameof(ShowNoAchievementsPlaceholder));
+                }
+            }
+        }
+
+        public TimelineViewModel Timeline { get; private set; }
+
+        // Achievement list
+        public ObservableCollection<AchievementDisplayItem> Achievements { get; } = new BulkObservableCollection<AchievementDisplayItem>();
+
+        // Unfiltered achievements in canonical definition/custom order; feeds the grid's
+        // CategorySummarySource so category ordering does not follow the configured or live sort.
+        public ObservableCollection<AchievementDisplayItem> AllAchievements { get; } = new BulkObservableCollection<AchievementDisplayItem>();
+
+        // Single-row game summary grid (standardized header surface).
+        public ObservableCollection<GameSummaryItem> SummaryItems { get; } = new ObservableCollection<GameSummaryItem>();
+
+        public bool SummaryUseCoverImages => _settings?.Persisted?.ViewAchievementsGameSummariesUseCoverImages ?? false;
+
+        public bool SummaryShowMetadataPlatform => _settings?.Persisted?.ViewAchievementsGameSummariesShowMetadataPlatform ?? true;
+
+        public bool SummaryShowMetadataPlaytime => _settings?.Persisted?.ViewAchievementsGameSummariesShowMetadataPlaytime ?? true;
+
+        public bool SummaryShowMetadataRegion => _settings?.Persisted?.ViewAchievementsGameSummariesShowMetadataRegion ?? true;
+
+        public bool SummaryShowCompletionGlow => _settings?.Persisted?.ViewAchievementsGameSummariesShowCompletionGlow ?? true;
+
+        public bool SummaryShowColumnHeaders => _settings?.Persisted?.ShowViewAchievementsGameSummariesGridColumnHeaders ?? true;
+
+        public double? SummaryGridRowHeight => _settings?.Persisted?.ViewAchievementsGameSummariesGridRowHeight;
+
+        private bool _IsRefreshing;
+        public bool IsRefreshing
+        {
+            get => _IsRefreshing;
+            private set => SetValue(ref _IsRefreshing, value);
+        }
+
+        private double _progressPercent;
+        public double ProgressPercent
+        {
+            get => _progressPercent;
+            private set => SetValue(ref _progressPercent, value);
+        }
+
+        private string _progressMessage;
+        public string ProgressMessage
+        {
+            get => _progressMessage;
+            private set => SetValue(ref _progressMessage, value);
+        }
+
+        public bool ShowProgress => _refreshInitiated || IsRefreshing || _showCompletedProgress;
+
+        private bool _isTimelineVisible = false;
+        public bool IsTimelineVisible
+        {
+            get => _isTimelineVisible;
+            set
+            {
+                if (SetValueAndReturn(ref _isTimelineVisible, value))
+                {
+                    PersistTimelineVisibility(value);
+                }
+            }
+        }
+
+        public bool HasAchievements => TotalAchievements > 0;
+
+        private bool _isLoading;
+        public bool IsLoading
+        {
+            get => _isLoading;
+            private set
+            {
+                if (SetValueAndReturn(ref _isLoading, value))
+                {
+                    OnPropertyChanged(nameof(ShowNoAchievementsPlaceholder));
+                }
+            }
+        }
+
+        // Keeps the "no achievements" placeholder from flashing while the initial
+        // background load is still running.
+        public bool ShowNoAchievementsPlaceholder => !HasAchievements && !IsLoading;
+
+        public bool HasCustomAchievementOrder
+        {
+            get => _hasCustomAchievementOrder;
+            private set => SetValue(ref _hasCustomAchievementOrder, value);
+        }
+
+        public string CurrentSortPath => _currentSortPath;
+
+        public ListSortDirection? CurrentSortDirection =>
+            string.IsNullOrWhiteSpace(_currentSortPath)
+                ? (ListSortDirection?)null
+                : _currentSortDirection;
+
+        public GridControlBarViewModel AchievementsControlBar => _controlBar.ControlBar;
+
+        public bool ShowAchievementGridControlBar => _settings?.Persisted?.ShowViewAchievementsAchievementGridControlBar ?? true;
+
+        public bool ShowAchievementGridColumnHeaders => _settings?.Persisted?.ShowViewAchievementsAchievementGridColumnHeaders ?? true;
+
+        public bool HideCategorySummaryRow => _settings?.Persisted?.ViewAchievementsAchievementGridHideCategorySummaryRow ?? false;
+
+        public bool CategorySummariesShowColumnHeaders => _settings?.Persisted?.ShowViewAchievementsCategorySummariesGridColumnHeaders ?? true;
+
+        public double? CategorySummariesGridRowHeight => _settings?.Persisted?.ViewAchievementsCategorySummariesGridRowHeight;
+
+        public bool CategorySummariesUseCoverImages => _settings?.Persisted?.ViewAchievementsCategorySummariesUseCoverImages ?? false;
+
+        public bool CategorySummariesShowCompletionGlow => _settings?.Persisted?.ViewAchievementsCategorySummariesShowCompletionGlow ?? true;
+
+        public double? SingleGameGridRowHeight => _settings?.Persisted?.SingleGameGridRowHeight;
+
+        public bool ShowRarityGlow => _settings?.Persisted?.ViewAchievementsAchievementGridShowRarityGlow ?? true;
+
+        public bool ColorNamesByRarity => _settings?.Persisted?.ViewAchievementsAchievementGridColorNamesByRarity ?? false;
+
+        public bool ColorRarityColumnsByRarity => _settings?.Persisted?.ViewAchievementsAchievementGridColorRarityColumnsByRarity ?? false;
+
+        #endregion
+
+        #region Commands
+
+        public ICommand RevealAchievementCommand { get; }
+        public ICommand RefreshGameCommand { get; }
+        public ICommand OpenGameInLibraryCommand { get; }
+
+        #endregion
+
+        #region Private Methods
+
+        private void Timeline_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (_isApplyingTimelineState ||
+                (e?.PropertyName != nameof(TimelineViewModel.Window) &&
+                 e?.PropertyName != nameof(TimelineViewModel.Granularity)))
+            {
+                return;
+            }
+
+            PersistTimelineWindow();
+        }
+
+        private void OnLocalDayChanged(object sender, DateTime today)
+        {
+            Timeline?.UpdateTimelineData();
+        }
+
+        private void ApplySavedTimelineState()
+        {
+            var persisted = _settings?.Persisted;
+            var window = persisted?.ViewAchievementsTimeWindow ?? TimeWindow.FromPreset(TimelineRange.OneYear);
+            var granularity = persisted?.ViewAchievementsTimelineGranularity ?? TimelineGranularity.Auto;
+            var isVisible = persisted?.ViewAchievementsTimelineVisible ?? false;
+
+            try
+            {
+                _isApplyingTimelineState = true;
+
+                if (_isTimelineVisible != isVisible)
+                {
+                    _isTimelineVisible = isVisible;
+                    OnPropertyChanged(nameof(IsTimelineVisible));
+                }
+
+                if (Timeline != null)
+                {
+                    if (!Equals(Timeline.Window, window))
+                    {
+                        Timeline.Window = window;
+                    }
+
+                    if (Timeline.Granularity != granularity)
+                    {
+                        Timeline.Granularity = granularity;
+                    }
+                }
+            }
+            finally
+            {
+                _isApplyingTimelineState = false;
+            }
+        }
+
+        private void PersistTimelineWindow()
+        {
+            if (_isApplyingTimelineState || _settings?.Persisted == null || Timeline == null)
+            {
+                return;
+            }
+
+            var persisted = _settings.Persisted;
+            var changed = false;
+            if (!Equals(persisted.ViewAchievementsTimeWindow, Timeline.Window))
+            {
+                persisted.ViewAchievementsTimeWindow = Timeline.Window;
+                changed = true;
+            }
+
+            if (persisted.ViewAchievementsTimelineGranularity != Timeline.Granularity)
+            {
+                persisted.ViewAchievementsTimelineGranularity = Timeline.Granularity;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                SchedulePersistTimelineSettings();
+            }
+        }
+
+        // A full settings write per chip click makes the strip feel laggy, so a burst collapses
+        // into one write; Dispose flushes a pending one.
+        private void SchedulePersistTimelineSettings()
+        {
+            if (_timelinePersistTimer == null)
+            {
+                _timelinePersistTimer = new DispatcherTimer(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromMilliseconds(600)
+                };
+                _timelinePersistTimer.Tick += (_, __) => FlushTimelineSettingsPersist();
+            }
+
+            _timelinePersistTimer.Stop();
+            _timelinePersistTimer.Start();
+        }
+
+        private void FlushTimelineSettingsPersist()
+        {
+            if (_timelinePersistTimer == null || !_timelinePersistTimer.IsEnabled)
+            {
+                return;
+            }
+
+            _timelinePersistTimer.Stop();
+            PersistSettingsForUi();
+        }
+
+        private void PersistTimelineVisibility(bool isVisible)
+        {
+            if (_isApplyingTimelineState || _settings?.Persisted == null)
+            {
+                return;
+            }
+
+            if (_settings.Persisted.ViewAchievementsTimelineVisible == isVisible)
+            {
+                return;
+            }
+
+            _settings.Persisted.ViewAchievementsTimelineVisible = isVisible;
+            PersistSettingsForUi();
+        }
+
+        private void PersistSettingsForUi()
+        {
+            try
+            {
+                PlayniteAchievementsPlugin.Instance?.PersistSettingsForUi();
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug(ex, "Failed to persist view achievements timeline settings.");
+            }
+        }
+
+        private void LoadGameData()
+        {
+            using (PerfScope.Start(_logger, "ViewAchievements.LoadGameData", thresholdMs: 100))
+            {
+                LoadGameDataCore();
+            }
+        }
+
+        private void LoadGameDataCore()
+        {
+            try
+            {
+                var game = _playniteApi?.Database?.Games?.Get(_gameId);
+                if (game == null)
+                {
+                    _logger?.Warn($"Game not found: {_gameId}");
+                    CanEditLocalAchievements = false;
+                    UpdateSummaryItem(null, null);
+                    return;
+                }
+
+                GameName = game.Name;
+
+                var gameData = _achievementDataService.GetVisibleGameAchievementData(_gameId);
+                UpdateSummaryItem(game, gameData);
+                if (gameData == null || !gameData.HasAchievements || gameData.Achievements == null)
+                {
+                    _logger?.Info($"No achievement data for game: {game.Name}");
+
+                    TotalAchievements = 0;
+                    _allAchievements = new List<AchievementDisplayItem>();
+                    _orderedAchievements = new List<AchievementDisplayItem>();
+                    _filteredAchievements = new List<AchievementDisplayItem>();
+                    HasCustomAchievementOrder = false;
+
+                    System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                    {
+                        // The control bar's filter option collections are UI-bound.
+                        _controlBar.Clear();
+                        Achievements.Clear();
+                        AllAchievements.Clear();
+                        FriendCompare?.SetTargetItems(null);
+                    });
+
+                    Timeline.SetCounts(null);
+                    CanEditLocalAchievements = false;
+                    return;
+                }
+
+                var achievements = gameData.Achievements;
+                var hasCustomOrder = gameData.AchievementOrder != null && gameData.AchievementOrder.Count > 0;
+                HasCustomAchievementOrder = hasCustomOrder;
+                TotalAchievements = achievements.Count;
+
+                var displayItems = new List<AchievementDisplayItem>();
+                var unlockCounts = new Dictionary<DateTime, int>();
+
+                IEnumerable<AchievementDetail> projectionOrder = achievements;
+                if (hasCustomOrder)
+                {
+                    projectionOrder = AchievementOrderHelper.ApplyOrder(
+                        achievements,
+                        a => a.ApiName,
+                        gameData.AchievementOrder);
+                }
+
+                foreach (var ach in projectionOrder)
+                {
+                    if (ach.Unlocked && ach.UnlockTimeUtc.HasValue)
+                    {
+                        var date = Services.Overview.UnlockDayCounts.DayOf(ach.UnlockTimeUtc.Value);
+                        if (unlockCounts.TryGetValue(date, out var existing))
+                        {
+                            unlockCounts[date] = existing + 1;
+                        }
+                        else
+                        {
+                            unlockCounts[date] = 1;
+                        }
+                    }
+
+                    var item = AchievementDisplayItem.Create(gameData, ach, _settings, playniteGameIdOverride: _gameId);
+                    if (item != null)
+                    {
+                        displayItems.Add(item);
+                    }
+                }
+
+                // Customization writes reload this window, so the rows it already shows are kept
+                // and updated rather than replaced: all-new instances make the grid re-realize every
+                // row. A reveal is this window's own state, which the fresh rows do not carry.
+                displayItems = CollectionHelper.MergeByKey(
+                    _allAchievements,
+                    displayItems,
+                    row => row?.ApiName,
+                    (kept, source) =>
+                    {
+                        var wasRevealed = kept.IsRevealed;
+                        kept.UpdateFrom(source);
+                        kept.IsRevealed = wasRevealed;
+                    });
+
+                _allAchievements = displayItems;
+                Services.Captures.CapturePresenceMarker.MarkAchievements(_allAchievements, _captureLibrary);
+                var localProvider = _refreshService?.Providers?.OfType<LocalSavesProvider>().FirstOrDefault();
+                CanEditLocalAchievements =
+                    localProvider != null &&
+                    string.Equals(gameData.EffectiveProviderKey, "Local", StringComparison.OrdinalIgnoreCase) &&
+                    localProvider.TryResolveWritableAchievementFilePath(game, out _, out _, out _, out _);
+                RefreshOrderedAchievements(skipDefaultSort: false);
+
+                // The control bar's filter option collections are UI-bound.
+                System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    _controlBar.UpdateOptions(_allAchievements);
+                    CollectionHelper.Replace(AllAchievements, _allAchievements);
+                    FriendCompare?.SetTargetItems(_allAchievements);
+                });
+                ApplySearchFilter();
+
+                Timeline.SetCounts(unlockCounts);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, $"Failed to load game data for {_gameId}");
+                HasCustomAchievementOrder = false;
+                CanEditLocalAchievements = false;
+            }
+        }
+
+        private void RevealAchievement(AchievementDisplayItem item)
+        {
+            if (item == null)
+            {
+                return;
+            }
+
+            item.ToggleReveal();
+        }
+
+        private void OpenGameInLibrary()
+        {
+            try
+            {
+                PlayniteUiProvider.RestoreMainView();
+                _playniteApi?.MainView?.SelectGame(_gameId);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, $"Failed to open game in Playnite library: {_gameId}");
+            }
+        }
+
+        // Builds the single-row game summary that replaces the legacy header/stats cards.
+        private void UpdateSummaryItem(Playnite.SDK.Models.Game game, GameAchievementData gameData)
+        {
+            GameSummaryItem item = null;
+
+            if (gameData != null)
+            {
+                if (gameData.Game == null)
+                {
+                    gameData.Game = game;
+                }
+
+                item = _summaryBuilder.Build(gameData, _settings, forSingleGame: true);
+            }
+            else if (game != null)
+            {
+                var stub = new GameAchievementData
+                {
+                    GameName = game.Name,
+                    PlayniteGameId = _gameId,
+                    Game = game,
+                    HasAchievements = false,
+                    Achievements = new List<AchievementDetail>()
+                };
+                item = _summaryBuilder.Build(stub, _settings, forSingleGame: true);
+            }
+
+            var items = item != null
+                ? new List<GameSummaryItem> { item }
+                : new List<GameSummaryItem>();
+
+            // SynchronizeCollection matches by reference, so SummaryItems holds these very instances.
+            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                CollectionHelper.SynchronizeCollection(SummaryItems, items));
+            Services.Captures.CapturePresenceMarker.MarkSummaries(items, _captureLibrary);
+        }
+
+        private void OnCapturesChanged(object sender, Services.Captures.CapturesChangedEventArgs e)
+        {
+            var folder = e?.FolderName;
+            Services.Captures.CapturePresenceMarker.MarkAchievements(
+                _allAchievements, _captureLibrary, folder);
+            Services.Captures.CapturePresenceMarker.MarkSummaries(
+                SummaryItems?.ToList(), _captureLibrary, folder);
+        }
+
+        private void RaiseSummaryAppearanceProperties()
+        {
+            OnPropertyChanged(nameof(SummaryUseCoverImages));
+            OnPropertyChanged(nameof(SummaryShowMetadataPlatform));
+            OnPropertyChanged(nameof(SummaryShowMetadataPlaytime));
+            OnPropertyChanged(nameof(SummaryShowMetadataRegion));
+            OnPropertyChanged(nameof(SummaryShowCompletionGlow));
+            OnPropertyChanged(nameof(SummaryShowColumnHeaders));
+            OnPropertyChanged(nameof(SummaryGridRowHeight));
+        }
+
+        private void OnGameCacheUpdated(object sender, GameCacheUpdatedEventArgs e)
+        {
+            if (e.GameId == _gameId.ToString())
+            {
+                System.Windows.Application.Current?.Dispatcher?.Invoke(LoadGameData);
+            }
+        }
+
+        private void OnCustomDataChanged(object sender, Services.GameCustomData.GameCustomDataChangedEventArgs e)
+        {
+            if (e == null || e.PlayniteGameId != _gameId)
+            {
+                return;
+            }
+
+            // Posted rather than invoked: the store raises this from inside its write.
+            System.Windows.Application.Current?.Dispatcher?.BeginInvoke(new Action(ScheduleCustomDataReload));
+        }
+
+        private void ScheduleCustomDataReload()
+        {
+            // A write posted just before the window closed still lands here.
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            if (_customDataReloadTimer == null)
+            {
+                _customDataReloadTimer = new DispatcherTimer { Interval = CustomDataReloadDelay };
+                _customDataReloadTimer.Tick += OnCustomDataReloadTimerTick;
+            }
+
+            _customDataReloadTimer.Stop();
+            _customDataReloadTimer.Start();
+        }
+
+        private void OnCustomDataReloadTimerTick(object sender, EventArgs e)
+        {
+            _customDataReloadTimer?.Stop();
+            LoadGameData();
+        }
+
+        private void OnCacheDeltaUpdated(object sender, CacheDeltaEventArgs e)
+        {
+            if (e?.IsFullReset != true)
+            {
+                return;
+            }
+
+            System.Windows.Application.Current?.Dispatcher?.Invoke(LoadGameData);
+        }
+
+        private void OnRebuildProgress(object sender, ProgressReport report)
+        {
+            if (report == null) return;
+
+            var isForOurGame = report.CurrentGameId.HasValue && report.CurrentGameId.Value == _gameId;
+            if (isForOurGame && report.OperationId.HasValue)
+            {
+                _activeRefreshOperationId = report.OperationId;
+            }
+
+            var isTrackedOperation = _activeRefreshOperationId.HasValue &&
+                                     report.OperationId.HasValue &&
+                                     _activeRefreshOperationId.Value == report.OperationId.Value;
+
+            // Only this game's refresh drives the progress bar; ignore unrelated reports.
+            if (!isForOurGame && !isTrackedOperation)
+            {
+                return;
+            }
+
+            var refreshStatus = _refreshService.GetRefreshStatusSnapshot(report);
+            System.Windows.Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    ApplyRefreshStatus(refreshStatus);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Debug($"Progress UI update error: {ex.Message}");
+                }
+            }));
+        }
+
+        private void ApplyRefreshStatus(RefreshStatusSnapshot status)
+        {
+            if (status == null)
+            {
+                return;
+            }
+
+            ProgressPercent = status.ProgressPercent;
+            ProgressMessage = status.Message ?? ResourceProvider.GetString("LOCPlayAch_Status_Refreshing");
+
+            var isComplete = status.IsCanceled || status.IsFinal || !status.IsRefreshing;
+            if (!isComplete)
+            {
+                IsRefreshing = true;
+                _refreshInitiated = true;
+                CancelProgressHideTimer(clearCompletedProgress: false);
+                _showCompletedProgress = false;
+            }
+            else if (_refreshInitiated)
+            {
+                IsRefreshing = false;
+                _activeRefreshOperationId = null;
+                _showCompletedProgress = true;
+                StartProgressHideTimer();
+            }
+            else
+            {
+                IsRefreshing = false;
+                _showCompletedProgress = false;
+            }
+
+            OnPropertyChanged(nameof(IsRefreshing));
+            OnPropertyChanged(nameof(ShowProgress));
+            (RefreshGameCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+
+        private void StartProgressHideTimer()
+        {
+            if (_progressHideTimer == null)
+            {
+                return;
+            }
+
+            _progressHideTimer.Stop();
+            _progressHideTimer.Start();
+        }
+
+        private void CancelProgressHideTimer(bool clearCompletedProgress)
+        {
+            _progressHideTimer?.Stop();
+
+            if (clearCompletedProgress)
+            {
+                _refreshInitiated = false;
+                if (_showCompletedProgress)
+                {
+                    _showCompletedProgress = false;
+                    OnPropertyChanged(nameof(ShowProgress));
+                }
+            }
+        }
+
+        private void OnProgressHideTimerTick(object sender, EventArgs e)
+        {
+            _progressHideTimer?.Stop();
+            _refreshInitiated = false;
+            if (_showCompletedProgress)
+            {
+                _showCompletedProgress = false;
+                OnPropertyChanged(nameof(ShowProgress));
+            }
+        }
+
+        private void OnSettingsChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(PlayniteAchievementsSettings.Persisted))
+            {
+                if (_settings?.Persisted != null)
+                {
+                    _settings.Persisted.PropertyChanged -= OnPersistedSettingsChanged;
+                    _settings.Persisted.PropertyChanged += OnPersistedSettingsChanged;
+                }
+
+                ApplyAppearanceSettingsToAchievements();
+                OnPropertyChanged(nameof(SingleGameGridRowHeight));
+                OnPropertyChanged(nameof(ShowAchievementGridControlBar));
+                OnPropertyChanged(nameof(ShowAchievementGridColumnHeaders));
+                OnPropertyChanged(nameof(HideCategorySummaryRow));
+                OnPropertyChanged(nameof(CategorySummariesShowColumnHeaders));
+                OnPropertyChanged(nameof(CategorySummariesGridRowHeight));
+                OnPropertyChanged(nameof(CategorySummariesUseCoverImages));
+                OnPropertyChanged(nameof(CategorySummariesShowCompletionGlow));
+                OnPropertyChanged(nameof(ShowRarityGlow));
+                OnPropertyChanged(nameof(ColorNamesByRarity));
+                OnPropertyChanged(nameof(ColorRarityColumnsByRarity));
+                RaiseSummaryAppearanceProperties();
+                ApplySavedTimelineState();
+                ApplySearchFilter(skipDefaultSort: CurrentSortDirection.HasValue, refreshOrder: true);
+            }
+        }
+
+        private void OnPersistedSettingsChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (AchievementDisplayItem.IsAppearanceSettingPropertyName(e?.PropertyName))
+            {
+                ApplyAppearanceSettingsToAchievements(
+                    AchievementDisplayItem.IsIconCoverPropertyName(e?.PropertyName));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.SingleGameGridRowHeight))
+            {
+                OnPropertyChanged(nameof(SingleGameGridRowHeight));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ShowViewAchievementsAchievementGridControlBar))
+            {
+                OnPropertyChanged(nameof(ShowAchievementGridControlBar));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsAchievementGridHideCategorySummaryRow))
+            {
+                OnPropertyChanged(nameof(HideCategorySummaryRow));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ShowViewAchievementsCategorySummariesGridColumnHeaders))
+            {
+                OnPropertyChanged(nameof(CategorySummariesShowColumnHeaders));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsCategorySummariesGridRowHeight))
+            {
+                OnPropertyChanged(nameof(CategorySummariesGridRowHeight));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsCategorySummariesUseCoverImages))
+            {
+                OnPropertyChanged(nameof(CategorySummariesUseCoverImages));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsCategorySummariesShowCompletionGlow))
+            {
+                OnPropertyChanged(nameof(CategorySummariesShowCompletionGlow));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsAchievementGridShowRarityGlow))
+            {
+                OnPropertyChanged(nameof(ShowRarityGlow));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsAchievementGridColorNamesByRarity))
+            {
+                OnPropertyChanged(nameof(ColorNamesByRarity));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ShowViewAchievementsAchievementGridColumnHeaders))
+            {
+                OnPropertyChanged(nameof(ShowAchievementGridColumnHeaders));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsAchievementGridColorRarityColumnsByRarity))
+            {
+                OnPropertyChanged(nameof(ColorRarityColumnsByRarity));
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.SingleGameGridMaxRows))
+            {
+                SyncAchievementsDisplay();
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsGameSummariesUseCoverImages) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsGameSummariesShowMetadataPlatform) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsGameSummariesShowMetadataPlaytime) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsGameSummariesShowMetadataRegion) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsGameSummariesShowCompletionGlow) ||
+                e?.PropertyName == nameof(PersistedSettings.ShowViewAchievementsGameSummariesGridColumnHeaders) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsGameSummariesGridRowHeight))
+            {
+                RaiseSummaryAppearanceProperties();
+                return;
+            }
+
+            if (e?.PropertyName == nameof(PersistedSettings.ViewAchievementsTimeWindow) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsTimelineGranularity) ||
+                e?.PropertyName == nameof(PersistedSettings.ViewAchievementsTimelineVisible))
+            {
+                ApplySavedTimelineState();
+                return;
+            }
+
+            if (!CurrentSortDirection.HasValue &&
+                AchievementSortHelper.IsConfiguredDefaultSortPropertyName(
+                    e?.PropertyName,
+                    AchievementSortSurface.SingleGame))
+            {
+                ApplySearchFilter(refreshOrder: true);
+            }
+        }
+
+        /// <summary>
+        /// Pushes the current appearance settings onto every live row. A cover-image change stores
+        /// nothing on the item, so applying the snapshot short-circuits in each setter and the rows
+        /// keep their old icons; <paramref name="refreshIconsOnly"/> re-raises them instead.
+        /// </summary>
+        private void ApplyAppearanceSettingsToAchievements(bool refreshIconsOnly = false)
+        {
+            if (_settings?.Persisted == null)
+            {
+                return;
+            }
+
+            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                var items = new HashSet<AchievementDisplayItem>();
+                foreach (var item in _allAchievements)
+                {
+                    if (item != null)
+                    {
+                        items.Add(item);
+                    }
+                }
+
+                foreach (var item in Achievements)
+                {
+                    if (item != null)
+                    {
+                        items.Add(item);
+                    }
+                }
+
+                foreach (var item in items)
+                {
+                    if (refreshIconsOnly)
+                    {
+                        item.RefreshIconDisplay();
+                    }
+                    else
+                    {
+                        item.ApplyAppearanceSettings(_settings);
+                    }
+                }
+            });
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        /// <summary>
+        /// Refreshes the game data display. Called when settings are saved or when cache is updated.
+        /// </summary>
+        public void RefreshView()
+        {
+            System.Windows.Application.Current?.Dispatcher?.Invoke(LoadGameData);
+        }
+
+        /// <summary>
+        /// Re-stamps the capstone flags on the rows already in memory from the game's stored
+        /// set, so the click that changed a capstone is the one that shows it.
+        /// </summary>
+        public bool ApplyCapstone(string capstoneApiName)
+        {
+            if (_allAchievements == null || _allAchievements.Count == 0 || _gameId == Guid.Empty)
+            {
+                return false;
+            }
+
+            return PlayniteAchievementsPlugin.Instance?.AchievementMarkerToggle?
+                .TryRestampCapstones(_gameId, _allAchievements) == true;
+        }
+
+        /// <summary>
+        /// Re-sorts the rows already in memory after a goal toggle. Goal state only affects
+        /// ordering, so this avoids the cache read, hydration and full row rebuild that
+        /// <see cref="RefreshView"/> pays for.
+        /// </summary>
+        public bool ReapplyGoalOrder()
+        {
+            if (_allAchievements == null || _allAchievements.Count == 0)
+            {
+                return false;
+            }
+
+            ApplySearchFilter(refreshOrder: true);
+            return true;
+        }
+
+        #endregion
+
+        public void SortDataGrid(string sortMemberPath, ListSortDirection direction)
+        {
+            var items = _orderedAchievements.Count == _allAchievements.Count
+                ? _orderedAchievements.ToList()
+                : _allAchievements.ToList();
+            var currentSortDirection = (ListSortDirection?)_currentSortDirection;
+            if (!AchievementSortHelper.TrySortItems(
+                    items,
+                    sortMemberPath,
+                    direction,
+                    AchievementSortScope.GameAchievements,
+                    ref _currentSortPath,
+                    ref currentSortDirection))
+            {
+                return;
+            }
+
+            if (currentSortDirection.HasValue)
+            {
+                _currentSortDirection = currentSortDirection.Value;
+            }
+
+            AchievementSortHelper.ApplyGoalsFirst(items);
+            _orderedAchievements = items;
+            ApplySearchFilter();
+        }
+
+        private void RefreshOrderedAchievements(bool skipDefaultSort)
+        {
+            var items = _allAchievements.ToList();
+
+            if (CurrentSortDirection.HasValue)
+            {
+                var currentSortDirection = CurrentSortDirection;
+                AchievementSortHelper.TrySortItems(
+                    items,
+                    _currentSortPath,
+                    currentSortDirection.Value,
+                    AchievementSortScope.GameAchievements,
+                    ref _currentSortPath,
+                    ref currentSortDirection);
+            }
+            else if (!skipDefaultSort)
+            {
+                AchievementSortHelper.ApplyConfiguredDefaultSort(
+                    items,
+                    _settings?.Persisted,
+                    AchievementSortSurface.SingleGame,
+                    AchievementSortScope.GameAchievements,
+                    stableOrder: AchievementSortHelper.CreateStableOrderMap(items));
+            }
+
+            AchievementSortHelper.ApplyGoalsFirst(items);
+            _orderedAchievements = items;
+        }
+
+        private void ApplySearchFilter(bool skipDefaultSort = false, bool refreshOrder = false)
+        {
+            if (refreshOrder || _orderedAchievements.Count != _allAchievements.Count)
+            {
+                RefreshOrderedAchievements(skipDefaultSort);
+            }
+
+            // The shared control bar owns the filter predicate (search, Unlocked/Locked/Hidden,
+            // Type/Category). This VM keeps ordering, row limiting, and display sync.
+            var filtered = _controlBar.Apply(_orderedAchievements);
+
+            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                _filteredAchievements = filtered.ToList();
+                SyncAchievementsDisplay();
+            });
+        }
+
+        public void ResetSortToDefault()
+        {
+            _currentSortPath = null;
+            _currentSortDirection = AchievementSortHelper.GetConfiguredDefaultSort(
+                _settings?.Persisted,
+                AchievementSortSurface.SingleGame).Direction;
+            ApplySearchFilter(skipDefaultSort: true, refreshOrder: true);
+        }
+
+        private void SyncAchievementsDisplay()
+        {
+            var displayItems = DisplayGridRowLimitHelper.Limit(
+                _filteredAchievements,
+                _settings?.Persisted?.SingleGameGridMaxRows);
+            CollectionHelper.Replace(Achievements, displayItems);
+        }
+
+        #region IDisposable
+
+        public void Dispose()
+        {
+            _isDisposed = true;
+            SaveGridState();
+
+            if (_settings != null)
+            {
+                _settings.PropertyChanged -= OnSettingsChanged;
+                if (_settings.Persisted != null)
+                {
+                    _settings.Persisted.PropertyChanged -= OnPersistedSettingsChanged;
+                }
+            }
+            _refreshService.GameCacheUpdated -= OnGameCacheUpdated;
+            _refreshService.CacheDeltaUpdated -= OnCacheDeltaUpdated;
+            _refreshService.RebuildProgress -= OnRebuildProgress;
+            if (_captureLibrary != null)
+            {
+                _captureLibrary.CapturesChanged -= OnCapturesChanged;
+            }
+
+            // The store outlives every window, so a missed unsubscribe roots this view model.
+            if (_customDataStore != null)
+            {
+                _customDataStore.CustomDataChanged -= OnCustomDataChanged;
+            }
+            if (_customDataReloadTimer != null)
+            {
+                _customDataReloadTimer.Stop();
+                _customDataReloadTimer.Tick -= OnCustomDataReloadTimerTick;
+                _customDataReloadTimer = null;
+            }
+            if (_progressHideTimer != null)
+            {
+                _progressHideTimer.Stop();
+                _progressHideTimer.Tick -= OnProgressHideTimerTick;
+                _progressHideTimer = null;
+            }
+            LocalDayRollover.Unsubscribe(OnLocalDayChanged);
+            FlushTimelineSettingsPersist();
+            if (Timeline != null)
+            {
+                Timeline.PropertyChanged -= Timeline_PropertyChanged;
+            }
+        }
+
+        #endregion
+    }
+}
+
+
+
+
+

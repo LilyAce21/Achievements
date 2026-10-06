@@ -1,0 +1,310 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using Playnite.SDK;
+using PlayniteAchievements.Models;
+using PlayniteAchievements.Providers.Exophase;
+using PlayniteAchievements.Providers.Settings;
+using PlayniteAchievements.Services;
+using PlayniteAchievements.Services.GameCustomData;
+
+namespace PlayniteAchievements.Providers.Manual
+{
+    public partial class ManualSettingsView : ProviderSettingsViewBase
+    {
+        private const string SuccessStoryExtensionId = "cebe6d32-8c46-4459-b993-5a5189d60788";
+        private readonly IPlayniteAPI _playniteApi;
+        private readonly ILogger _logger;
+        private readonly PlayniteAchievementsSettings _pluginSettings;
+        private ManualSettings _manualSettings;
+
+        public static readonly DependencyProperty LegacyImportPathProperty =
+            DependencyProperty.Register(
+                nameof(LegacyImportPath),
+                typeof(string),
+                typeof(ManualSettingsView),
+                new PropertyMetadata(string.Empty));
+
+        public string LegacyImportPath
+        {
+            get => (string)GetValue(LegacyImportPathProperty);
+            set => SetValue(LegacyImportPathProperty, value);
+        }
+
+        public static readonly DependencyProperty LegacyImportStatusProperty =
+            DependencyProperty.Register(
+                nameof(LegacyImportStatus),
+                typeof(string),
+                typeof(ManualSettingsView),
+                new PropertyMetadata(ResourceProvider.GetString("LOCPlayAch_CustomRefresh_ProviderStatus_Ready")));
+
+        public string LegacyImportStatus
+        {
+            get => (string)GetValue(LegacyImportStatusProperty);
+            set => SetValue(LegacyImportStatusProperty, value);
+        }
+
+        public static readonly DependencyProperty LegacyImportBusyProperty =
+            DependencyProperty.Register(
+                nameof(LegacyImportBusy),
+                typeof(bool),
+                typeof(ManualSettingsView),
+                new PropertyMetadata(false));
+
+        public bool LegacyImportBusy
+        {
+            get => (bool)GetValue(LegacyImportBusyProperty);
+            set => SetValue(LegacyImportBusyProperty, value);
+        }
+
+        public new ManualSettings Settings => _manualSettings;
+
+        public ManualSettingsView(IPlayniteAPI playniteApi, ILogger logger, PlayniteAchievementsSettings pluginSettings)
+        {
+            _playniteApi = playniteApi;
+            _logger = logger;
+            _pluginSettings = pluginSettings;
+            InitializeComponent();
+        }
+
+        public override void Initialize(IProviderSettings settings)
+        {
+            _manualSettings = settings as ManualSettings;
+            base.Initialize(settings);
+            EnsureLegacyImportPathDefault();
+            SetLegacyImportStatus(ResourceProvider.GetString("LOCPlayAch_CustomRefresh_ProviderStatus_Ready"));
+        }
+
+        private void EnsureLegacyImportPathDefault()
+        {
+            if (!string.IsNullOrWhiteSpace(LegacyImportPath))
+            {
+                return;
+            }
+
+            var extensionsDataPath = _playniteApi?.Paths?.ExtensionsDataPath;
+            if (string.IsNullOrWhiteSpace(extensionsDataPath))
+            {
+                return;
+            }
+
+            LegacyImportPath = Path.Combine(extensionsDataPath, SuccessStoryExtensionId, "SuccessStory");
+        }
+
+        private void ManualLegacyBrowse_Click(object sender, RoutedEventArgs e)
+        {
+            EnsureLegacyImportPathDefault();
+
+            var selectedPath = _playniteApi?.Dialogs?.SelectFolder();
+            if (string.IsNullOrWhiteSpace(selectedPath))
+            {
+                return;
+            }
+
+            LegacyImportPath = selectedPath;
+            SetLegacyImportStatus(ResourceProvider.GetString("LOCPlayAch_Status_Succeeded"));
+        }
+
+        private async void ManualLegacyImport_Click(object sender, RoutedEventArgs e)
+        {
+            if (LegacyImportBusy)
+            {
+                return;
+            }
+
+            EnsureLegacyImportPathDefault();
+            var importPath = LegacyImportPath;
+
+            if (string.IsNullOrWhiteSpace(importPath) || !Directory.Exists(importPath))
+            {
+                var invalidPathBase = L("LOCPlayAch_InvalidPath");
+                var invalidPathMessage = string.IsNullOrWhiteSpace(importPath)
+                    ? invalidPathBase
+                    : string.Format("{0}: {1}", invalidPathBase, importPath);
+
+                _playniteApi?.Dialogs?.ShowMessage(
+                    invalidPathMessage,
+                    ResourceProvider.GetString("LOCPlayAch_Title_PluginName"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                SetLegacyImportStatus(invalidPathMessage);
+                return;
+            }
+
+            SetLegacyImportBusy(true);
+            SetLegacyImportStatus(ResourceProvider.GetString("LOCPlayAch_Status_Refreshing"));
+
+            LegacyManualImportResult importResult;
+            try
+            {
+                importResult = await Task.Run(() => ImportLegacyManualLinks(importPath)).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "Legacy manual import failed.");
+
+                var failureMessage = string.Format(
+                    L("LOCPlayAch_Status_Failed"),
+                    ex.Message);
+
+                SetLegacyImportStatus(failureMessage);
+                SetLegacyImportBusy(false);
+                return;
+            }
+
+            SetLegacyImportBusy(false);
+            SetLegacyImportStatus(BuildLegacyManualImportSummary(importResult));
+        }
+
+        private LegacyManualImportResult ImportLegacyManualLinks(string folderPath)
+        {
+            var importer = new LegacyManualLinkImporter(
+                () => _pluginSettings?.Persisted,
+                gameId => _playniteApi?.Database?.Games?.Get(gameId) != null,
+                gameId => false,
+                _logger,
+                gameCustomDataStore: PlayniteAchievementsPlugin.Instance?.GameCustomDataStore,
+                resolveMissingGameId: ResolveLegacyImportGameId);
+
+            var result = importer.Import(folderPath) ?? new LegacyManualImportResult();
+            return result;
+        }
+
+        private Guid? ResolveLegacyImportGameId(LegacyManualImportGameMetadata metadata)
+        {
+            if (metadata == null || _playniteApi?.Database?.Games == null)
+            {
+                return null;
+            }
+
+            var games = _playniteApi.Database.Games
+                .Where(game => game != null && game.Id != Guid.Empty)
+                .ToList();
+
+            if (games.Count == 0)
+            {
+                return null;
+            }
+
+            if (string.Equals(metadata.SourceName, "Exophase", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(metadata.SourceGameId))
+            {
+                var slugMatches = games
+                    .Where(game => string.Equals(
+                        ExophaseDataProvider.GeneratePreviewSlug(game),
+                        metadata.SourceGameId.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (slugMatches.Count == 1)
+                {
+                    return slugMatches[0].Id;
+                }
+            }
+
+            var candidateNames = new[]
+                {
+                    metadata.SourceGameName,
+                    metadata.GameName
+                }
+                .Select(NormalizeLegacyImportName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (candidateNames.Count == 0)
+            {
+                return null;
+            }
+
+            var nameMatches = games
+                .Where(game => candidateNames.Contains(NormalizeLegacyImportName(game.Name), StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            return nameMatches.Count == 1
+                ? nameMatches[0].Id
+                : (Guid?)null;
+        }
+
+        private static string NormalizeLegacyImportName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var normalized = value.Trim().ToLowerInvariant();
+            var safeChars = new char[normalized.Length];
+            var pos = 0;
+            foreach (var c in normalized)
+            {
+                if (char.IsLetterOrDigit(c))
+                {
+                    safeChars[pos++] = c;
+                }
+            }
+
+            return pos == 0 ? null : new string(safeChars, 0, pos);
+        }
+
+        private string BuildLegacyManualImportSummary(LegacyManualImportResult result)
+        {
+            var skippedTotal = result.SkippedNotManual +
+                result.SkippedIgnored +
+                result.SkippedInvalidFileName +
+                result.SkippedGameMissing +
+                result.SkippedManualLinkExists +
+                result.SkippedCachedProviderData +
+                result.SkippedUnsupportedSource +
+                result.SkippedUnresolvedSourceGameId;
+
+            var lines = new List<string>
+            {
+                ResourceProvider.GetString("LOCPlayAch_Settings_Manual_Legacy_SummaryHeader"),
+                string.Format(ResourceProvider.GetString("LOCPlayAch_Settings_Manual_Legacy_SummaryScanned"), result.Scanned),
+                string.Format(ResourceProvider.GetString("LOCPlayAch_Settings_Manual_Legacy_SummaryImported"), result.Imported),
+                string.Format(ResourceProvider.GetString("LOCPlayAch_Settings_Manual_Legacy_SummarySkipped"), skippedTotal)
+            };
+
+            if (result.ParseFailures > 0)
+            {
+                lines.Add(string.Format(ResourceProvider.GetString("LOCPlayAch_Settings_Manual_Legacy_SummaryParseFailed"), result.ParseFailures));
+            }
+
+            return string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
+        }
+
+        private void SetLegacyImportStatus(string status)
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                LegacyImportStatus = status;
+            }
+            else
+            {
+                Dispatcher.BeginInvoke(new Action(() => LegacyImportStatus = status));
+            }
+        }
+
+        private void SetLegacyImportBusy(bool busy)
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                LegacyImportBusy = busy;
+            }
+            else
+            {
+                Dispatcher.BeginInvoke(new Action(() => LegacyImportBusy = busy));
+            }
+        }
+
+        private static string L(string key)
+        {
+            return ResourceProvider.GetString(key);
+        }
+    }
+}

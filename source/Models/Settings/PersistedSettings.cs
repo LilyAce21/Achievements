@@ -1,0 +1,4203 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Playnite.SDK;
+using Playnite.SDK.Data;
+using PlayniteAchievements.Models;
+using PlayniteAchievements.Models.Achievements;
+using PlayniteAchievements.Models.Friends;
+using PlayniteAchievements.Models.Tagging;
+using PlayniteAchievements.Services.Achievements;
+using PlayniteAchievements.Services.Showcase;
+
+using ObservableObject = PlayniteAchievements.Common.ObservableObject;
+
+namespace PlayniteAchievements.Models.Settings
+{
+    /// <summary>
+    /// Persisted user settings for PlayniteAchievements plugin.
+    /// These settings are serialized to the plugin settings JSON file.
+    /// </summary>
+    public partial class PersistedSettings : ObservableObject
+    {
+        private bool _preserveCachedUnlocksOnRefresh = true;
+        public bool PreserveCachedUnlocksOnRefresh
+        {
+            get => _preserveCachedUnlocksOnRefresh;
+            set => SetValue(ref _preserveCachedUnlocksOnRefresh, value);
+        }
+
+        public const double DefaultAchievementDataGridMaxHeight = 600d;
+        public const double MinimumGridRowHeight = 32d;
+        public const int DefaultStartPageGridMaxRows = 25;
+        public const int MinimumGridMaxRows = 1;
+        public const double DefaultOverviewLeftColumnRatio = 0.5d;
+        public const double MinOverviewLeftColumnRatio = 0.01d;
+        public const double MaxOverviewLeftColumnRatio = 0.99d;
+        public const double DefaultFriendsOverviewFriendColumnRatio = 0.25d;
+        public const double DefaultFriendsOverviewGameColumnRatio = 0.31d;
+        public const double MinFriendsOverviewColumnRatio = 0.01d;
+        public const double MaxFriendsOverviewColumnRatio = 0.98d;
+        public const GameActivityScope DefaultStartPageActivityScope = GameActivityScope.Played;
+        public const GameProgressScope DefaultStartPageProgressScope =
+            GameProgressScope.Completed | GameProgressScope.InProgress;
+        public const string DefaultViewAchievementsHotkey = "Ctrl+Alt+V";
+        public const string DefaultManageAchievementsHotkey = "Ctrl+Alt+M";
+        public const string DefaultOverviewHotkey = "Ctrl+Alt+O";
+        public const string DefaultOpenSettingsHotkey = "Ctrl+Alt+P";
+        public const string DefaultCategoryModeHotkey = "C";
+        public const string DefaultTestUnlockHotkey = "Ctrl+Alt+T";
+
+        /// <summary>
+        /// Column key of the Progress column in game-summaries grids (matches the XAML ColumnKey and
+        /// the canonical key produced by <see cref="OverviewSettingsMigration"/>). The footer badge
+        /// layout in this column responds to its horizontal alignment, defaulting to Right.
+        /// </summary>
+        public const string ProgressColumnKey = "GameSummaryProgression";
+
+        public PersistedSettings()
+        {
+            AttachStartPageSettingsHandlers();
+        }
+
+        #region Backing Fields
+
+        private string _globalLanguage = "english";
+        private bool _enablePeriodicUpdates = true;
+        private bool _includeHiddenGamesInBulkScans = true;
+        private int _periodicUpdateHours = 6;
+        private bool _enableFriendsPeriodicUpdates = false;
+        private int _friendsPeriodicUpdateHours = 24;
+        private bool _enableInGamePolling = true;
+        private bool _enableAutoCapstoneGeneration = false;
+        private string _autoCapstoneGameNameTemplate;
+        private string _autoCapstoneGameDescriptionTemplate;
+        private string _autoCapstoneCategoryNameTemplate;
+        private string _autoCapstoneCategoryDescriptionTemplate;
+        private List<string> _autoCapstoneTemplateHistory = new List<string>();
+        private string _autoCapstoneAppliedTemplates;
+        private int _inGamePollIntervalSeconds = 15;
+        private bool _inGamePollRefreshFriends = false;
+        private int _inGameFriendRefreshMultiplier = 4;
+        private int _inGameFriendBatchSize = 10;
+        private bool _enableNotifications = true;
+        private bool _enableUnlockToasts = true;
+        private bool _enableFriendUnlockToasts = true;
+        private bool _enableProgressToasts = true;
+        private NotificationStyleSettings _notificationStyle;
+        private bool _toastUseThemeStyling = true;
+        private bool _frameUseThemeStyling = true;
+        private Dictionary<string, NotificationStyleSettings> _providerNotificationStyles;
+        private int _toastDurationSeconds = 6;
+        private double _notificationDelaySeconds = 0;
+        private double _captureDelaySeconds = 0;
+        private int _maxConcurrentToasts = 3;
+        private bool _enableControllerVibration = false;
+        private int _controllerVibrationStrengthPercent = 50;
+        private int _controllerVibrationDurationMs = 650;
+        private bool _useHiddenUnlockSound = false;
+        private bool _enableUnlockSounds = true;
+        private bool _allowThemeUnlockSounds = true;
+        private int _unlockSoundVolumePercent = 50;
+        private UnlockSoundSettings _unlockSounds = UnlockSoundSettings.CreateDefault();
+        private bool _unlockSoundsSeededFromUniPlaySong = false;
+        private bool _enableUnlockScreenshots = false;
+        private bool _unlockScreenshotClean = false;
+        private bool _unlockScreenshotWithToast = true;
+        private bool _unlockScreenshotFramed = false;
+        private string _unlockScreenshotSuffixClean = "clean";
+        private string _unlockScreenshotSuffixWithToast = "notification";
+        private string _unlockScreenshotSuffixFramed = "framed";
+        private string _unlockScreenshotDirectory;
+        private ScreenshotResolution _screenshotResolution = ScreenshotResolution.Native;
+        private RaritySelection _unlockScreenshotCleanRarities = RaritySelection.All;
+        private bool _unlockScreenshotCleanAlwaysCaptureCompletion = true;
+        private RaritySelection _unlockScreenshotWithToastRarities = RaritySelection.All;
+        private bool _unlockScreenshotWithToastAlwaysCaptureCompletion = true;
+        private RaritySelection _unlockScreenshotFramedRarities = RaritySelection.All;
+        private bool _unlockScreenshotFramedAlwaysCaptureCompletion = true;
+        private bool _enableUnlockRecordings = false;
+        private string _unlockRecordingDirectory;
+        private int _recordingClipSeconds = 15;
+        private int _recordingFps = 30;
+        private RecordingResolution _recordingResolution = RecordingResolution.Native;
+        private RecordingQuality _recordingQuality = RecordingQuality.Native;
+        private bool _recordingIncludeAudio = false;
+        private RecordingAudioSource _recordingAudioSource = RecordingAudioSource.FullSystem;
+        private bool _recordingIncludeMicrophone = false;
+        private RaritySelection _unlockRecordingRarities = RaritySelection.All;
+        private bool _unlockRecordingAlwaysCaptureCompletion = true;
+        private bool _unlockRecordingClean = false;
+        private bool _unlockRecordingWithToast = true;
+        private bool _unlockRecordingFramed = false;
+        private RaritySelection _unlockRecordingCleanRarities = RaritySelection.All;
+        private bool _unlockRecordingCleanAlwaysCaptureCompletion = true;
+        private RaritySelection _unlockRecordingFramedRarities = RaritySelection.All;
+        private bool _unlockRecordingFramedAlwaysCaptureCompletion = true;
+        private int? _unlockRecordingFramedSeconds = 5;
+        private Dictionary<string, ProviderNotificationOverride> _providerNotificationOverrides =
+            new Dictionary<string, ProviderNotificationOverride>(StringComparer.OrdinalIgnoreCase);
+        private ToastScreenCorner _toastPosition = ToastScreenCorner.BottomRight;
+        private int _recentRefreshGamesCount = 10;
+        private RefreshModeType _defaultOverviewRefreshMode = RefreshModeType.Installed;
+        private bool _enableAchievementHotkeys = true;
+        private bool _enableGlobalAchievementHotkeys = false;
+        private bool _enableViewAchievementsHotkey = true;
+        private bool _enableManageAchievementsHotkey = true;
+        private bool _enableOverviewHotkey = true;
+        private bool _enableOpenSettingsHotkey = true;
+        private bool _enableCategoryModeHotkey = true;
+        private bool _enableTestUnlockHotkey = true;
+        private bool _enableCaptureTestFolder = false;
+        private string _viewAchievementsHotkey = DefaultViewAchievementsHotkey;
+        private string _manageAchievementsHotkey = DefaultManageAchievementsHotkey;
+        private string _overviewHotkey = DefaultOverviewHotkey;
+        private string _openSettingsHotkey = DefaultOpenSettingsHotkey;
+        private string _categoryModeHotkey = DefaultCategoryModeHotkey;
+        private string _testUnlockHotkey = DefaultTestUnlockHotkey;
+        private bool _showHiddenIcon = false;
+        private bool _showHiddenTitle = false;
+        private bool _showHiddenDescription = false;
+        private bool _showHiddenSuffix = true;
+        private bool _showLockedIcon = true;
+        private bool _showLockedTitle = true;
+        private bool _showLockedDescription = true;
+        private bool _showHiddenTrophy = true;
+        private bool _showHiddenPoints = true;
+        private bool _showLockedTrophy = true;
+        private bool _showLockedPoints = true;
+        private bool _useSeparateLockedIconsWhenAvailable = false;
+        private HashSet<Guid> _separateLockedIconEnabledGameIds = new HashSet<Guid>();
+        private string _lockedFallbackIconPath = null;
+        private string _hiddenFallbackIconPath = null;
+        private bool _modernCompactListShowRarityGlow = true;
+        private bool _modernUnlockedListShowRarityGlow = true;
+        private bool _animateRarityGlows = true;
+        // Completion is included by default because the completed-game glow shipped on; the rays stay
+        // opt-in for everything.
+        private RaritySelection _rarityGlowSoftTiers = RaritySelectionExtensions.DefaultSoftGlowTiers;
+        private RaritySelection _rarityGlowRayTiers = RaritySelection.None;
+        private bool _showHardcoreBorder = true;
+        private double _rarityGlowPulseMinOpacity = 0.6;
+        private double _rarityGlowPulseMaxOpacity = 1.0;
+        private double _rarityGlowPulseSpeed = 0.5;
+        private bool _useUniformRarityBadges = false;
+        private bool _useTrophiesForRarity = false;
+        private bool _roundRarityPercentages = false;
+        private RarityColorSettings _rarityColors = RarityColorSettings.CreateDefault();
+        private Dictionary<string, string> _providerColorOverrides =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private bool _includeUnplayedGames = true;
+        private bool _showOverviewCollectionScoreCard = true;
+        private bool _showOverviewPrestigeScoreCard = true;
+        private bool _showOverviewPieCharts = true;
+        private bool _showOverviewGamesPieChart = true;
+        private bool _showOverviewProviderPieChart = true;
+        private bool _showOverviewRarityPieChart = true;
+        private bool _showOverviewTrophyPieChart = true;
+        private bool _showOverviewPiePercentages = true;
+        private bool _showFriendSpoilers;
+        private int _friendsOverviewRecentUnlockLimit = 200;
+        private OverviewPieSmallSliceMode _overviewPieSmallSliceMode = OverviewPieSmallSliceMode.Round;
+        private bool _overviewPieIncludeLocked = true;
+        private bool _overviewPieChartVisibilityInitializedFromIndividualSettings;
+        private bool _showOverviewBarCharts = true;
+        private bool _showTopMenuBarButton = true;
+        private bool _showCompletedProgressColoring = true;
+        private bool _tintMissableLocks = true;
+        private bool _showCompactListRarityBar = true;
+        private bool _progressColumnAlignmentDefaulted = false;
+        private bool _inlineSurfaceTransparencySeeded = true;
+        private bool _commonGlowTierCleared = true;
+        private bool _categoryProgressColumnAlignmentDefaulted = true;
+
+        private GridAlignment _gridColumnHeaderAlignment = GridAlignment.Center;
+        private GridAlignment _gridCellAlignment = GridAlignment.Left;
+        private GridVerticalAlignment _gridCellVerticalAlignment = GridVerticalAlignment.Center;
+        private DateDisplayMode _unlockDateDisplayMode = DateDisplayMode.DateAndTime;
+        private PlaytimeDisplayMode _playtimeDisplayMode = PlaytimeDisplayMode.HoursAndMinutes;
+        private CategoryCompletionBadgeMode _categoryCompletionBadgeMode = CategoryCompletionBadgeMode.All;
+        private ProgressBadgeSource _progressBadgeSource = ProgressBadgeSource.TrophyWhenAvailable;
+        private FriendNameDisplayMode _friendNameDisplayMode = FriendNameDisplayMode.PersonaAndNickname;
+        private bool _enableAchievementCompactListControl = true;
+        private bool _enableAchievementDataGridControl = true;
+        private bool _enableAchievementCompactUnlockedListControl = true;
+        private bool _enableAchievementCompactLockedListControl = true;
+        private bool _enableAchievementProgressBarControl = true;
+        private bool _enableAchievementStatsControl = true;
+        private bool _enableAchievementButtonControl = true;
+        private bool _enableAchievementViewItemControl = true;
+        private bool _enableAchievementPieChartControl = true;
+        private bool _enableAchievementBarChartControl = true;
+        private StartPageGameSummariesGridSettings _startPageGameSummariesGrid;
+        private StartPageRecentUnlocksGridSettings _startPageRecentUnlocksGrid;
+        private StartPageFriendsRecentUnlocksGridSettings _startPageFriendsRecentUnlocksGrid;
+        private ShowcaseSettings _showcase;
+        private GridOptionsCatalog _gridOptions = new GridOptionsCatalog();
+        private GameActivityScope _startPageActivityScope = DefaultStartPageActivityScope;
+        private GameProgressScope _startPageProgressScope = DefaultStartPageProgressScope;
+        private bool _enableParallelProviderRefresh = true;
+        private int _scanDelayMs = 200;
+        private int _maxRetryAttempts = 3;
+        // Deserialization target: left empty so a loaded config is taken verbatim. Newtonsoft
+        // populates an existing non-null dictionary in place rather than replacing it, so a
+        // pre-seeded field would re-introduce removed ("Follow Playnite") overrides on every load.
+        // Fresh installs seed transparent inline surfaces via the plugin-reference constructor.
+        private Dictionary<string, ResourceOverrideSetting> _resourceOverrides =
+            new Dictionary<string, ResourceOverrideSetting>(StringComparer.OrdinalIgnoreCase);
+        private List<CustomRefreshPreset> _customRefreshPresets = new List<CustomRefreshPreset>();
+        private double _overviewLeftColumnRatio = DefaultOverviewLeftColumnRatio;
+        private double _friendsOverviewFriendColumnRatio = DefaultFriendsOverviewFriendColumnRatio;
+        private double _friendsOverviewGameColumnRatio = DefaultFriendsOverviewGameColumnRatio;
+        private Dictionary<string, WindowPlacementState> _windowPlacements =
+            new Dictionary<string, WindowPlacementState>(StringComparer.OrdinalIgnoreCase);
+        private TimeWindow _overviewTimeWindow = TimeWindow.FromPreset(TimelineRange.OneYear);
+        private TimelineGranularity _overviewTimelineGranularity = TimelineGranularity.Auto;
+        private TimeWindow _viewAchievementsTimeWindow = TimeWindow.FromPreset(TimelineRange.OneYear);
+        private TimelineGranularity _viewAchievementsTimelineGranularity = TimelineGranularity.Auto;
+        private bool _viewAchievementsTimelineVisible = false;
+        private bool _firstTimeSetupCompleted = false;
+        private bool _seenThemeMigration = false;
+        private bool _enableAutomaticThemeMigration = true;
+        private bool _usePlayniteContextMenuOnStartPage = false;
+        private HashSet<Guid> _excludedGameIds = new HashSet<Guid>();
+        private HashSet<Guid> _excludedFromSummariesGameIds = new HashSet<Guid>();
+        private Dictionary<Guid, string> _manualCapstones = new Dictionary<Guid, string>();
+        private Dictionary<Guid, List<string>> _achievementOrderOverrides = new Dictionary<Guid, List<string>>();
+        private Dictionary<Guid, Dictionary<string, string>> _achievementCategoryOverrides =
+            new Dictionary<Guid, Dictionary<string, string>>();
+        private Dictionary<Guid, Dictionary<string, string>> _achievementCategoryTypeOverrides =
+            new Dictionary<Guid, Dictionary<string, string>>();
+        private Dictionary<string, ThemeMigrationCacheEntry> _themeMigrationVersionCache =
+            new Dictionary<string, ThemeMigrationCacheEntry>(StringComparer.OrdinalIgnoreCase);
+        private CompactListSortMode _compactListSortMode = CompactListSortMode.None;
+        private bool _compactListSortDescending = false;
+        private CompactListSortMode _compactUnlockedListSortMode = CompactListSortMode.None;
+        private bool _compactUnlockedListSortDescending = false;
+        private CompactListSortMode _compactLockedListSortMode = CompactListSortMode.None;
+        private bool _compactLockedListSortDescending = false;
+        private TaggingSettings _taggingSettings;
+        private Dictionary<string, JObject> _providerSettings = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
+        private bool _enableFriendsFeatures = true;
+        private HashSet<string> _autoDiscoverFriendProviderKeys = CreateDefaultAutoDiscoverFriendProviderKeys();
+        private bool _useExophaseForSteamFriendOwnership = false;
+        private bool _includeUnownedFriendGames = false;
+        private ObservableCollection<FriendSettingsEntry> _friends = new ObservableCollection<FriendSettingsEntry>();
+        private ObservableCollection<FriendMergeGroup> _friendMergeGroups = new ObservableCollection<FriendMergeGroup>();
+
+        #endregion
+
+        #region Provider Settings Dictionary
+
+        /// <summary>
+        /// Dictionary of provider settings as JSON objects.
+        /// Key is the provider key (e.g., "Steam", "Epic"), value is the settings as a JObject.
+        /// </summary>
+        public Dictionary<string, JObject> ProviderSettings
+        {
+            get => _providerSettings;
+            set => SetValue(ref _providerSettings, value ?? new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        #endregion
+
+        #region Friend Settings
+
+        public bool EnableFriendsFeatures
+        {
+            get => _enableFriendsFeatures;
+            set => SetValue(ref _enableFriendsFeatures, value);
+        }
+
+        public HashSet<string> AutoDiscoverFriendProviderKeys
+        {
+            get => _autoDiscoverFriendProviderKeys ?? (_autoDiscoverFriendProviderKeys = CreateDefaultAutoDiscoverFriendProviderKeys());
+            set => SetValue(ref _autoDiscoverFriendProviderKeys, NormalizeProviderKeySet(value));
+        }
+
+        public bool UseExophaseForSteamFriendOwnership
+        {
+            get => _useExophaseForSteamFriendOwnership;
+            set => SetValue(ref _useExophaseForSteamFriendOwnership, value);
+        }
+
+        /// <summary>
+        /// When true, friend refreshes may scan games the current user does not own (the Full
+        /// scope). When false, Full-scope requests are clamped to Shared so no unowned friend
+        /// games are ever scanned.
+        /// </summary>
+        public bool IncludeUnownedFriendGames
+        {
+            get => _includeUnownedFriendGames;
+            set => SetValue(ref _includeUnownedFriendGames, value);
+        }
+
+        public ObservableCollection<FriendSettingsEntry> Friends
+        {
+            get => _friends ?? (_friends = new ObservableCollection<FriendSettingsEntry>());
+            set
+            {
+                if (SetValueAndReturn(ref _friends, NormalizeFriendEntries(value)))
+                {
+                    FriendMergeGroups = FriendMergeGroups;
+                }
+            }
+        }
+
+        public ObservableCollection<FriendMergeGroup> FriendMergeGroups
+        {
+            get => _friendMergeGroups ?? (_friendMergeGroups = new ObservableCollection<FriendMergeGroup>());
+            set => SetValue(ref _friendMergeGroups, NormalizeFriendMergeGroups(value, Friends));
+        }
+
+        public static HashSet<string> CreateDefaultAutoDiscoverFriendProviderKeys()
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Steam",
+                "RetroAchievements"
+            };
+        }
+
+        public bool IsFriendAutoDiscoverEnabled(string providerKey)
+        {
+            return !string.IsNullOrWhiteSpace(providerKey) &&
+                   AutoDiscoverFriendProviderKeys.Contains(providerKey.Trim());
+        }
+
+        public void SetFriendAutoDiscoverEnabled(string providerKey, bool enabled)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            if (string.IsNullOrWhiteSpace(providerKey))
+            {
+                return;
+            }
+
+            var keys = NormalizeProviderKeySet(AutoDiscoverFriendProviderKeys);
+            var changed = enabled ? keys.Add(providerKey) : keys.Remove(providerKey);
+            if (changed)
+            {
+                AutoDiscoverFriendProviderKeys = keys;
+            }
+        }
+
+        public FriendSettingsEntry AddOrUpdateFriend(
+            FriendIdentity identity,
+            FriendSettingsSource source = FriendSettingsSource.AutoDiscovered)
+        {
+            if (identity == null)
+            {
+                return null;
+            }
+
+            return AddOrUpdateFriend(
+                identity.ProviderKey,
+                identity.ExternalUserId,
+                identity.DisplayName,
+                identity.AvatarUrl,
+                identity.AvatarPath,
+                source,
+                null,
+                identity.LastRefreshedUtc,
+                null,
+                null,
+                identity.ProviderNickname,
+                applyProviderNickname: true);
+        }
+
+        public FriendSettingsEntry AddOrUpdateFriend(
+            string providerKey,
+            string externalUserId,
+            string displayName,
+            string avatarUrl,
+            string avatarPath,
+            FriendSettingsSource source,
+            IEnumerable<string> selectedPlatforms = null,
+            DateTime? lastRefreshedUtc = null,
+            DateTime? lastProbedUtc = null,
+            string lastError = null,
+            string providerNickname = null,
+            bool applyProviderNickname = false)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            externalUserId = NormalizeProviderKeyToken(externalUserId);
+            if (string.IsNullOrWhiteSpace(providerKey) || string.IsNullOrWhiteSpace(externalUserId))
+            {
+                return null;
+            }
+
+            var entries = NormalizeFriendEntries(Friends);
+            var existing = entries.FirstOrDefault(entry =>
+                string.Equals(entry.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(entry.ExternalUserId, externalUserId, StringComparison.OrdinalIgnoreCase));
+            if (existing == null)
+            {
+                existing = new FriendSettingsEntry
+                {
+                    ProviderKey = providerKey,
+                    ExternalUserId = externalUserId,
+                    DisplayName = string.IsNullOrWhiteSpace(displayName) ? externalUserId : displayName.Trim(),
+                    Source = source,
+                    SelectedPlatforms = FriendSettingsEntry.NormalizePlatformList(selectedPlatforms),
+                    AddedUtc = DateTime.UtcNow
+                };
+                entries.Add(existing);
+            }
+            else
+            {
+                if (source == FriendSettingsSource.Manual)
+                {
+                    existing.Source = FriendSettingsSource.Manual;
+                }
+
+                if (selectedPlatforms != null)
+                {
+                    existing.SelectedPlatforms = FriendSettingsEntry.NormalizePlatformList(selectedPlatforms);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(displayName))
+            {
+                existing.DisplayName = displayName.Trim();
+            }
+
+            // Overwrite (including to null) only when the caller carries roster data; other
+            // callers (manual add, probe updates) preserve the stored provider nickname.
+            if (applyProviderNickname)
+            {
+                existing.ProviderNickname = string.IsNullOrWhiteSpace(providerNickname)
+                    ? null
+                    : providerNickname.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(avatarUrl))
+            {
+                existing.AvatarUrl = avatarUrl.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(avatarPath))
+            {
+                existing.AvatarPath = avatarPath.Trim();
+            }
+
+            if (lastRefreshedUtc.HasValue)
+            {
+                existing.LastRefreshedUtc = lastRefreshedUtc;
+            }
+
+            if (lastProbedUtc.HasValue)
+            {
+                existing.LastProbedUtc = lastProbedUtc;
+            }
+
+            if (lastError != null)
+            {
+                existing.LastError = string.IsNullOrWhiteSpace(lastError) ? null : lastError.Trim();
+            }
+
+            Friends = entries;
+            return GetFriendSetting(providerKey, externalUserId);
+        }
+
+        public bool SetFriendNickname(string providerKey, string externalUserId, string nickname)
+        {
+            var entry = GetFriendSetting(providerKey, externalUserId);
+            if (entry == null)
+            {
+                return false;
+            }
+
+            var normalized = string.IsNullOrWhiteSpace(nickname) ? null : nickname.Trim();
+            if (string.Equals(entry.Nickname, normalized, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            entry.Nickname = normalized;
+            Friends = Friends;
+            return true;
+        }
+
+        public FriendSettingsEntry GetFriendSetting(string providerKey, string externalUserId)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            externalUserId = NormalizeProviderKeyToken(externalUserId);
+            if (string.IsNullOrWhiteSpace(providerKey) || string.IsNullOrWhiteSpace(externalUserId))
+            {
+                return null;
+            }
+
+            return Friends.FirstOrDefault(entry =>
+                string.Equals(entry?.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(entry?.ExternalUserId, externalUserId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public List<FriendSettingsEntry> GetFriendSettings(string providerKey = null, bool includeIgnored = true)
+        {
+            var normalizedProvider = NormalizeProviderKeyToken(providerKey);
+            return Friends
+                .Where(entry => entry != null &&
+                                (string.IsNullOrWhiteSpace(normalizedProvider) ||
+                                 string.Equals(entry.ProviderKey, normalizedProvider, StringComparison.OrdinalIgnoreCase)) &&
+                                (includeIgnored || !entry.IsIgnored))
+                .Select(entry => entry.Clone().Normalize())
+                .ToList();
+        }
+
+        public List<FriendIdentity> GetActiveFriendIdentities(string providerKey = null)
+        {
+            return GetFriendSettings(providerKey, includeIgnored: false)
+                .Select(entry => new FriendIdentity
+                {
+                    ProviderKey = entry.ProviderKey,
+                    ExternalUserId = entry.ExternalUserId,
+                    DisplayName = entry.DisplayName,
+                    ProviderNickname = entry.ProviderNickname,
+                    AvatarUrl = entry.AvatarUrl,
+                    AvatarPath = entry.AvatarPath,
+                    LastRefreshedUtc = entry.LastRefreshedUtc
+                })
+                .ToList();
+        }
+
+        public HashSet<string> GetIgnoredFriendIds(string providerKey)
+        {
+            return new HashSet<string>(
+                GetFriendSettings(providerKey)
+                    .Where(entry => entry.IsIgnored)
+                    .Select(entry => entry.ExternalUserId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        public HashSet<string> GetFullScanExcludedFriendIds(string providerKey)
+        {
+            return new HashSet<string>(
+                GetFriendSettings(providerKey)
+                    .Where(entry => entry.ExcludeFromFullScans)
+                    .Select(entry => entry.ExternalUserId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        public bool SetFriendIgnored(string providerKey, string externalUserId, bool ignored)
+        {
+            var entry = GetFriendSetting(providerKey, externalUserId);
+            if (entry == null || entry.IsIgnored == ignored)
+            {
+                return false;
+            }
+
+            entry.IsIgnored = ignored;
+            Friends = Friends;
+            return true;
+        }
+
+        public HashSet<string> GetFavoriteFriendIds(string providerKey)
+        {
+            return new HashSet<string>(
+                GetFriendSettings(providerKey)
+                    .Where(entry => entry.IsFavorite)
+                    .Select(entry => entry.ExternalUserId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        public bool SetFriendFavorite(string providerKey, string externalUserId, bool favorite)
+        {
+            var entry = GetFriendSetting(providerKey, externalUserId);
+            if (entry == null || entry.IsFavorite == favorite)
+            {
+                return false;
+            }
+
+            entry.IsFavorite = favorite;
+            Friends = Friends;
+            return true;
+        }
+
+        public bool RemoveFriendSetting(string providerKey, string externalUserId)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            externalUserId = NormalizeProviderKeyToken(externalUserId);
+            if (string.IsNullOrWhiteSpace(providerKey) || string.IsNullOrWhiteSpace(externalUserId))
+            {
+                return false;
+            }
+
+            var entries = NormalizeFriendEntries(Friends);
+            var removed = false;
+            for (var i = entries.Count - 1; i >= 0; i--)
+            {
+                var entry = entries[i];
+                if (string.Equals(entry?.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(entry?.ExternalUserId, externalUserId, StringComparison.OrdinalIgnoreCase))
+                {
+                    entries.RemoveAt(i);
+                    removed = true;
+                }
+            }
+
+            if (!removed)
+            {
+                return false;
+            }
+
+            Friends = entries;
+            PruneFriendMergeGroupsForRemovedAccount(providerKey, externalUserId);
+            return true;
+        }
+
+        public List<FriendMergeGroup> GetFriendMergeGroups()
+        {
+            return FriendMergeGroups
+                .Where(group => group?.IsValid == true)
+                .Select(group => group.Clone().Normalize())
+                .ToList();
+        }
+
+        public FriendMergeGroup GetFriendMergeGroup(string groupId)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                return null;
+            }
+
+            return FriendMergeGroups
+                .FirstOrDefault(group => string.Equals(group?.Id, groupId.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?.Clone()
+                ?.Normalize();
+        }
+
+        public FriendMergeGroup GetFriendMergeGroupForAccount(string providerKey, string externalUserId)
+        {
+            return FriendMergeGroups
+                .FirstOrDefault(group => group?.Contains(providerKey, externalUserId) == true)
+                ?.Clone()
+                ?.Normalize();
+        }
+
+        public FriendMergeGroup AddOrUpdateFriendMergeGroup(
+            IEnumerable<FriendAccountRef> members,
+            string nickname = null,
+            FriendAccountRef avatarAccount = null,
+            string existingGroupId = null)
+        {
+            var normalizedMembers = NormalizeFriendMergeMembers(members, Friends);
+            if (normalizedMembers.Count < 2)
+            {
+                return null;
+            }
+
+            var groups = NormalizeFriendMergeGroups(FriendMergeGroups, Friends);
+            var target = !string.IsNullOrWhiteSpace(existingGroupId)
+                ? groups.FirstOrDefault(group => string.Equals(group.Id, existingGroupId.Trim(), StringComparison.OrdinalIgnoreCase))
+                : null;
+            if (target == null)
+            {
+                target = new FriendMergeGroup
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    CreatedUtc = DateTime.UtcNow
+                };
+                groups.Add(target);
+            }
+
+            var memberKeys = new HashSet<string>(
+                normalizedMembers.Select(member => member.Key),
+                StringComparer.OrdinalIgnoreCase);
+            for (var i = groups.Count - 1; i >= 0; i--)
+            {
+                var group = groups[i];
+                if (ReferenceEquals(group, target))
+                {
+                    continue;
+                }
+
+                group.Members = (group.Members ?? new List<FriendAccountRef>())
+                    .Where(member => member != null && !memberKeys.Contains(member.Key))
+                    .ToList();
+                if (group.Members.Count < 2)
+                {
+                    groups.RemoveAt(i);
+                }
+            }
+
+            target.Members = normalizedMembers;
+            target.Nickname = string.IsNullOrWhiteSpace(nickname) ? target.Nickname : nickname.Trim();
+            target.AvatarAccount = avatarAccount?.Clone()?.Normalize();
+            target.Normalize();
+            FriendMergeGroups = groups;
+            return GetFriendMergeGroup(target.Id);
+        }
+
+        public bool RemoveFriendMergeGroup(string groupId)
+        {
+            if (string.IsNullOrWhiteSpace(groupId))
+            {
+                return false;
+            }
+
+            var groups = NormalizeFriendMergeGroups(FriendMergeGroups, Friends);
+            var removed = false;
+            for (var i = groups.Count - 1; i >= 0; i--)
+            {
+                if (string.Equals(groups[i]?.Id, groupId.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    groups.RemoveAt(i);
+                    removed = true;
+                }
+            }
+
+            if (!removed)
+            {
+                return false;
+            }
+
+            FriendMergeGroups = new ObservableCollection<FriendMergeGroup>(groups);
+            return true;
+        }
+
+        public bool SetFriendMergeGroupNickname(string groupId, string nickname)
+        {
+            var groups = NormalizeFriendMergeGroups(FriendMergeGroups, Friends);
+            var group = groups.FirstOrDefault(item => string.Equals(item?.Id, groupId?.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (group == null)
+            {
+                return false;
+            }
+
+            var normalized = string.IsNullOrWhiteSpace(nickname) ? null : nickname.Trim();
+            if (string.Equals(group.Nickname, normalized, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            group.Nickname = normalized;
+            FriendMergeGroups = new ObservableCollection<FriendMergeGroup>(groups);
+            return true;
+        }
+
+        public bool SetFriendMergeGroupAvatar(string groupId, FriendAccountRef avatarAccount)
+        {
+            var groups = NormalizeFriendMergeGroups(FriendMergeGroups, Friends);
+            var group = groups.FirstOrDefault(item => string.Equals(item?.Id, groupId?.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (group == null)
+            {
+                return false;
+            }
+
+            var normalized = avatarAccount?.Clone()?.Normalize();
+            if (normalized == null || !group.Contains(normalized.ProviderKey, normalized.ExternalUserId))
+            {
+                normalized = group.Members.FirstOrDefault()?.Clone();
+            }
+
+            if (string.Equals(group.AvatarAccount?.Key, normalized?.Key, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            group.AvatarAccount = normalized;
+            FriendMergeGroups = new ObservableCollection<FriendMergeGroup>(groups);
+            return true;
+        }
+
+        public bool MigrateLegacyProviderFriends()
+        {
+            var changed = false;
+            var entries = NormalizeFriendEntries(Friends);
+            changed |= MigrateLegacySteamFriends(entries);
+            changed |= MigrateLegacyExophaseFriends(entries);
+            if (changed)
+            {
+                Friends = entries;
+            }
+
+            return changed;
+        }
+
+        #endregion
+
+        #region Global Settings
+
+        /// <summary>
+        /// Global language for achievement text, used by all providers that support localization.
+        /// </summary>
+        public string GlobalLanguage
+        {
+            get => _globalLanguage;
+            set => SetValue(ref _globalLanguage, value);
+        }
+
+        #endregion
+
+        #region Update and Refresh Settings
+
+        /// <summary>
+        /// Enable the background periodic updates.
+        /// </summary>
+        public bool EnablePeriodicUpdates
+        {
+            get => _enablePeriodicUpdates;
+            set => SetValue(ref _enablePeriodicUpdates, value);
+        }
+
+        /// <summary>
+        /// When true, bulk refreshes include games marked hidden in Playnite.
+        /// Explicit user-targeted refreshes ignore this setting.
+        /// </summary>
+        public bool IncludeHiddenGamesInBulkScans
+        {
+            get => _includeHiddenGamesInBulkScans;
+            set => SetValue(ref _includeHiddenGamesInBulkScans, value);
+        }
+
+        /// <summary>
+        /// Hours between periodic background updates.
+        /// </summary>
+        public int PeriodicUpdateHours
+        {
+            get => _periodicUpdateHours;
+            set => SetValue(ref _periodicUpdateHours, Math.Max(1, value));
+        }
+
+        /// <summary>
+        /// Enable the background periodic Recent friends refresh.
+        /// </summary>
+        public bool EnableFriendsPeriodicUpdates
+        {
+            get => _enableFriendsPeriodicUpdates;
+            set => SetValue(ref _enableFriendsPeriodicUpdates, value);
+        }
+
+        /// <summary>
+        /// Hours between periodic background Recent friends refreshes.
+        /// </summary>
+        public int FriendsPeriodicUpdateHours
+        {
+            get => _friendsPeriodicUpdateHours;
+            set => SetValue(ref _friendsPeriodicUpdateHours, Math.Max(1, value));
+        }
+
+        public bool EnableInGamePolling
+        {
+            get => _enableInGamePolling;
+            set => SetValue(ref _enableInGamePolling, value);
+        }
+
+        /// <summary>
+        /// Gives each game an auto capstone after it refreshes, once per game. Turning it off only
+        /// stops new ones; capstones already generated stay.
+        /// </summary>
+        public bool EnableAutoCapstoneGeneration
+        {
+            get => _enableAutoCapstoneGeneration;
+            set => SetValue(ref _enableAutoCapstoneGeneration, value);
+        }
+
+        /// <summary>
+        /// The whole-game auto capstone's title template ({0} = game), or null to follow the
+        /// language's default.
+        /// </summary>
+        public string AutoCapstoneGameNameTemplate
+        {
+            get => _autoCapstoneGameNameTemplate;
+            set => SetValue(ref _autoCapstoneGameNameTemplate, value);
+        }
+
+        /// <summary>
+        /// The whole-game auto capstone's description template ({0} = game), or null to follow
+        /// the language's default.
+        /// </summary>
+        public string AutoCapstoneGameDescriptionTemplate
+        {
+            get => _autoCapstoneGameDescriptionTemplate;
+            set => SetValue(ref _autoCapstoneGameDescriptionTemplate, value);
+        }
+
+        /// <summary>
+        /// A category auto capstone's title template ({0} = game, {1} = category), or null to
+        /// follow the language's default.
+        /// </summary>
+        public string AutoCapstoneCategoryNameTemplate
+        {
+            get => _autoCapstoneCategoryNameTemplate;
+            set => SetValue(ref _autoCapstoneCategoryNameTemplate, value);
+        }
+
+        /// <summary>
+        /// A category auto capstone's description template ({0} = game, {1} = category), or null
+        /// to follow the language's default.
+        /// </summary>
+        public string AutoCapstoneCategoryDescriptionTemplate
+        {
+            get => _autoCapstoneCategoryDescriptionTemplate;
+            set => SetValue(ref _autoCapstoneCategoryDescriptionTemplate, value);
+        }
+
+        /// <summary>
+        /// Every template the user has set, so a capstone written with one they have since
+        /// replaced still reads as default text rather than an edit.
+        /// </summary>
+        public List<string> AutoCapstoneTemplateHistory
+        {
+            get => _autoCapstoneTemplateHistory;
+            set => SetValue(ref _autoCapstoneTemplateHistory, value ?? new List<string>());
+        }
+
+        /// <summary>
+        /// The resolved templates the library's auto capstones were last brought in line with, so
+        /// startup knows whether a template or language change still has to be applied.
+        /// </summary>
+        public string AutoCapstoneAppliedTemplates
+        {
+            get => _autoCapstoneAppliedTemplates;
+            set => SetValue(ref _autoCapstoneAppliedTemplates, value);
+        }
+        public int InGamePollIntervalSeconds
+        {
+            get => _inGamePollIntervalSeconds;
+            set => SetValue(ref _inGamePollIntervalSeconds, Math.Max(10, value));
+        }
+
+        public bool InGamePollRefreshFriends
+        {
+            get => _inGamePollRefreshFriends;
+            set => SetValue(ref _inGamePollRefreshFriends, value);
+        }
+
+        public int InGameFriendRefreshMultiplier
+        {
+            get => _inGameFriendRefreshMultiplier;
+            set => SetValue(ref _inGameFriendRefreshMultiplier, Math.Max(1, value));
+        }
+
+        public int InGameFriendBatchSize
+        {
+            get => _inGameFriendBatchSize;
+            set => SetValue(ref _inGameFriendBatchSize, Math.Max(0, value));
+        }
+
+        /// <summary>
+        /// Maximum recent games to refresh when using Recent Refresh.
+        /// </summary>
+        public int RecentRefreshGamesCount
+        {
+            get => _recentRefreshGamesCount;
+            set => SetValue(ref _recentRefreshGamesCount, Math.Max(1, value));
+        }
+
+        /// <summary>
+        /// Refresh mode the Overview view's refresh dropdown defaults to on open.
+        /// </summary>
+        public RefreshModeType DefaultOverviewRefreshMode
+        {
+            get => _defaultOverviewRefreshMode;
+            set => SetValue(ref _defaultOverviewRefreshMode, value);
+        }
+
+        /// <summary>
+        /// Saved presets for Custom Refresh dialog.
+        /// </summary>
+        public List<CustomRefreshPreset> CustomRefreshPresets
+        {
+            get => _customRefreshPresets;
+            set
+            {
+                var normalized = new List<CustomRefreshPreset>(
+                    CustomRefreshPreset.NormalizePresets(value, CustomRefreshPreset.MaxPresetCount));
+                SetValue(ref _customRefreshPresets, normalized);
+            }
+        }
+
+        #endregion
+
+        #region Hotkey Settings
+
+        /// <summary>
+        /// Enables keyboard shortcuts for achievement windows while Playnite is focused.
+        /// </summary>
+        public bool EnableAchievementHotkeys
+        {
+            get => _enableAchievementHotkeys;
+            set => SetValue(ref _enableAchievementHotkeys, value);
+        }
+
+        /// <summary>
+        /// Registers eligible achievement hotkeys with Windows so they work outside Playnite.
+        /// </summary>
+        public bool EnableGlobalAchievementHotkeys
+        {
+            get => _enableGlobalAchievementHotkeys;
+            set => SetValue(ref _enableGlobalAchievementHotkeys, value);
+        }
+
+        /// <summary>
+        /// Enables the View Achievements shortcut individually. Gated by <see cref="EnableAchievementHotkeys"/>.
+        /// </summary>
+        public bool EnableViewAchievementsHotkey
+        {
+            get => _enableViewAchievementsHotkey;
+            set => SetValue(ref _enableViewAchievementsHotkey, value);
+        }
+
+        /// <summary>
+        /// Enables the Manage Achievements shortcut individually. Gated by <see cref="EnableAchievementHotkeys"/>.
+        /// </summary>
+        public bool EnableManageAchievementsHotkey
+        {
+            get => _enableManageAchievementsHotkey;
+            set => SetValue(ref _enableManageAchievementsHotkey, value);
+        }
+
+        /// <summary>
+        /// Enables the Achievements Overview shortcut individually. Gated by <see cref="EnableAchievementHotkeys"/>.
+        /// </summary>
+        public bool EnableOverviewHotkey
+        {
+            get => _enableOverviewHotkey;
+            set => SetValue(ref _enableOverviewHotkey, value);
+        }
+
+        /// <summary>
+        /// Enables the Open Settings shortcut individually. Gated by <see cref="EnableAchievementHotkeys"/>.
+        /// </summary>
+        public bool EnableOpenSettingsHotkey
+        {
+            get => _enableOpenSettingsHotkey;
+            set => SetValue(ref _enableOpenSettingsHotkey, value);
+        }
+
+        /// <summary>
+        /// Enables the category-mode shortcut individually. Gated by <see cref="EnableAchievementHotkeys"/>.
+        /// </summary>
+        public bool EnableCategoryModeHotkey
+        {
+            get => _enableCategoryModeHotkey;
+            set => SetValue(ref _enableCategoryModeHotkey, value);
+        }
+
+        /// <summary>
+        /// Enables the shortcut that re-fires the notification for the running game's last-earned
+        /// achievement. Gated by <see cref="EnableAchievementHotkeys"/>.
+        /// </summary>
+        public bool EnableTestUnlockHotkey
+        {
+            get => _enableTestUnlockHotkey;
+            set => SetValue(ref _enableTestUnlockHotkey, value);
+        }
+
+        /// <summary>
+        /// Routes retriggered captures into the shared "Test" subfolder of the capture root instead of
+        /// the game's own folder. The capture library hides that subfolder, so retriggers become
+        /// throwaway test output rather than part of the game's collection.
+        ///
+        /// Also the only way to retrigger with no game running: without it the shortcut is inert
+        /// outside a game, because there is no game folder to write to.
+        /// </summary>
+        public bool EnableCaptureTestFolder
+        {
+            get => _enableCaptureTestFolder;
+            set => SetValue(ref _enableCaptureTestFolder, value);
+        }
+
+        /// <summary>
+        /// Shortcut that opens, focuses, or toggles the View Achievements window.
+        /// </summary>
+        public string ViewAchievementsHotkey
+        {
+            get => _viewAchievementsHotkey;
+            set => SetValue(ref _viewAchievementsHotkey, NormalizeHotkeyText(value));
+        }
+
+        /// <summary>
+        /// Shortcut that opens, focuses, or toggles the Manage Achievements window.
+        /// </summary>
+        public string ManageAchievementsHotkey
+        {
+            get => _manageAchievementsHotkey;
+            set => SetValue(ref _manageAchievementsHotkey, NormalizeHotkeyText(value));
+        }
+
+        /// <summary>
+        /// Shortcut that opens, focuses, or toggles the Achievements Overview window.
+        /// </summary>
+        public string OverviewHotkey
+        {
+            get => _overviewHotkey;
+            set => SetValue(ref _overviewHotkey, NormalizeHotkeyText(value));
+        }
+
+        /// <summary>
+        /// Shortcut that opens the plugin settings window.
+        /// </summary>
+        public string OpenSettingsHotkey
+        {
+            get => _openSettingsHotkey;
+            set => SetValue(ref _openSettingsHotkey, NormalizeHotkeyText(value));
+        }
+
+        /// <summary>
+        /// Shortcut that flips category mode in a focused achievement grid, when the
+        /// category toggle is available there.
+        /// </summary>
+        public string CategoryModeHotkey
+        {
+            get => _categoryModeHotkey;
+            set => SetValue(ref _categoryModeHotkey, NormalizeHotkeyText(value));
+        }
+
+        /// <summary>
+        /// Shortcut that fires the full notification flow (notification, screenshot, recording)
+        /// for the running game's last-earned achievement.
+        /// </summary>
+        public string TestUnlockHotkey
+        {
+            get => _testUnlockHotkey;
+            set => SetValue(ref _testUnlockHotkey, NormalizeHotkeyText(value));
+        }
+
+        #endregion
+
+        #region Notification Settings
+
+        /// <summary>
+        /// Enable non-modal notifications (toasts) from the plugin.
+        /// </summary>
+        public bool EnableNotifications
+        {
+            get => _enableNotifications;
+            set => SetValue(ref _enableNotifications, value);
+        }
+
+        public bool EnableUnlockToasts
+        {
+            get => _enableUnlockToasts;
+            set => SetValue(ref _enableUnlockToasts, value);
+        }
+
+        public bool EnableFriendUnlockToasts
+        {
+            get => _enableFriendUnlockToasts;
+            set => SetValue(ref _enableFriendUnlockToasts, value);
+        }
+
+        /// <summary>
+        /// Show a silent, capture-free notification when a locked achievement's provider-reported
+        /// progress (e.g. 3/10) advances while its game is monitored. Per-provider overrides live
+        /// in <see cref="ProviderNotificationOverrides"/>.
+        /// </summary>
+        public bool EnableProgressToasts
+        {
+            get => _enableProgressToasts;
+            set => SetValue(ref _enableProgressToasts, value);
+        }
+
+        /// <summary>
+        /// Global default appearance style for the toast and frame surfaces. Per-provider
+        /// whole-style copies live in <see cref="ProviderNotificationStyles"/>. Lazily
+        /// initialized; never null.
+        /// </summary>
+        public NotificationStyleSettings NotificationStyle
+        {
+            get => _notificationStyle ?? (_notificationStyle = NotificationStyleSettings.CreateDefault());
+            set => SetValue(ref _notificationStyle, value);
+        }
+
+        /// <summary>
+        /// When true, the active theme may override the on-screen toast surface (template,
+        /// storyboards, position, duration). When false, the bundled toast template and the
+        /// plugin's own settings always apply.
+        /// </summary>
+        public bool ToastUseThemeStyling
+        {
+            get => _toastUseThemeStyling;
+            set => SetValue(ref _toastUseThemeStyling, value);
+        }
+
+        /// <summary>
+        /// When true, the active theme may override the screenshot frame template. When
+        /// false, the bundled frame template always applies.
+        /// </summary>
+        public bool FrameUseThemeStyling
+        {
+            get => _frameUseThemeStyling;
+            set => SetValue(ref _frameUseThemeStyling, value);
+        }
+
+        public int ToastDurationSeconds
+        {
+            get => _toastDurationSeconds;
+            set => SetValue(ref _toastDurationSeconds, Math.Max(2, value));
+        }
+
+        /// <summary>
+        /// Holds the entire unlock notification wave — toast card, chime, vibration, and the
+        /// windowless screenshot-only wave alike — until this many seconds after the unlock was
+        /// observed (falling back to the moment the notification was queued when no observation
+        /// stamp exists, e.g. friend unlocks). Pipeline latency and time spent held while the game
+        /// is minimized both count toward the delay: the wave shows when the last gate clears.
+        ///
+        /// Independent of <see cref="CaptureDelaySeconds"/>, which then runs from the (delayed)
+        /// wave start, so the capture lands at roughly unlock + notification delay + capture delay.
+        ///
+        /// Deliberately has no upper bound; only negatives are rejected. Never applies to previews
+        /// or test fires, which show the instant they are asked for.
+        /// </summary>
+        public double NotificationDelaySeconds
+        {
+            get => _notificationDelaySeconds;
+            set => SetValue(ref _notificationDelaySeconds, Math.Max(0, value));
+        }
+
+        /// <summary>
+        /// Delays the unlock CAPTURE this many seconds. The screenshot's base frame is grabbed
+        /// this long after the wave starts to show, and the clip is anchored there too, with the
+        /// composited card placed at that same instant. The capture therefore shows the game a
+        /// moment further on while still reading as the notification's own frame.
+        ///
+        /// Measured from the wave starting to show, not from the unlock: with a notification
+        /// delay configured the wave start is itself already held past the unlock, and a wave held
+        /// by the foreground gate captures relative to when it is finally shown.
+        ///
+        /// Deliberately has no upper bound; only negatives are rejected. Never applies to previews or
+        /// retriggers, which capture the instant they are asked for.
+        /// </summary>
+        public double CaptureDelaySeconds
+        {
+            get => _captureDelaySeconds;
+            set => SetValue(ref _captureDelaySeconds, Math.Max(0, value));
+        }
+
+        public int MaxConcurrentToasts
+        {
+            get => _maxConcurrentToasts;
+            set => SetValue(ref _maxConcurrentToasts, Math.Max(1, value));
+        }
+
+        public ToastScreenCorner ToastPosition
+        {
+            get => _toastPosition;
+            set => SetValue(ref _toastPosition, value);
+        }
+
+        /// <summary>
+        /// Pulse connected game controllers when a notification shows.
+        /// </summary>
+        public bool EnableControllerVibration
+        {
+            get => _enableControllerVibration;
+            set => SetValue(ref _enableControllerVibration, value);
+        }
+
+        /// <summary>
+        /// Controller vibration strength as a percentage of full motor speed (0-100).
+        /// </summary>
+        public int ControllerVibrationStrengthPercent
+        {
+            get => _controllerVibrationStrengthPercent;
+            set => SetValue(ref _controllerVibrationStrengthPercent, Math.Max(0, Math.Min(100, value)));
+        }
+
+        /// <summary>
+        /// Controller vibration pulse length in milliseconds (100-5000).
+        /// </summary>
+        public int ControllerVibrationDurationMs
+        {
+            get => _controllerVibrationDurationMs;
+            set => SetValue(ref _controllerVibrationDurationMs, Math.Max(100, Math.Min(5000, value)));
+        }
+
+        /// <summary>
+        /// Play the hidden-achievement sound slot instead of the rarity slot when a hidden
+        /// achievement unlocks. Off by default so hidden unlocks sound like their rarity unless the
+        /// user wants them distinct; the hidden slot resolves through the same custom, theme,
+        /// bundled chain as every other tier, so enabling it never silences an unlock.
+        /// </summary>
+        public bool UseHiddenUnlockSound
+        {
+            get => _useHiddenUnlockSound;
+            set => SetValue(ref _useHiddenUnlockSound, value);
+        }
+
+        /// <summary>Master switch for the unlock sound played with a notification wave.</summary>
+        public bool EnableUnlockSounds
+        {
+            get => _enableUnlockSounds;
+            set => SetValue(ref _enableUnlockSounds, value);
+        }
+
+        /// <summary>
+        /// Whether a tier with no file of the user's own may take the active theme's sound. On by
+        /// default, so a theme that ships sounds is heard without the user configuring anything.
+        /// Turning it off drops the theme step out of the chain, leaving the user's own file and
+        /// the bundled default, which is how someone keeps the built-in pack while running a theme
+        /// whose sounds they do not want.
+        /// </summary>
+        public bool AllowThemeUnlockSounds
+        {
+            get => _allowThemeUnlockSounds;
+            set => SetValue(ref _allowThemeUnlockSounds, value);
+        }
+
+        /// <summary>
+        /// Linear playback volume for unlock sounds, 0-100. Also the gain at which the sound is
+        /// mixed into exported clips, so a clip's chime is as loud as the live one was.
+        /// </summary>
+        public int UnlockSoundVolumePercent
+        {
+            get => _unlockSoundVolumePercent;
+            set => SetValue(ref _unlockSoundVolumePercent, Math.Max(0, Math.Min(100, value)));
+        }
+
+        /// <summary>The user's own sound file per tier; blank slots fall back to theme, then bundled.</summary>
+        public UnlockSoundSettings UnlockSounds
+        {
+            get => _unlockSounds;
+            set => SetValue(ref _unlockSounds, value ?? UnlockSoundSettings.CreateDefault());
+        }
+
+        /// <summary>
+        /// One-time flag: whether the unlock sound settings were seeded from an installed
+        /// UniPlaySong configuration (volume, master switch, custom per-tier paths). Defaults
+        /// false; only <see cref="UnlockSoundSettingsMigration"/> sets it true, after which the
+        /// user's own values are never overwritten again.
+        /// </summary>
+        public bool UnlockSoundsSeededFromUniPlaySong
+        {
+            get => _unlockSoundsSeededFromUniPlaySong;
+            set => SetValue(ref _unlockSoundsSeededFromUniPlaySong, value);
+        }
+
+        /// <summary>
+        /// When true, a screenshot of the game's monitor is saved for each of your own unlock
+        /// waves. Fully independent of unlock toasts: every variant is produced whether or not a
+        /// notification is shown. Opt-in since it writes files to disk.
+        /// </summary>
+        public bool EnableUnlockScreenshots
+        {
+            get => _enableUnlockScreenshots;
+            set => SetValue(ref _enableUnlockScreenshots, value);
+        }
+
+        /// <summary>
+        /// Save a clean per-window capture of the game, taken before any notification window
+        /// exists (game only, no overlay).
+        /// </summary>
+        public bool UnlockScreenshotClean
+        {
+            get => _unlockScreenshotClean;
+            set => SetValue(ref _unlockScreenshotClean, value);
+        }
+
+        /// <summary>
+        /// Save the clean capture with this unlock's notification card composited into the corner.
+        /// The card is rendered for the shot even when notifications are turned off, so the file
+        /// always shows one.
+        /// </summary>
+        public bool UnlockScreenshotWithToast
+        {
+            get => _unlockScreenshotWithToast;
+            set => SetValue(ref _unlockScreenshotWithToast, value);
+        }
+
+        /// <summary>
+        /// Save a copy of the clean screenshot with the theme frame composited onto the image.
+        /// The frame is never shown on screen.
+        /// </summary>
+        public bool UnlockScreenshotFramed
+        {
+            get => _unlockScreenshotFramed;
+            set => SetValue(ref _unlockScreenshotFramed, value);
+        }
+
+        /// <summary>
+        /// Filename suffix appended to clean-variant screenshots. Blank means no suffix.
+        /// </summary>
+        public string UnlockScreenshotSuffixClean
+        {
+            get => _unlockScreenshotSuffixClean;
+            set => SetValue(ref _unlockScreenshotSuffixClean, value);
+        }
+
+        /// <summary>
+        /// Filename suffix appended to with-toast-variant screenshots. Blank means no suffix.
+        /// </summary>
+        public string UnlockScreenshotSuffixWithToast
+        {
+            get => _unlockScreenshotSuffixWithToast;
+            set => SetValue(ref _unlockScreenshotSuffixWithToast, value);
+        }
+
+        /// <summary>
+        /// Filename suffix appended to framed-variant screenshots. Blank means no suffix.
+        /// </summary>
+        public string UnlockScreenshotSuffixFramed
+        {
+            get => _unlockScreenshotSuffixFramed;
+            set => SetValue(ref _unlockScreenshotSuffixFramed, value);
+        }
+
+        /// <summary>
+        /// Base directory for unlock screenshots. Files are written to
+        /// &lt;dir&gt;\Game\NNN_AchievementName_&lt;variant&gt;.png.
+        /// </summary>
+        public string UnlockScreenshotDirectory
+        {
+            get => _unlockScreenshotDirectory;
+            set => SetValue(ref _unlockScreenshotDirectory, value);
+        }
+
+        /// <summary>
+        /// Output height of unlock screenshots. The base capture is downscaled before the
+        /// notification card and frame are composited, so every variant shares the reduced size.
+        /// </summary>
+        public ScreenshotResolution ScreenshotResolution
+        {
+            get => _screenshotResolution;
+            set => SetValue(ref _screenshotResolution, value);
+        }
+
+        /// <summary>
+        /// The set of achievement rarity tiers that produce clean-variant unlock screenshots.
+        /// </summary>
+        public RaritySelection UnlockScreenshotCleanRarities
+        {
+            get => _unlockScreenshotCleanRarities;
+            set => SetValue(ref _unlockScreenshotCleanRarities, value);
+        }
+
+        /// <summary>
+        /// When true, completing achievements, capstones, and standalone game-complete events
+        /// bypass the clean-variant screenshot rarity threshold.
+        /// </summary>
+        public bool UnlockScreenshotCleanAlwaysCaptureCompletion
+        {
+            get => _unlockScreenshotCleanAlwaysCaptureCompletion;
+            set => SetValue(ref _unlockScreenshotCleanAlwaysCaptureCompletion, value);
+        }
+
+        /// <summary>
+        /// The set of achievement rarity tiers that produce with-notification-variant unlock screenshots.
+        /// </summary>
+        public RaritySelection UnlockScreenshotWithToastRarities
+        {
+            get => _unlockScreenshotWithToastRarities;
+            set => SetValue(ref _unlockScreenshotWithToastRarities, value);
+        }
+
+        /// <summary>
+        /// When true, completing achievements, capstones, and standalone game-complete events
+        /// bypass the with-notification-variant screenshot rarity threshold.
+        /// </summary>
+        public bool UnlockScreenshotWithToastAlwaysCaptureCompletion
+        {
+            get => _unlockScreenshotWithToastAlwaysCaptureCompletion;
+            set => SetValue(ref _unlockScreenshotWithToastAlwaysCaptureCompletion, value);
+        }
+
+        /// <summary>
+        /// The set of achievement rarity tiers that produce framed-variant unlock screenshots.
+        /// </summary>
+        public RaritySelection UnlockScreenshotFramedRarities
+        {
+            get => _unlockScreenshotFramedRarities;
+            set => SetValue(ref _unlockScreenshotFramedRarities, value);
+        }
+
+        /// <summary>
+        /// When true, completing achievements, capstones, and standalone game-complete events
+        /// bypass the framed-variant screenshot rarity threshold.
+        /// </summary>
+        public bool UnlockScreenshotFramedAlwaysCaptureCompletion
+        {
+            get => _unlockScreenshotFramedAlwaysCaptureCompletion;
+            set => SetValue(ref _unlockScreenshotFramedAlwaysCaptureCompletion, value);
+        }
+
+        /// <summary>
+        /// When true, a video clip of the game window is saved for each of your own unlocks while a
+        /// game is running, via an in-process Windows.Graphics.Capture + Media Foundation rolling
+        /// capture (occlusion-independent, HDR-correct; no external tools).
+        /// </summary>
+        public bool EnableUnlockRecordings
+        {
+            get => _enableUnlockRecordings;
+            set => SetValue(ref _enableUnlockRecordings, value);
+        }
+
+        /// <summary>
+        /// Base directory for unlock recordings. Blank falls back to
+        /// <see cref="UnlockScreenshotDirectory"/> at runtime. Files are written to
+        /// &lt;dir&gt;\Game\NNN_AchievementName.mp4.
+        /// </summary>
+        public string UnlockRecordingDirectory
+        {
+            get => _unlockRecordingDirectory;
+            set => SetValue(ref _unlockRecordingDirectory, value);
+        }
+
+        /// <summary>
+        /// Seconds recorded before the unlock/detection moment (pre-roll). The clip end follows
+        /// the observed toast's dismissal, so total length = pre-roll + the gap until that toast.
+        /// </summary>
+        public int RecordingClipSeconds
+        {
+            get => _recordingClipSeconds;
+            set => SetValue(ref _recordingClipSeconds, Math.Min(60, Math.Max(5, value)));
+        }
+
+        public int RecordingFps
+        {
+            get => _recordingFps;
+            set => SetValue(ref _recordingFps, Math.Min(60, Math.Max(10, value)));
+        }
+
+        public RecordingResolution RecordingResolution
+        {
+            get => _recordingResolution;
+            set => SetValue(ref _recordingResolution, value);
+        }
+
+        /// <summary>
+        /// Encoding quality of unlock clips: the size-versus-picture trade. Native is the bitrate
+        /// the plugin derives from resolution and frame rate; lower tiers scale it down, which also
+        /// lets the fixed capture buffer hold more footage.
+        /// </summary>
+        public RecordingQuality RecordingQuality
+        {
+            get => _recordingQuality;
+            set => SetValue(ref _recordingQuality, value);
+        }
+
+        /// <summary>
+        /// When true, unlock clips include audio captured alongside the rolling video. Off by
+        /// default; audio capture is best-effort and never blocks the video pipeline. The source
+        /// (all system audio vs. game only) is <see cref="RecordingAudioSource"/>, and the
+        /// microphone can be mixed in via <see cref="RecordingIncludeMicrophone"/>.
+        /// </summary>
+        public bool RecordingIncludeAudio
+        {
+            get => _recordingIncludeAudio;
+            set => SetValue(ref _recordingIncludeAudio, value);
+        }
+
+        /// <summary>
+        /// Which audio is recorded when <see cref="RecordingIncludeAudio"/> is on: all system audio
+        /// or just the game process's. GameOnly needs Windows 10 build 19041+; older builds fall
+        /// back to full system audio.
+        /// </summary>
+        public RecordingAudioSource RecordingAudioSource
+        {
+            get => _recordingAudioSource;
+            set => SetValue(ref _recordingAudioSource, value);
+        }
+
+        /// <summary>
+        /// When true (and <see cref="RecordingIncludeAudio"/> is on), the default microphone is mixed
+        /// into the clip on top of the chosen system/game audio.
+        /// </summary>
+        public bool RecordingIncludeMicrophone
+        {
+            get => _recordingIncludeMicrophone;
+            set => SetValue(ref _recordingIncludeMicrophone, value);
+        }
+
+        /// <summary>
+        /// The set of achievement rarity tiers that produce with-notification unlock clips.
+        /// </summary>
+        public RaritySelection UnlockRecordingRarities
+        {
+            get => _unlockRecordingRarities;
+            set => SetValue(ref _unlockRecordingRarities, value);
+        }
+
+        /// <summary>
+        /// When true, completing achievements, capstones, and standalone game-complete events
+        /// bypass the with-notification clip rarity threshold.
+        /// </summary>
+        public bool UnlockRecordingAlwaysCaptureCompletion
+        {
+            get => _unlockRecordingAlwaysCaptureCompletion;
+            set => SetValue(ref _unlockRecordingAlwaysCaptureCompletion, value);
+        }
+
+        /// <summary>Save the unlock clip with no notification composited in.</summary>
+        public bool UnlockRecordingClean
+        {
+            get => _unlockRecordingClean;
+            set => SetValue(ref _unlockRecordingClean, value);
+        }
+
+        /// <summary>Save the unlock clip with this unlock's notification card composited in.</summary>
+        public bool UnlockRecordingWithToast
+        {
+            get => _unlockRecordingWithToast;
+            set => SetValue(ref _unlockRecordingWithToast, value);
+        }
+
+        /// <summary>
+        /// Save the unlock clip with the theme frame composited over its opening
+        /// <see cref="UnlockRecordingFramedSeconds"/>, fading out at the end of that span.
+        /// </summary>
+        public bool UnlockRecordingFramed
+        {
+            get => _unlockRecordingFramed;
+            set => SetValue(ref _unlockRecordingFramed, value);
+        }
+
+        /// <summary>The set of achievement rarity tiers that produce clean unlock clips.</summary>
+        public RaritySelection UnlockRecordingCleanRarities
+        {
+            get => _unlockRecordingCleanRarities;
+            set => SetValue(ref _unlockRecordingCleanRarities, value);
+        }
+
+        /// <summary>
+        /// When true, completing achievements, capstones, and standalone game-complete events
+        /// bypass the clean clip rarity threshold.
+        /// </summary>
+        public bool UnlockRecordingCleanAlwaysCaptureCompletion
+        {
+            get => _unlockRecordingCleanAlwaysCaptureCompletion;
+            set => SetValue(ref _unlockRecordingCleanAlwaysCaptureCompletion, value);
+        }
+
+        /// <summary>The set of achievement rarity tiers that produce framed unlock clips.</summary>
+        public RaritySelection UnlockRecordingFramedRarities
+        {
+            get => _unlockRecordingFramedRarities;
+            set => SetValue(ref _unlockRecordingFramedRarities, value);
+        }
+
+        /// <summary>
+        /// When true, completing achievements, capstones, and standalone game-complete events
+        /// bypass the framed clip rarity threshold.
+        /// </summary>
+        public bool UnlockRecordingFramedAlwaysCaptureCompletion
+        {
+            get => _unlockRecordingFramedAlwaysCaptureCompletion;
+            set => SetValue(ref _unlockRecordingFramedAlwaysCaptureCompletion, value);
+        }
+
+        /// <summary>
+        /// How long the frame shows from the start of a framed clip before it fades out. Null
+        /// keeps the frame over the whole clip. The notification is left out of a framed clip
+        /// whenever the frame is still showing when it would appear.
+        /// </summary>
+        public int? UnlockRecordingFramedSeconds
+        {
+            get => _unlockRecordingFramedSeconds;
+            set => SetValue(ref _unlockRecordingFramedSeconds, value.HasValue && value.Value > 0 ? value : null);
+        }
+
+        /// <summary>
+        /// Per-provider notification overrides keyed by provider key. Only deviating providers
+        /// are stored; absent providers inherit the global notification defaults, so new
+        /// providers pick up the globals automatically.
+        /// </summary>
+        public Dictionary<string, ProviderNotificationOverride> ProviderNotificationOverrides
+        {
+            get => _providerNotificationOverrides ??
+                   (_providerNotificationOverrides =
+                       new Dictionary<string, ProviderNotificationOverride>(StringComparer.OrdinalIgnoreCase));
+            set => SetValue(ref _providerNotificationOverrides, NormalizeProviderNotificationOverrides(value));
+        }
+
+        /// <summary>
+        /// The stored override for a provider, or null when the provider has no deviation and
+        /// inherits the global notification defaults.
+        /// </summary>
+        public ProviderNotificationOverride GetProviderNotificationOverride(string providerKey)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            return providerKey != null &&
+                   ProviderNotificationOverrides.TryGetValue(providerKey, out var value)
+                ? value
+                : null;
+        }
+
+        /// <summary>
+        /// Stores a clone of the override for a provider, removing the entry when the override
+        /// is null or all-inherit. Reassigns the dictionary so PropertyChanged is raised.
+        /// </summary>
+        public void SetProviderNotificationOverride(string providerKey, ProviderNotificationOverride value)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            if (string.IsNullOrWhiteSpace(providerKey))
+            {
+                return;
+            }
+
+            var overrides = new Dictionary<string, ProviderNotificationOverride>(
+                ProviderNotificationOverrides,
+                StringComparer.OrdinalIgnoreCase);
+            if (value == null || value.IsAllInherit)
+            {
+                if (!overrides.Remove(providerKey))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                overrides[providerKey] = value.Clone();
+            }
+
+            ProviderNotificationOverrides = overrides;
+        }
+
+        /// <summary>
+        /// Per-provider whole-style appearance copies keyed by provider key. Only customized
+        /// providers are stored; absent providers follow <see cref="NotificationStyle"/>.
+        /// Unlike <see cref="ProviderNotificationOverrides"/> there is no field-level inherit:
+        /// presence in this dictionary means the provider owns a full style copy.
+        /// </summary>
+        public Dictionary<string, NotificationStyleSettings> ProviderNotificationStyles
+        {
+            get => _providerNotificationStyles ??
+                   (_providerNotificationStyles =
+                       new Dictionary<string, NotificationStyleSettings>(StringComparer.OrdinalIgnoreCase));
+            set => SetValue(ref _providerNotificationStyles, NormalizeProviderNotificationStyles(value));
+        }
+
+        /// <summary>
+        /// The stored style copy for a provider, or null when the provider is not customized
+        /// and follows the global <see cref="NotificationStyle"/>.
+        /// </summary>
+        public NotificationStyleSettings GetProviderNotificationStyle(string providerKey)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            return providerKey != null &&
+                   ProviderNotificationStyles.TryGetValue(providerKey, out var value)
+                ? value
+                : null;
+        }
+
+        /// <summary>
+        /// Stores a clone of the style copy for a provider, removing the entry when the value
+        /// is null (revert to the global default). Reassigns the dictionary so PropertyChanged
+        /// is raised.
+        /// </summary>
+        public void SetProviderNotificationStyle(string providerKey, NotificationStyleSettings value)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            if (string.IsNullOrWhiteSpace(providerKey))
+            {
+                return;
+            }
+
+            var styles = new Dictionary<string, NotificationStyleSettings>(
+                ProviderNotificationStyles,
+                StringComparer.OrdinalIgnoreCase);
+            if (value == null)
+            {
+                if (!styles.Remove(providerKey))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                styles[providerKey] = value.Clone();
+            }
+
+            ProviderNotificationStyles = styles;
+        }
+
+        #endregion
+
+        #region Display Preferences
+
+        /// <summary>
+        /// When true, hidden achievement icons are shown before reveal.
+        /// </summary>
+        public bool ShowHiddenIcon
+        {
+            get => _showHiddenIcon;
+            set => SetValue(ref _showHiddenIcon, value);
+        }
+
+        /// <summary>
+        /// When true, hidden achievement titles are shown before reveal.
+        /// </summary>
+        public bool ShowHiddenTitle
+        {
+            get => _showHiddenTitle;
+            set => SetValue(ref _showHiddenTitle, value);
+        }
+
+        /// <summary>
+        /// When true, hidden achievement descriptions are shown before reveal.
+        /// </summary>
+        public bool ShowHiddenDescription
+        {
+            get => _showHiddenDescription;
+            set => SetValue(ref _showHiddenDescription, value);
+        }
+
+        /// <summary>
+        /// When true, hidden achievements show "(Hidden Achievement)" suffix after their title.
+        /// </summary>
+        public bool ShowHiddenSuffix
+        {
+            get => _showHiddenSuffix;
+            set => SetValue(ref _showHiddenSuffix, value);
+        }
+
+        /// <summary>
+        /// When true, locked achievement icons are shown.
+        /// This uses a provider-supplied locked icon when available, otherwise a grayscaled unlocked fallback.
+        /// When false, locked achievement icons are hidden with a placeholder until revealed.
+        /// </summary>
+        public bool ShowLockedIcon
+        {
+            get => _showLockedIcon;
+            set => SetValue(ref _showLockedIcon, value);
+        }
+
+        /// <summary>
+        /// When true, locked achievement titles are shown before reveal.
+        /// </summary>
+        public bool ShowLockedTitle
+        {
+            get => _showLockedTitle;
+            set => SetValue(ref _showLockedTitle, value);
+        }
+
+        /// <summary>
+        /// When true, locked achievement descriptions are shown before reveal.
+        /// </summary>
+        public bool ShowLockedDescription
+        {
+            get => _showLockedDescription;
+            set => SetValue(ref _showLockedDescription, value);
+        }
+
+        /// <summary>
+        /// When true, the trophy grade of a hidden achievement is shown before reveal.
+        /// </summary>
+        public bool ShowHiddenTrophy
+        {
+            get => _showHiddenTrophy;
+            set => SetValue(ref _showHiddenTrophy, value);
+        }
+
+        /// <summary>
+        /// When true, the point value of a hidden achievement is shown before reveal.
+        /// </summary>
+        public bool ShowHiddenPoints
+        {
+            get => _showHiddenPoints;
+            set => SetValue(ref _showHiddenPoints, value);
+        }
+
+        /// <summary>
+        /// When true, the trophy grade of a locked achievement is shown before reveal.
+        /// </summary>
+        public bool ShowLockedTrophy
+        {
+            get => _showLockedTrophy;
+            set => SetValue(ref _showLockedTrophy, value);
+        }
+
+        /// <summary>
+        /// When true, the point value of a locked achievement is shown before reveal.
+        /// </summary>
+        public bool ShowLockedPoints
+        {
+            get => _showLockedPoints;
+            set => SetValue(ref _showLockedPoints, value);
+        }
+
+        /// <summary>
+        /// When true, providers with distinct locked icons will cache and use them instead of grayscaling the unlocked icon.
+        /// Changes apply on the next refresh for newly cached icons.
+        /// </summary>
+        public bool UseSeparateLockedIconsWhenAvailable
+        {
+            get => _useSeparateLockedIconsWhenAvailable;
+            set => SetValue(ref _useSeparateLockedIconsWhenAvailable, value);
+        }
+
+        /// <summary>
+        /// Game IDs that always use separate locked icons when available, regardless of the global default.
+        /// When absent, the game falls back to the global UseSeparateLockedIconsWhenAvailable setting.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public HashSet<Guid> SeparateLockedIconEnabledGameIds
+        {
+            get => _separateLockedIconEnabledGameIds;
+            set => SetValue(ref _separateLockedIconEnabledGameIds, value ?? new HashSet<Guid>());
+        }
+
+        /// <summary>
+        /// Resolves whether a game should use separate locked icons after applying the per-game override.
+        /// </summary>
+        public bool ShouldUseSeparateLockedIcons(Guid? playniteGameId)
+        {
+            if (UseSeparateLockedIconsWhenAvailable)
+            {
+                return true;
+            }
+
+            return playniteGameId.HasValue &&
+                   playniteGameId.Value != Guid.Empty &&
+                   SeparateLockedIconEnabledGameIds?.Contains(playniteGameId.Value) == true;
+        }
+
+        /// <summary>
+        /// Absolute path to the user's image for locked achievements, or null for the built-in
+        /// placeholder. When set it replaces both the masked-locked placeholder and the
+        /// grayscaled-unlocked fallback, so a locked achievement shows either a provider-supplied
+        /// locked icon or this image.
+        /// </summary>
+        public string LockedFallbackIconPath
+        {
+            get => _lockedFallbackIconPath;
+            set => SetValue(ref _lockedFallbackIconPath, value);
+        }
+
+        /// <summary>
+        /// Absolute path to the user's image for hidden achievements whose icon is masked, or null
+        /// for the built-in placeholder. Takes precedence over <see cref="LockedFallbackIconPath"/>
+        /// when an achievement is both hidden and locked-masked.
+        /// </summary>
+        public string HiddenFallbackIconPath
+        {
+            get => _hiddenFallbackIconPath;
+            set => SetValue(ref _hiddenFallbackIconPath, value);
+        }
+
+        /// <summary>
+        /// When true, the modern compact list (and the legacy SuccessStory-compatible lists, which
+        /// follow it) shows rarity glow on unlocked icons.
+        /// </summary>
+        public bool ModernCompactListShowRarityGlow
+        {
+            get => _modernCompactListShowRarityGlow;
+            set => SetValue(ref _modernCompactListShowRarityGlow, value);
+        }
+
+        /// <summary>
+        /// When true, the modern unlocked list shows rarity glow on unlocked icons.
+        /// </summary>
+        public bool ModernUnlockedListShowRarityGlow
+        {
+            get => _modernUnlockedListShowRarityGlow;
+            set => SetValue(ref _modernUnlockedListShowRarityGlow, value);
+        }
+
+        /// <summary>
+        /// When true, rarity glows gently fade in and out (a subtle opacity pulse) wherever they
+        /// appear, and the rotating sunburst also turns. When false, glows render at static full
+        /// opacity and the sunburst is held still. Applies globally.
+        /// </summary>
+        public bool AnimateRarityGlows
+        {
+            get => _animateRarityGlows;
+            set => SetValue(ref _animateRarityGlows, value);
+        }
+
+        /// <summary>
+        /// Which rarity tiers get the soft halo around unlocked icons. Membership is exact, so a tier
+        /// with its bit clear shows no halo at all. Defaults to every tier except Common, plus
+        /// completion.
+        /// </summary>
+        public RaritySelection RarityGlowSoftTiers
+        {
+            get => _rarityGlowSoftTiers;
+            set => SetValue(ref _rarityGlowSoftTiers, value);
+        }
+
+        /// <summary>
+        /// Which rarity tiers additionally get the rotating sunburst behind that halo. Independent of
+        /// <see cref="RarityGlowSoftTiers"/>, so a tier can have either effect, both, or neither.
+        /// Defaults to none, so the rays are opt-in.
+        /// </summary>
+        public RaritySelection RarityGlowRayTiers
+        {
+            get => _rarityGlowRayTiers;
+            set => SetValue(ref _rarityGlowRayTiers, value);
+        }
+
+        /// <summary>
+        /// When true, Hardcore RetroAchievements unlocks get a crisp metallic border in place of any
+        /// glow. When false they are treated like any other unlock, so they take whichever glow their
+        /// rarity tier is selected for. On by default.
+        /// </summary>
+        public bool ShowHardcoreBorder
+        {
+            get => _showHardcoreBorder;
+            set => SetValue(ref _showHardcoreBorder, value);
+        }
+
+        /// <summary>
+        /// Low endpoint of the rarity-glow pulse, 0-1 (clamped). The glow fades between this and
+        /// <see cref="RarityGlowPulseMaxOpacity"/>. Higher = subtler pulse.
+        /// </summary>
+        public double RarityGlowPulseMinOpacity
+        {
+            get => _rarityGlowPulseMinOpacity;
+            set => SetValue(ref _rarityGlowPulseMinOpacity, Clamp01(value));
+        }
+
+        /// <summary>
+        /// High endpoint of the rarity-glow pulse, 0-1 (clamped). Usually 1.0 (full brightness);
+        /// lower values keep the glow from ever reaching full.
+        /// </summary>
+        public double RarityGlowPulseMaxOpacity
+        {
+            get => _rarityGlowPulseMaxOpacity;
+            set => SetValue(ref _rarityGlowPulseMaxOpacity, Clamp01(value));
+        }
+
+        /// <summary>
+        /// Pulse speed as a normalized 0-1 value (clamped): 0 = slowest, 1 = fastest. Mapped to a
+        /// concrete fade duration where the pulse is applied.
+        /// </summary>
+        public double RarityGlowPulseSpeed
+        {
+            get => _rarityGlowPulseSpeed;
+            set => SetValue(ref _rarityGlowPulseSpeed, Clamp01(value));
+        }
+
+        private static double Clamp01(double value) => value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+
+        /// <summary>
+        /// When true, all rarity badges use the hexagon shape while keeping rarity colors.
+        /// </summary>
+        public bool UseUniformRarityBadges
+        {
+            get => _useUniformRarityBadges;
+            set => SetValue(ref _useUniformRarityBadges, value);
+        }
+
+        /// <summary>
+        /// When true, rarity badges use the trophy geometry instead of the tier shapes while keeping rarity colors.
+        /// </summary>
+        public bool UseTrophiesForRarity
+        {
+            get => _useTrophiesForRarity;
+            set => SetValue(ref _useTrophiesForRarity, value);
+        }
+
+        /// <summary>
+        /// When true, rarity percentages display rounded to the nearest whole percent and values
+        /// under 1% display as "&lt;1%". Display-only; stored percent values are unaffected.
+        /// </summary>
+        public bool RoundRarityPercentages
+        {
+            get => _roundRarityPercentages;
+            set => SetValue(ref _roundRarityPercentages, value);
+        }
+
+        /// <summary>
+        /// User-selected base colors for rarity, completed game, and trophy badges.
+        /// </summary>
+        public RarityColorSettings RarityColors
+        {
+            get => _rarityColors;
+            set => SetValue(ref _rarityColors, value?.Clone() ?? RarityColorSettings.CreateDefault());
+        }
+
+        /// <summary>
+        /// User-selected provider colors keyed by provider key. Providers without an entry use
+        /// the brand color supplied by their IDataProvider implementation.
+        /// </summary>
+        public Dictionary<string, string> ProviderColorOverrides
+        {
+            get => _providerColorOverrides;
+            set => SetValue(
+                ref _providerColorOverrides,
+                value != null
+                    ? new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        public bool IncludeUnplayedGames
+        {
+            get => _includeUnplayedGames;
+            set => SetValue(ref _includeUnplayedGames, value);
+        }
+
+        /// <summary>
+        /// When true, shows the collection score card in the overview header.
+        /// </summary>
+        public bool ShowOverviewCollectionScoreCard
+        {
+            get => _showOverviewCollectionScoreCard;
+            set => SetValue(ref _showOverviewCollectionScoreCard, value);
+        }
+
+        /// <summary>
+        /// When true, shows the prestige score card in the overview header.
+        /// </summary>
+        public bool ShowOverviewPrestigeScoreCard
+        {
+            get => _showOverviewPrestigeScoreCard;
+            set => SetValue(ref _showOverviewPrestigeScoreCard, value);
+        }
+
+        /// <summary>
+        /// Legacy aggregate toggle for overview pie charts.
+        /// New builds use per-chart visibility settings, but this is preserved for migration.
+        /// </summary>
+        public bool ShowOverviewPieCharts
+        {
+            get => _showOverviewPieCharts;
+            set
+            {
+                if (_showOverviewPieCharts == value)
+                {
+                    return;
+                }
+
+                SetValue(ref _showOverviewPieCharts, value);
+                if (_overviewPieChartVisibilityInitializedFromIndividualSettings)
+                {
+                    return;
+                }
+
+                ShowOverviewGamesPieChart = value;
+                ShowOverviewProviderPieChart = value;
+                ShowOverviewRarityPieChart = value;
+                ShowOverviewTrophyPieChart = value;
+            }
+        }
+
+        /// <summary>
+        /// When true, shows the completed-games pie chart in the overview.
+        /// </summary>
+        public bool ShowOverviewGamesPieChart
+        {
+            get => _showOverviewGamesPieChart;
+            set
+            {
+                _overviewPieChartVisibilityInitializedFromIndividualSettings = true;
+                SetValue(ref _showOverviewGamesPieChart, value);
+            }
+        }
+
+        /// <summary>
+        /// When true, shows the platform/provider pie chart in the overview.
+        /// </summary>
+        public bool ShowOverviewProviderPieChart
+        {
+            get => _showOverviewProviderPieChart;
+            set
+            {
+                _overviewPieChartVisibilityInitializedFromIndividualSettings = true;
+                SetValue(ref _showOverviewProviderPieChart, value);
+            }
+        }
+
+        /// <summary>
+        /// When true, shows the rarity pie chart in the overview.
+        /// </summary>
+        public bool ShowOverviewRarityPieChart
+        {
+            get => _showOverviewRarityPieChart;
+            set
+            {
+                _overviewPieChartVisibilityInitializedFromIndividualSettings = true;
+                SetValue(ref _showOverviewRarityPieChart, value);
+            }
+        }
+
+        /// <summary>
+        /// When true, shows the trophy pie chart in the overview.
+        /// </summary>
+        public bool ShowOverviewTrophyPieChart
+        {
+            get => _showOverviewTrophyPieChart;
+            set
+            {
+                _overviewPieChartVisibilityInitializedFromIndividualSettings = true;
+                SetValue(ref _showOverviewTrophyPieChart, value);
+            }
+        }
+
+        /// <summary>
+        /// When true, shows the center percentage text on overview pie charts.
+        /// </summary>
+        public bool ShowOverviewPiePercentages
+        {
+            get => _showOverviewPiePercentages;
+            set => SetValue(ref _showOverviewPiePercentages, value);
+        }
+
+        /// <summary>
+        /// Determines how overview pie charts handle slices below five percent.
+        /// </summary>
+        public OverviewPieSmallSliceMode OverviewPieSmallSliceMode
+        {
+            get => _overviewPieSmallSliceMode;
+            set => SetValue(ref _overviewPieSmallSliceMode, value);
+        }
+
+        /// <summary>
+        /// When true, the overview rarity, provider and trophy pies draw a trailing locked
+        /// slice. The completions pie is unaffected: its trailing slice counts unfinished games,
+        /// not locked achievements. Hiding the locked slice also hides the centre percentage,
+        /// which measures unlocked against a total the pie would no longer show.
+        /// </summary>
+        public bool OverviewPieIncludeLocked
+        {
+            get => _overviewPieIncludeLocked;
+            set => SetValue(ref _overviewPieIncludeLocked, value);
+        }
+
+        /// <summary>
+        /// When true, shows the timeline bar chart at the bottom of the right overview.
+        /// When false, the achievements list takes the full space.
+        /// </summary>
+        public bool ShowOverviewBarCharts
+        {
+            get => _showOverviewBarCharts;
+            set => SetValue(ref _showOverviewBarCharts, value);
+        }
+
+        /// <summary>
+        /// When true, shows the top menu bar button for opening the achievements window.
+        /// </summary>
+        public bool ShowTopMenuBarButton
+        {
+            get => _showTopMenuBarButton;
+            set => SetValue(ref _showTopMenuBarButton, value);
+        }
+
+        /// <summary>
+        /// When true, progress bars of fully completed games use the completed game colors
+        /// instead of the normal fill.
+        /// </summary>
+        public bool ShowCompletedProgressColoring
+        {
+            get => _showCompletedProgressColoring;
+            set => SetValue(ref _showCompletedProgressColoring, value);
+        }
+
+        /// <summary>
+        /// When true, the status column draws the lock of a locked Missable achievement in red
+        /// instead of the glyph color.
+        /// </summary>
+        public bool TintMissableLocks
+        {
+            get => _tintMissableLocks;
+            set => SetValue(ref _tintMissableLocks, value);
+        }
+
+        /// <summary>
+        /// When false, friend achievement rows for achievements the current user has not unlocked
+        /// are obscured using the achievement visibility settings, as if locked for the user.
+        /// Applies to all friend surfaces (overview, friends achievements window, recent unlocks, themes).
+        /// </summary>
+        public bool ShowFriendSpoilers
+        {
+            get => _showFriendSpoilers;
+            set => SetValue(ref _showFriendSpoilers, value);
+        }
+
+        /// <summary>
+        /// Maximum number of recent friend unlocks shown in Friends Overview.
+        /// </summary>
+        public int FriendsOverviewRecentUnlockLimit
+        {
+            get => _friendsOverviewRecentUnlockLimit;
+            set => SetValue(ref _friendsOverviewRecentUnlockLimit, Math.Max(1, value));
+        }
+
+        /// <summary>
+        /// When true, shows the rarity bar at the bottom of compact list achievement items.
+        /// </summary>
+        public bool ShowCompactListRarityBar
+        {
+            get => _showCompactListRarityBar;
+            set => SetValue(ref _showCompactListRarityBar, value);
+        }
+
+        /// <summary>
+        /// One-time bookkeeping flag: true once the Progress summary column has been seeded to Right
+        /// alignment. Defaults to false everywhere (like <see cref="FirstTimeSetupCompleted"/>) with
+        /// no fresh-install special-casing: the seeding migration is the sole thing that flips it
+        /// true, after forcing Right for a config where it is absent/false. A false or absent value
+        /// therefore always means "not yet seeded", so a config loaded without the migration ever
+        /// running stays eligible for seeding instead of permanently blocking it.
+        /// </summary>
+        public bool ProgressColumnAlignmentDefaulted
+        {
+            get => _progressColumnAlignmentDefaulted;
+            set => SetValue(ref _progressColumnAlignmentDefaulted, value);
+        }
+
+        /// <summary>
+        /// One-time bookkeeping flag: true once the transparent inline-surface overrides
+        /// (GridSurface, ControlSurface) have been seeded into the config. Migration seeds them for
+        /// existing configs where this is absent/false (so updating users gain the transparent
+        /// default) and then sets it true, after which a user's own later choice -- including
+        /// switching a surface back to Follow Playnite (which removes the entry) -- is respected and
+        /// never re-seeded. Defaults to true for fresh installs (which seed the overrides in the
+        /// plugin-reference constructor).
+        /// </summary>
+        public bool InlineSurfaceTransparencySeeded
+        {
+            get => _inlineSurfaceTransparencySeeded;
+            set => SetValue(ref _inlineSurfaceTransparencySeeded, value);
+        }
+
+        /// <summary>
+        /// True when this config's glow tier selections use the current meaning of the Common bit.
+        /// Before Common could glow, the soft-glow default was every tier, so configs saved by
+        /// earlier builds carry a Common bit the user never chose; the migration clears that bit
+        /// once, for configs whose JSON lacks this flag. Defaults true because every config this
+        /// build writes already uses the current meaning, so a Common tier the user checks is never
+        /// cleared on a later launch, including one checked in the very first session.
+        /// </summary>
+        public bool CommonGlowTierCleared
+        {
+            get => _commonGlowTierCleared;
+            set => SetValue(ref _commonGlowTierCleared, value);
+        }
+
+        /// <summary>
+        /// True when the category summary Progress column alignment in this config is either the
+        /// seeded Right default or the user's own choice, including a cleared override. The
+        /// category options used to seed Right on the deserialization target, so earlier builds
+        /// re-applied it on every load; the migration fills Right once where a category entry
+        /// lacks the key, for configs whose JSON lacks this flag. Defaults true because every
+        /// config this build writes already carries the seed or the user's choice, so an override
+        /// cleared in the very first session is never re-filled on a later launch.
+        /// </summary>
+        public bool CategoryProgressColumnAlignmentDefaulted
+        {
+            get => _categoryProgressColumnAlignmentDefaulted;
+            set => SetValue(ref _categoryProgressColumnAlignmentDefaulted, value);
+        }
+
+        /// <summary>
+        /// Horizontal alignment for text shown in DataGrid column headers.
+        /// </summary>
+        public GridAlignment GridColumnHeaderAlignment
+        {
+            get => _gridColumnHeaderAlignment;
+            set => SetValue(ref _gridColumnHeaderAlignment, value);
+        }
+
+        /// <summary>
+        /// Horizontal alignment for textual DataGrid cell content.
+        /// </summary>
+        public GridAlignment GridCellAlignment
+        {
+            get => _gridCellAlignment;
+            set => SetValue(ref _gridCellAlignment, value);
+        }
+
+        /// <summary>
+        /// Vertical alignment for DataGrid cell content.
+        /// </summary>
+        public GridVerticalAlignment GridCellVerticalAlignment
+        {
+            get => _gridCellVerticalAlignment;
+            set => SetValue(ref _gridCellVerticalAlignment, value);
+        }
+
+        /// <summary>
+        /// Date display mode for achievement unlock dates and friend last-unlock dates.
+        /// </summary>
+        public DateDisplayMode UnlockDateDisplayMode
+        {
+            get => _unlockDateDisplayMode;
+            set => SetValue(ref _unlockDateDisplayMode, value);
+        }
+
+        /// <summary>
+        /// Display mode for playtime text shown in summaries and metadata.
+        /// </summary>
+        public PlaytimeDisplayMode PlaytimeDisplayMode
+        {
+            get => _playtimeDisplayMode;
+            set => SetValue(ref _playtimeDisplayMode, value);
+        }
+
+        /// <summary>
+        /// Which category-mode summary rows may render the completion badge under their progress bar.
+        /// </summary>
+        public CategoryCompletionBadgeMode CategoryCompletionBadgeMode
+        {
+            get => _categoryCompletionBadgeMode;
+            set => SetValue(ref _categoryCompletionBadgeMode, value);
+        }
+
+        /// <summary>
+        /// Which badges the progress column footer shows: a game's trophies when it has them, or
+        /// its rarity spread regardless.
+        /// </summary>
+        /// <remarks>
+        /// Written out even at its zero value, so choosing Rarity cannot round-trip as unset and
+        /// silently revert to the default.
+        /// </remarks>
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Include)]
+        public ProgressBadgeSource ProgressBadgeSource
+        {
+            get => _progressBadgeSource;
+            set => SetValue(ref _progressBadgeSource, value);
+        }
+
+        /// <summary>
+        /// How friend names combine the provider profile name and the provider-assigned nickname.
+        /// A manual plugin rename always takes precedence over this mode.
+        /// </summary>
+        public FriendNameDisplayMode FriendNameDisplayMode
+        {
+            get => _friendNameDisplayMode;
+            set => SetValue(ref _friendNameDisplayMode, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern compact list control.
+        /// </summary>
+        public bool EnableAchievementCompactListControl
+        {
+            get => _enableAchievementCompactListControl;
+            set => SetValue(ref _enableAchievementCompactListControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern achievement datagrid control.
+        /// </summary>
+        public bool EnableAchievementDataGridControl
+        {
+            get => _enableAchievementDataGridControl;
+            set => SetValue(ref _enableAchievementDataGridControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern compact unlocked list control.
+        /// </summary>
+        public bool EnableAchievementCompactUnlockedListControl
+        {
+            get => _enableAchievementCompactUnlockedListControl;
+            set => SetValue(ref _enableAchievementCompactUnlockedListControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern compact locked list control.
+        /// </summary>
+        public bool EnableAchievementCompactLockedListControl
+        {
+            get => _enableAchievementCompactLockedListControl;
+            set => SetValue(ref _enableAchievementCompactLockedListControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern progress bar control.
+        /// </summary>
+        public bool EnableAchievementProgressBarControl
+        {
+            get => _enableAchievementProgressBarControl;
+            set => SetValue(ref _enableAchievementProgressBarControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern stats control.
+        /// </summary>
+        public bool EnableAchievementStatsControl
+        {
+            get => _enableAchievementStatsControl;
+            set => SetValue(ref _enableAchievementStatsControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern button control.
+        /// </summary>
+        public bool EnableAchievementButtonControl
+        {
+            get => _enableAchievementButtonControl;
+            set => SetValue(ref _enableAchievementButtonControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern view item control.
+        /// </summary>
+        public bool EnableAchievementViewItemControl
+        {
+            get => _enableAchievementViewItemControl;
+            set => SetValue(ref _enableAchievementViewItemControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern pie chart control.
+        /// </summary>
+        public bool EnableAchievementPieChartControl
+        {
+            get => _enableAchievementPieChartControl;
+            set => SetValue(ref _enableAchievementPieChartControl, value);
+        }
+
+        /// <summary>
+        /// When true, enables the modern bar chart control.
+        /// </summary>
+        public bool EnableAchievementBarChartControl
+        {
+            get => _enableAchievementBarChartControl;
+            set => SetValue(ref _enableAchievementBarChartControl, value);
+        }
+
+        /// <summary>
+        /// Sort mode for the compact list (all achievements) control.
+        /// None preserves provider order.
+        /// </summary>
+        public CompactListSortMode CompactListSortMode
+        {
+            get => _compactListSortMode;
+            set => SetValue(ref _compactListSortMode, value);
+        }
+
+        /// <summary>
+        /// When true, reverses the sort direction for the compact list (all achievements) control.
+        /// </summary>
+        public bool CompactListSortDescending
+        {
+            get => _compactListSortDescending;
+            set => SetValue(ref _compactListSortDescending, value);
+        }
+
+        /// <summary>
+        /// Sort mode for the compact unlocked list control.
+        /// None preserves newest-first ordering.
+        /// </summary>
+        public CompactListSortMode CompactUnlockedListSortMode
+        {
+            get => _compactUnlockedListSortMode;
+            set => SetValue(ref _compactUnlockedListSortMode, value);
+        }
+
+        /// <summary>
+        /// When true, reverses the sort direction for the compact unlocked list control.
+        /// </summary>
+        public bool CompactUnlockedListSortDescending
+        {
+            get => _compactUnlockedListSortDescending;
+            set => SetValue(ref _compactUnlockedListSortDescending, value);
+        }
+
+        /// <summary>
+        /// Sort mode for the compact locked list control.
+        /// None preserves provider order.
+        /// </summary>
+        public CompactListSortMode CompactLockedListSortMode
+        {
+            get => _compactLockedListSortMode;
+            set => SetValue(ref _compactLockedListSortMode, value);
+        }
+
+        /// <summary>
+        /// When true, reverses the sort direction for the compact locked list control.
+        /// </summary>
+        public bool CompactLockedListSortDescending
+        {
+            get => _compactLockedListSortDescending;
+            set => SetValue(ref _compactLockedListSortDescending, value);
+        }
+
+        /// <summary>
+        /// Replace (not populate) on load: the getter lazily seeds a default dashboard, and the
+        /// default object-creation handling would populate that seeded instance - appending the
+        /// saved pages and widgets to the seeded ones, so the dashboard grew a page on every load.
+        /// </summary>
+        [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public ShowcaseSettings Showcase
+        {
+            get
+            {
+                if (_showcase == null)
+                {
+                    _showcase = ShowcaseLayoutService.CreateDefault(
+                        ShowOverviewCollectionScoreCard,
+                        ShowOverviewPrestigeScoreCard);
+                    ShowcaseLayoutService.Normalize(_showcase);
+                }
+
+                return _showcase;
+            }
+            set
+            {
+                var normalized = value?.Clone() ?? ShowcaseLayoutService.CreateDefault(
+                    ShowOverviewCollectionScoreCard,
+                    ShowOverviewPrestigeScoreCard);
+                ShowcaseLayoutService.Normalize(normalized);
+                SetValue(ref _showcase, normalized);
+            }
+        }
+
+        public GridOptionsCatalog GridOptions
+        {
+            get => AttachGridOptionsBridge(_gridOptions ?? (_gridOptions = new GridOptionsCatalog()));
+            set
+            {
+                if (SetValueAndReturn(ref _gridOptions, value?.Clone() ?? new GridOptionsCatalog()))
+                {
+                    AttachGridOptionsBridge(_gridOptions);
+                    RebindStartPageGridSettings();
+                }
+            }
+        }
+
+        public GameActivityScope StartPageActivityScope
+        {
+            get => NormalizeStartPageActivityScope(_startPageActivityScope);
+            set => SetValue(ref _startPageActivityScope, NormalizeStartPageActivityScope(value));
+        }
+
+        public GameProgressScope StartPageProgressScope
+        {
+            get => NormalizeStartPageProgressScope(_startPageProgressScope);
+            set => SetValue(ref _startPageProgressScope, NormalizeStartPageProgressScope(value));
+        }
+
+        /// <summary>
+        /// When true, providers execute concurrently during refresh runs.
+        /// Disable to force deterministic sequential provider execution.
+        /// </summary>
+        public bool EnableParallelProviderRefresh
+        {
+            get => _enableParallelProviderRefresh;
+            set => SetValue(ref _enableParallelProviderRefresh, value);
+        }
+
+        /// <summary>
+        /// Base delay in milliseconds for retry/backoff after transient errors.
+        /// Default is 200ms. Higher values are safer for strict APIs but slower after failures.
+        /// Set to 0 for fastest retry behavior.
+        /// </summary>
+        public int ScanDelayMs
+        {
+            get => _scanDelayMs;
+            set => SetValue(ref _scanDelayMs, Math.Max(0, value));
+        }
+
+        /// <summary>
+        /// Maximum retry attempts when encountering rate limit or transient errors.
+        /// Default is 3. Each retry uses exponential backoff with jitter.
+        /// </summary>
+        public int MaxRetryAttempts
+        {
+            get => _maxRetryAttempts;
+            set => SetValue(ref _maxRetryAttempts, Math.Max(0, Math.Min(value, 10)));
+        }
+
+        #endregion
+
+        #region Theme Integration Settings
+
+        /// <summary>
+        /// Optional overrides for plugin semantic resources such as PlayAch.Brush.Text.
+        /// Missing entries follow the current Playnite theme resource mapped by the resolver.
+        /// </summary>
+        public Dictionary<string, ResourceOverrideSetting> ResourceOverrides
+        {
+            get => _resourceOverrides;
+            set => SetValue(ref _resourceOverrides, NormalizeResourceOverrides(value));
+        }
+
+        #endregion
+
+        #region UI Column Settings
+
+        /// <summary>
+        /// Persisted overview splitter position. Represents left column width
+        /// as a ratio of the combined left and right overview columns.
+        /// </summary>
+        public double OverviewLeftColumnRatio
+        {
+            get => _overviewLeftColumnRatio;
+            set
+            {
+                var normalized = double.IsNaN(value) || double.IsInfinity(value)
+                    ? DefaultOverviewLeftColumnRatio
+                    : Math.Max(MinOverviewLeftColumnRatio, Math.Min(MaxOverviewLeftColumnRatio, value));
+                SetValue(ref _overviewLeftColumnRatio, normalized);
+            }
+        }
+
+        public double FriendsOverviewFriendColumnRatio
+        {
+            get => _friendsOverviewFriendColumnRatio;
+            set => SetValue(
+                ref _friendsOverviewFriendColumnRatio,
+                NormalizeFriendsOverviewColumnRatio(value, DefaultFriendsOverviewFriendColumnRatio));
+        }
+
+        public double FriendsOverviewGameColumnRatio
+        {
+            get => _friendsOverviewGameColumnRatio;
+            set => SetValue(
+                ref _friendsOverviewGameColumnRatio,
+                NormalizeFriendsOverviewColumnRatio(value, DefaultFriendsOverviewGameColumnRatio));
+        }
+
+        /// <summary>
+        /// Saved bounds for plugin-owned windows keyed by stable window name.
+        /// </summary>
+        public Dictionary<string, WindowPlacementState> WindowPlacements
+        {
+            get => _windowPlacements;
+            set
+            {
+                var normalized = new Dictionary<string, WindowPlacementState>(StringComparer.OrdinalIgnoreCase);
+                if (value != null)
+                {
+                    foreach (var pair in value)
+                    {
+                        var key = (pair.Key ?? string.Empty).Trim();
+                        var placement = pair.Value;
+                        if (!string.IsNullOrWhiteSpace(key) && placement?.IsValid() == true)
+                        {
+                            normalized[key] = placement.Clone();
+                        }
+                    }
+                }
+
+                SetValue(ref _windowPlacements, normalized);
+            }
+        }
+
+        /// <summary>
+        /// Last selected window for the overview achievements-over-time chart: a rolling preset or
+        /// a custom date range. Legacy integer <c>OverviewTimelineRange</c> values are read by the converter.
+        /// </summary>
+        [JsonConverter(typeof(TimeWindowJsonConverter))]
+        public TimeWindow OverviewTimeWindow
+        {
+            get => _overviewTimeWindow;
+            set => SetValue(ref _overviewTimeWindow, value ?? TimeWindow.FromPreset(TimelineRange.OneYear));
+        }
+
+        /// <summary>Bar-width override for the overview achievements-over-time chart.</summary>
+        public TimelineGranularity OverviewTimelineGranularity
+        {
+            get => _overviewTimelineGranularity;
+            set => SetValue(ref _overviewTimelineGranularity, value);
+        }
+
+        /// <summary>
+        /// Last selected window for the single-game achievements window timeline chart.
+        /// </summary>
+        [JsonConverter(typeof(TimeWindowJsonConverter))]
+        public TimeWindow ViewAchievementsTimeWindow
+        {
+            get => _viewAchievementsTimeWindow;
+            set => SetValue(ref _viewAchievementsTimeWindow, value ?? TimeWindow.FromPreset(TimelineRange.OneYear));
+        }
+
+        /// <summary>Bar-width override for the single-game achievements window timeline chart.</summary>
+        public TimelineGranularity ViewAchievementsTimelineGranularity
+        {
+            get => _viewAchievementsTimelineGranularity;
+            set => SetValue(ref _viewAchievementsTimelineGranularity, value);
+        }
+
+        /// <summary>
+        /// Whether the single-game achievements window timeline chart is expanded.
+        /// </summary>
+        public bool ViewAchievementsTimelineVisible
+        {
+            get => _viewAchievementsTimelineVisible;
+            set => SetValue(ref _viewAchievementsTimelineVisible, value);
+        }
+
+        #endregion
+
+        #region General Settings
+
+        /// <summary>
+        /// Indicates whether the user has completed the first-time setup flow.
+        /// When false, the overview shows a landing page guiding users through initial configuration.
+        /// </summary>
+        public bool FirstTimeSetupCompleted
+        {
+            get => _firstTimeSetupCompleted;
+            set => SetValue(ref _firstTimeSetupCompleted, value);
+        }
+
+        /// <summary>
+        /// Indicates whether the user has seen the theme migration landing page.
+        /// When false, the overview always shows the landing page to promote theme migration.
+        /// </summary>
+        public bool SeenThemeMigration
+        {
+            get => _seenThemeMigration;
+            set => SetValue(ref _seenThemeMigration, value);
+        }
+
+        /// <summary>
+        /// Whether newly discovered and upgraded themes are migrated automatically at startup.
+        /// </summary>
+        public bool EnableAutomaticThemeMigration
+        {
+            get => _enableAutomaticThemeMigration;
+            set => SetValue(ref _enableAutomaticThemeMigration, value);
+        }
+
+        /// <summary>
+        /// Replaces StartPage's inherited shelf menu with Playnite's native game menu
+        /// when a game cover is right-clicked.
+        /// </summary>
+        public bool UsePlayniteContextMenuOnStartPage
+        {
+            get => _usePlayniteContextMenuOnStartPage;
+            set => SetValue(ref _usePlayniteContextMenuOnStartPage, value);
+        }
+
+        /// <summary>
+        /// Cache mapping ThemePath -> last migrated theme.yaml Version.
+        /// Used to detect themes that have been upgraded since migration and may need re-migration.
+        /// </summary>
+        public Dictionary<string, ThemeMigrationCacheEntry> ThemeMigrationVersionCache
+        {
+            get => _themeMigrationVersionCache;
+            set
+            {
+                var normalized = value != null
+                    ? new Dictionary<string, ThemeMigrationCacheEntry>(value, StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, ThemeMigrationCacheEntry>(StringComparer.OrdinalIgnoreCase);
+                SetValue(ref _themeMigrationVersionCache, normalized);
+            }
+        }
+
+        #endregion
+
+        #region User Preferences (Survive Cache Clear)
+
+        /// <summary>
+        /// Game IDs that the user has explicitly excluded from achievement tracking.
+        /// These exclusions persist across cache clears.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public HashSet<Guid> ExcludedGameIds
+        {
+            get => _excludedGameIds;
+            set => SetValue(ref _excludedGameIds, value ?? new HashSet<Guid>());
+        }
+
+        /// <summary>
+        /// Game IDs that are excluded from all summary surfaces.
+        /// These exclusions persist across cache clears.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public HashSet<Guid> ExcludedFromSummariesGameIds
+        {
+            get => _excludedFromSummariesGameIds;
+            set => SetValue(ref _excludedFromSummariesGameIds, value ?? new HashSet<Guid>());
+        }
+
+        /// <summary>
+        /// Manual capstone selections. Key = Playnite Game ID, Value = Achievement ApiName.
+        /// These selections persist across cache clears.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public Dictionary<Guid, string> ManualCapstones
+        {
+            get => _manualCapstones;
+            set => SetValue(ref _manualCapstones, value ?? new Dictionary<Guid, string>());
+        }
+
+        /// <summary>
+        /// Manual achievement order per game.
+        /// Key = Playnite Game ID, Value = full ordered list of achievement ApiName values.
+        /// These overrides persist across cache clears.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public Dictionary<Guid, List<string>> AchievementOrderOverrides
+        {
+            get => _achievementOrderOverrides;
+            set => SetValue(ref _achievementOrderOverrides, NormalizeAchievementOrderOverrides(value));
+        }
+
+        /// <summary>
+        /// Manual achievement category overrides per game.
+        /// Key = Playnite Game ID, Value = map of Achievement ApiName -> Category.
+        /// These overrides persist across cache clears.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public Dictionary<Guid, Dictionary<string, string>> AchievementCategoryOverrides
+        {
+            get => _achievementCategoryOverrides;
+            set => SetValue(ref _achievementCategoryOverrides, NormalizeAchievementCategoryOverrides(value));
+        }
+
+        /// <summary>
+        /// Manual achievement category type overrides per game.
+        /// Key = Playnite Game ID, Value = map of Achievement ApiName -> CategoryType.
+        /// Allowed values: Base, DLC, Singleplayer, Multiplayer.
+        /// These overrides persist across cache clears.
+        /// </summary>
+        [JsonIgnore]
+        [DontSerialize]
+        public Dictionary<Guid, Dictionary<string, string>> AchievementCategoryTypeOverrides
+        {
+            get => _achievementCategoryTypeOverrides;
+            set => SetValue(ref _achievementCategoryTypeOverrides, NormalizeAchievementCategoryTypeOverrides(value));
+        }
+
+        #endregion
+
+        #region Tagging Settings
+
+        /// <summary>
+        /// Settings for Playnite tag integration, allowing games to be tagged
+        /// based on their achievement status for filtering and organization.
+        /// </summary>
+        public TaggingSettings TaggingSettings
+        {
+            get => _taggingSettings;
+            set => SetValue(ref _taggingSettings, value ?? new TaggingSettings());
+        }
+
+        #endregion
+
+        #region StartPage Settings Helpers
+
+        private void AttachStartPageSettingsHandlers()
+        {
+            _startPageGameSummariesGrid = AttachStartPageSettings(
+                _startPageGameSummariesGrid ?? new StartPageGameSummariesGridSettings(GameSummariesStartPage));
+            _startPageRecentUnlocksGrid = AttachStartPageSettings(
+                _startPageRecentUnlocksGrid ?? new StartPageRecentUnlocksGridSettings(AchievementStartPageRecent));
+            _startPageFriendsRecentUnlocksGrid = AttachStartPageSettings(
+                _startPageFriendsRecentUnlocksGrid ?? new StartPageFriendsRecentUnlocksGridSettings(AchievementStartPageFriendRecent));
+        }
+
+        private void RebindStartPageGridSettings()
+        {
+            _startPageGameSummariesGrid?.SetOptions(GameSummariesStartPage);
+            _startPageRecentUnlocksGrid?.SetOptions(AchievementStartPageRecent);
+            _startPageFriendsRecentUnlocksGrid?.SetOptions(AchievementStartPageFriendRecent);
+        }
+
+        [System.Runtime.Serialization.OnDeserialized]
+        private void OnDeserialized(System.Runtime.Serialization.StreamingContext context)
+        {
+            AttachStartPageSettingsHandlers();
+            RebindStartPageGridSettings();
+        }
+
+        private T AttachStartPageSettings<T>(T settings)
+            where T : ObservableObject
+        {
+            if (settings != null)
+            {
+                settings.PropertyChanged -= StartPageSettings_PropertyChanged;
+                settings.PropertyChanged += StartPageSettings_PropertyChanged;
+            }
+
+            return settings;
+        }
+
+        private void DetachStartPageSettings(ObservableObject settings)
+        {
+            if (settings != null)
+            {
+                settings.PropertyChanged -= StartPageSettings_PropertyChanged;
+            }
+        }
+
+        private void StartPageSettings_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            var childPropertyName = e?.PropertyName;
+            if (ReferenceEquals(sender, _startPageGameSummariesGrid))
+            {
+                RaiseStartPageSettingsChanged(nameof(StartPageGameSummariesGrid), childPropertyName);
+                RaiseLegacyStartPageGridPropertyChanged(
+                    childPropertyName,
+                    nameof(StartPageGameSummariesGridRowHeight),
+                    nameof(StartPageGameSummariesGridMaxRows));
+                return;
+            }
+
+            if (ReferenceEquals(sender, _startPageRecentUnlocksGrid))
+            {
+                RaiseStartPageSettingsChanged(nameof(StartPageRecentUnlocksGrid), childPropertyName);
+                RaiseLegacyStartPageGridPropertyChanged(
+                    childPropertyName,
+                    nameof(StartPageRecentAchievementsGridRowHeight),
+                    nameof(StartPageRecentAchievementsGridMaxRows));
+                return;
+            }
+
+            if (ReferenceEquals(sender, _startPageFriendsRecentUnlocksGrid))
+            {
+                RaiseStartPageSettingsChanged(nameof(StartPageFriendsRecentUnlocksGrid), childPropertyName);
+                RaiseLegacyStartPageGridPropertyChanged(
+                    childPropertyName,
+                    nameof(StartPageFriendsRecentAchievementsGridRowHeight),
+                    nameof(StartPageFriendsRecentAchievementsGridMaxRows));
+                return;
+            }
+        }
+
+        private void RaiseStartPageSettingsChanged(string parentPropertyName, string childPropertyName)
+        {
+            if (string.IsNullOrWhiteSpace(parentPropertyName))
+            {
+                return;
+            }
+
+            OnPropertyChanged(parentPropertyName);
+            if (!string.IsNullOrWhiteSpace(childPropertyName))
+            {
+                OnPropertyChanged($"{parentPropertyName}.{childPropertyName}");
+            }
+        }
+
+        private void RaiseLegacyStartPageGridPropertyChanged(
+            string childPropertyName,
+            string rowHeightPropertyName,
+            string maxRowsPropertyName)
+        {
+            if (string.Equals(childPropertyName, nameof(StartPageGameSummariesGridSettings.RowHeight), StringComparison.Ordinal))
+            {
+                OnPropertyChanged(rowHeightPropertyName);
+            }
+            else if (string.Equals(childPropertyName, nameof(StartPageGameSummariesGridSettings.MaxRows), StringComparison.Ordinal))
+            {
+                OnPropertyChanged(maxRowsPropertyName);
+            }
+        }
+
+        #endregion
+
+        private ManageSidebarStatGroups _hiddenManageSidebarStatGroups = ManageSidebarStatGroups.None;
+
+        /// <summary>
+        /// Stat chip groups hidden from the Manage Achievements sidebar, for every game.
+        /// </summary>
+        public ManageSidebarStatGroups HiddenManageSidebarStatGroups
+        {
+            get => _hiddenManageSidebarStatGroups;
+            set => SetValue(ref _hiddenManageSidebarStatGroups, value);
+        }
+
+        #region Clone Method
+
+        /// <summary>
+        /// Creates a deep copy of this PersistedSettings instance.
+        /// Provider-specific settings are cloned via the ProviderSettings dictionary.
+        /// </summary>
+        public PersistedSettings Clone()
+        {
+            var clonedProviderSettings = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
+            if (this.ProviderSettings != null)
+            {
+                foreach (var kvp in this.ProviderSettings)
+                {
+                    clonedProviderSettings[kvp.Key] = kvp.Value?.DeepClone() as JObject;
+                }
+            }
+
+            return new PersistedSettings
+            {
+                // Provider Settings Dictionary (contains all provider-specific settings)
+                ProviderSettings = clonedProviderSettings,
+                EnableFriendsFeatures = this.EnableFriendsFeatures,
+                AutoDiscoverFriendProviderKeys = this.AutoDiscoverFriendProviderKeys != null
+                    ? new HashSet<string>(this.AutoDiscoverFriendProviderKeys, StringComparer.OrdinalIgnoreCase)
+                    : CreateDefaultAutoDiscoverFriendProviderKeys(),
+                UseExophaseForSteamFriendOwnership = this.UseExophaseForSteamFriendOwnership,
+                IncludeUnownedFriendGames = this.IncludeUnownedFriendGames,
+                Friends = new ObservableCollection<FriendSettingsEntry>(
+                    (this.Friends ?? new ObservableCollection<FriendSettingsEntry>())
+                    .Where(friend => friend != null)
+                    .Select(friend => friend.Clone())),
+                FriendMergeGroups = new ObservableCollection<FriendMergeGroup>(
+                    (this.FriendMergeGroups ?? new ObservableCollection<FriendMergeGroup>())
+                    .Where(group => group != null)
+                    .Select(group => group.Clone())),
+
+                // Global Settings
+                GlobalLanguage = this.GlobalLanguage,
+
+                // Update and Refresh Settings
+                EnablePeriodicUpdates = this.EnablePeriodicUpdates,
+                IncludeHiddenGamesInBulkScans = this.IncludeHiddenGamesInBulkScans,
+                PeriodicUpdateHours = this.PeriodicUpdateHours,
+                EnableFriendsPeriodicUpdates = this.EnableFriendsPeriodicUpdates,
+                FriendsPeriodicUpdateHours = this.FriendsPeriodicUpdateHours,
+                EnableInGamePolling = this.EnableInGamePolling,
+                EnableAutoCapstoneGeneration = this.EnableAutoCapstoneGeneration,
+                AutoCapstoneGameNameTemplate = this.AutoCapstoneGameNameTemplate,
+                AutoCapstoneGameDescriptionTemplate = this.AutoCapstoneGameDescriptionTemplate,
+                AutoCapstoneCategoryNameTemplate = this.AutoCapstoneCategoryNameTemplate,
+                AutoCapstoneCategoryDescriptionTemplate = this.AutoCapstoneCategoryDescriptionTemplate,
+                AutoCapstoneTemplateHistory = new List<string>(this.AutoCapstoneTemplateHistory ?? new List<string>()),
+                AutoCapstoneAppliedTemplates = this.AutoCapstoneAppliedTemplates,
+                InGamePollIntervalSeconds = this.InGamePollIntervalSeconds,
+                InGamePollRefreshFriends = this.InGamePollRefreshFriends,
+                InGameFriendRefreshMultiplier = this.InGameFriendRefreshMultiplier,
+                InGameFriendBatchSize = this.InGameFriendBatchSize,
+                RecentRefreshGamesCount = this.RecentRefreshGamesCount,
+                DefaultOverviewRefreshMode = this.DefaultOverviewRefreshMode,
+                CustomRefreshPresets = this.CustomRefreshPresets != null
+                    ? new List<CustomRefreshPreset>(CustomRefreshPreset.NormalizePresets(this.CustomRefreshPresets, CustomRefreshPreset.MaxPresetCount))
+                    : new List<CustomRefreshPreset>(),
+
+                // Hotkey Settings
+                EnableAchievementHotkeys = this.EnableAchievementHotkeys,
+                EnableGlobalAchievementHotkeys = this.EnableGlobalAchievementHotkeys,
+                EnableViewAchievementsHotkey = this.EnableViewAchievementsHotkey,
+                EnableManageAchievementsHotkey = this.EnableManageAchievementsHotkey,
+                EnableOverviewHotkey = this.EnableOverviewHotkey,
+                EnableOpenSettingsHotkey = this.EnableOpenSettingsHotkey,
+                EnableCategoryModeHotkey = this.EnableCategoryModeHotkey,
+                EnableTestUnlockHotkey = this.EnableTestUnlockHotkey,
+                ViewAchievementsHotkey = this.ViewAchievementsHotkey,
+                ManageAchievementsHotkey = this.ManageAchievementsHotkey,
+                OverviewHotkey = this.OverviewHotkey,
+                OpenSettingsHotkey = this.OpenSettingsHotkey,
+                CategoryModeHotkey = this.CategoryModeHotkey,
+                TestUnlockHotkey = this.TestUnlockHotkey,
+                EnableCaptureTestFolder = this.EnableCaptureTestFolder,
+
+                HiddenManageSidebarStatGroups = this.HiddenManageSidebarStatGroups,
+
+                // Notification Settings
+                EnableNotifications = this.EnableNotifications,
+                EnableUnlockToasts = this.EnableUnlockToasts,
+                EnableFriendUnlockToasts = this.EnableFriendUnlockToasts,
+                EnableProgressToasts = this.EnableProgressToasts,
+                NotificationStyle = this.NotificationStyle?.Clone() ?? NotificationStyleSettings.CreateDefault(),
+                ToastUseThemeStyling = this.ToastUseThemeStyling,
+                FrameUseThemeStyling = this.FrameUseThemeStyling,
+                ProviderNotificationStyles = this.ProviderNotificationStyles != null
+                    ? this.ProviderNotificationStyles.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value?.Clone(),
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, NotificationStyleSettings>(StringComparer.OrdinalIgnoreCase),
+                ToastDurationSeconds = this.ToastDurationSeconds,
+                NotificationDelaySeconds = this.NotificationDelaySeconds,
+                CaptureDelaySeconds = this.CaptureDelaySeconds,
+                MaxConcurrentToasts = this.MaxConcurrentToasts,
+                ToastPosition = this.ToastPosition,
+                EnableControllerVibration = this.EnableControllerVibration,
+                ControllerVibrationStrengthPercent = this.ControllerVibrationStrengthPercent,
+                ControllerVibrationDurationMs = this.ControllerVibrationDurationMs,
+                UseHiddenUnlockSound = this.UseHiddenUnlockSound,
+                EnableUnlockSounds = this.EnableUnlockSounds,
+                AllowThemeUnlockSounds = this.AllowThemeUnlockSounds,
+                UnlockSoundVolumePercent = this.UnlockSoundVolumePercent,
+                UnlockSounds = this.UnlockSounds?.Clone() ?? UnlockSoundSettings.CreateDefault(),
+                UnlockSoundsSeededFromUniPlaySong = this.UnlockSoundsSeededFromUniPlaySong,
+                EnableUnlockScreenshots = this.EnableUnlockScreenshots,
+                UnlockScreenshotClean = this.UnlockScreenshotClean,
+                UnlockScreenshotWithToast = this.UnlockScreenshotWithToast,
+                UnlockScreenshotFramed = this.UnlockScreenshotFramed,
+                UnlockScreenshotSuffixClean = this.UnlockScreenshotSuffixClean,
+                UnlockScreenshotSuffixWithToast = this.UnlockScreenshotSuffixWithToast,
+                UnlockScreenshotSuffixFramed = this.UnlockScreenshotSuffixFramed,
+                UnlockScreenshotDirectory = this.UnlockScreenshotDirectory,
+                ScreenshotResolution = this.ScreenshotResolution,
+                UnlockScreenshotCleanRarities = this.UnlockScreenshotCleanRarities,
+                UnlockScreenshotCleanAlwaysCaptureCompletion = this.UnlockScreenshotCleanAlwaysCaptureCompletion,
+                UnlockScreenshotWithToastRarities = this.UnlockScreenshotWithToastRarities,
+                UnlockScreenshotWithToastAlwaysCaptureCompletion = this.UnlockScreenshotWithToastAlwaysCaptureCompletion,
+                UnlockScreenshotFramedRarities = this.UnlockScreenshotFramedRarities,
+                UnlockScreenshotFramedAlwaysCaptureCompletion = this.UnlockScreenshotFramedAlwaysCaptureCompletion,
+                EnableUnlockRecordings = this.EnableUnlockRecordings,
+                UnlockRecordingDirectory = this.UnlockRecordingDirectory,
+                RecordingClipSeconds = this.RecordingClipSeconds,
+                RecordingFps = this.RecordingFps,
+                RecordingResolution = this.RecordingResolution,
+                RecordingQuality = this.RecordingQuality,
+                RecordingIncludeAudio = this.RecordingIncludeAudio,
+                RecordingAudioSource = this.RecordingAudioSource,
+                RecordingIncludeMicrophone = this.RecordingIncludeMicrophone,
+                UnlockRecordingRarities = this.UnlockRecordingRarities,
+                UnlockRecordingAlwaysCaptureCompletion = this.UnlockRecordingAlwaysCaptureCompletion,
+                UnlockRecordingClean = this.UnlockRecordingClean,
+                UnlockRecordingWithToast = this.UnlockRecordingWithToast,
+                UnlockRecordingFramed = this.UnlockRecordingFramed,
+                UnlockRecordingCleanRarities = this.UnlockRecordingCleanRarities,
+                UnlockRecordingCleanAlwaysCaptureCompletion = this.UnlockRecordingCleanAlwaysCaptureCompletion,
+                UnlockRecordingFramedRarities = this.UnlockRecordingFramedRarities,
+                UnlockRecordingFramedAlwaysCaptureCompletion = this.UnlockRecordingFramedAlwaysCaptureCompletion,
+                UnlockRecordingFramedSeconds = this.UnlockRecordingFramedSeconds,
+                ProviderNotificationOverrides = this.ProviderNotificationOverrides != null
+                    ? this.ProviderNotificationOverrides.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value?.Clone(),
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, ProviderNotificationOverride>(StringComparer.OrdinalIgnoreCase),
+
+                // Fork compatibility settings. These must survive the settings-window
+                // edit clone; otherwise saving Display settings resets Custom (Manual)
+                // sorting and the other fork-only preferences to their defaults.
+                ShowRarityGlow = this.ShowRarityGlow,
+                DisabledRealtimeNotificationGameIds = this.DisabledRealtimeNotificationGameIds != null
+                    ? new HashSet<Guid>(this.DisabledRealtimeNotificationGameIds)
+                    : new HashSet<Guid>(),
+                PreferredProviderOverrides = this.PreferredProviderOverrides != null
+                    ? new Dictionary<Guid, string>(this.PreferredProviderOverrides)
+                    : new Dictionary<Guid, string>(),
+                ExtraLocalPaths = this.ExtraLocalPaths,
+                ExcludedLocalPaths = this.ExcludedLocalPaths,
+                LastAllGamesCollectorScore = this.LastAllGamesCollectorScore,
+                LastAllGamesCollectorLevel = this.LastAllGamesCollectorLevel,
+                LastAllGamesCollectorLevelProgress = this.LastAllGamesCollectorLevelProgress,
+                LastAllGamesCollectorRank = this.LastAllGamesCollectorRank,
+                LastAllGamesPrestigeScore = this.LastAllGamesPrestigeScore,
+                LastAllGamesPrestigeLevel = this.LastAllGamesPrestigeLevel,
+                LastAllGamesPrestigeLevelProgress = this.LastAllGamesPrestigeLevelProgress,
+                LastAllGamesPrestigeRank = this.LastAllGamesPrestigeRank,
+                DefaultAchievementSortMode = this.DefaultAchievementSortMode,
+                DefaultAchievementSortDescending = this.DefaultAchievementSortDescending,
+                CustomSortPath = this.CustomSortPath,
+                CustomSortDescending = this.CustomSortDescending,
+                GamesOverviewCustomSortPath = this.GamesOverviewCustomSortPath,
+                GamesOverviewCustomSortDescending = this.GamesOverviewCustomSortDescending,
+                GamesOverviewCustomSecondarySorts = this.GamesOverviewCustomSecondarySorts,
+                GamesOverviewCustomSortUsesSourceOrder = this.GamesOverviewCustomSortUsesSourceOrder,
+                RecentAchievementsCustomSortPath = this.RecentAchievementsCustomSortPath,
+                RecentAchievementsCustomSortDescending = this.RecentAchievementsCustomSortDescending,
+                RecentAchievementsCustomSecondarySorts = this.RecentAchievementsCustomSecondarySorts,
+                RecentAchievementsCustomSortUsesSourceOrder = this.RecentAchievementsCustomSortUsesSourceOrder,
+                SidebarAllAchievementsCustomSortPath = this.SidebarAllAchievementsCustomSortPath,
+                SidebarAllAchievementsCustomSortDescending = this.SidebarAllAchievementsCustomSortDescending,
+                SidebarAllAchievementsCustomSecondarySorts = this.SidebarAllAchievementsCustomSecondarySorts,
+                SidebarAllAchievementsCustomSortUsesSourceOrder = this.SidebarAllAchievementsCustomSortUsesSourceOrder,
+                SidebarSelectedGameCustomSortPath = this.SidebarSelectedGameCustomSortPath,
+                SidebarSelectedGameCustomSortDescending = this.SidebarSelectedGameCustomSortDescending,
+                SidebarSelectedGameCustomSecondarySorts = this.SidebarSelectedGameCustomSecondarySorts,
+                SidebarSelectedGameCustomSortUsesSourceOrder = this.SidebarSelectedGameCustomSortUsesSourceOrder,
+                DefaultUnlockNotificationStyle = this.DefaultUnlockNotificationStyle,
+                ProviderUnlockNotificationStyles = this.ProviderUnlockNotificationStyles != null
+                    ? new Dictionary<string, string>(
+                        this.ProviderUnlockNotificationStyles,
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                LastUpstreamReleaseNotificationVersion = this.LastUpstreamReleaseNotificationVersion,
+                LastForkReleaseNotificationVersion = this.LastForkReleaseNotificationVersion,
+                EnableGridTextWrapping = this.EnableGridTextWrapping,
+                EnableCompactGridMode = this.EnableCompactGridMode,
+                SidebarDefaultRefreshModeKey = this.SidebarDefaultRefreshModeKey,
+                SidebarDefaultPlayStatusFilter = this.SidebarDefaultPlayStatusFilter,
+                OverviewProviderFilterKeys = this.OverviewProviderFilterKeys,
+                OverviewCompletenessFilterKeys = this.OverviewCompletenessFilterKeys,
+                OverviewPlayStatusFilterKeys = this.OverviewPlayStatusFilterKeys,
+                GamesOverviewGridSortMode = this.GamesOverviewGridSortMode,
+                GamesOverviewGridSortDescending = this.GamesOverviewGridSortDescending,
+                SidebarSelectedGameGridSortMode = this.SidebarSelectedGameGridSortMode,
+                SidebarSelectedGameGridSortDescending = this.SidebarSelectedGameGridSortDescending,
+
+                // Display Preferences
+                ShowHiddenIcon = this.ShowHiddenIcon,
+                ShowHiddenTitle = this.ShowHiddenTitle,
+                ShowHiddenDescription = this.ShowHiddenDescription,
+                ShowHiddenSuffix = this.ShowHiddenSuffix,
+                ShowLockedIcon = this.ShowLockedIcon,
+                ShowLockedTitle = this.ShowLockedTitle,
+                ShowLockedDescription = this.ShowLockedDescription,
+                ShowHiddenTrophy = this.ShowHiddenTrophy,
+                ShowHiddenPoints = this.ShowHiddenPoints,
+                ShowLockedTrophy = this.ShowLockedTrophy,
+                ShowLockedPoints = this.ShowLockedPoints,
+                UseSeparateLockedIconsWhenAvailable = this.UseSeparateLockedIconsWhenAvailable,
+                LockedFallbackIconPath = this.LockedFallbackIconPath,
+                HiddenFallbackIconPath = this.HiddenFallbackIconPath,
+                ModernCompactListShowRarityGlow = this.ModernCompactListShowRarityGlow,
+                ModernUnlockedListShowRarityGlow = this.ModernUnlockedListShowRarityGlow,
+                AnimateRarityGlows = this.AnimateRarityGlows,
+                RarityGlowSoftTiers = this.RarityGlowSoftTiers,
+                RarityGlowRayTiers = this.RarityGlowRayTiers,
+                ShowHardcoreBorder = this.ShowHardcoreBorder,
+                RarityGlowPulseMinOpacity = this.RarityGlowPulseMinOpacity,
+                RarityGlowPulseMaxOpacity = this.RarityGlowPulseMaxOpacity,
+                RarityGlowPulseSpeed = this.RarityGlowPulseSpeed,
+                UseUniformRarityBadges = this.UseUniformRarityBadges,
+                UseTrophiesForRarity = this.UseTrophiesForRarity,
+                RoundRarityPercentages = this.RoundRarityPercentages,
+                RarityColors = this.RarityColors?.Clone() ?? RarityColorSettings.CreateDefault(),
+                ProviderColorOverrides = this.ProviderColorOverrides != null
+                    ? new Dictionary<string, string>(
+                        this.ProviderColorOverrides,
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                IncludeUnplayedGames = this.IncludeUnplayedGames,
+                ShowOverviewCollectionScoreCard = this.ShowOverviewCollectionScoreCard,
+                ShowOverviewPrestigeScoreCard = this.ShowOverviewPrestigeScoreCard,
+                ShowOverviewPieCharts = this.ShowOverviewPieCharts,
+                ShowOverviewGamesPieChart = this.ShowOverviewGamesPieChart,
+                ShowOverviewProviderPieChart = this.ShowOverviewProviderPieChart,
+                ShowOverviewRarityPieChart = this.ShowOverviewRarityPieChart,
+                ShowOverviewTrophyPieChart = this.ShowOverviewTrophyPieChart,
+                ShowOverviewPiePercentages = this.ShowOverviewPiePercentages,
+                OverviewPieSmallSliceMode = this.OverviewPieSmallSliceMode,
+                OverviewPieIncludeLocked = this.OverviewPieIncludeLocked,
+                ShowOverviewBarCharts = this.ShowOverviewBarCharts,
+                ShowTopMenuBarButton = this.ShowTopMenuBarButton,
+                ShowCompletedProgressColoring = this.ShowCompletedProgressColoring,
+                TintMissableLocks = this.TintMissableLocks,
+                ShowFriendSpoilers = this.ShowFriendSpoilers,
+                FriendsOverviewRecentUnlockLimit = this.FriendsOverviewRecentUnlockLimit,
+                ShowCompactListRarityBar = this.ShowCompactListRarityBar,
+                ProgressColumnAlignmentDefaulted = this.ProgressColumnAlignmentDefaulted,
+                InlineSurfaceTransparencySeeded = this.InlineSurfaceTransparencySeeded,
+                CommonGlowTierCleared = this.CommonGlowTierCleared,
+                CategoryProgressColumnAlignmentDefaulted = this.CategoryProgressColumnAlignmentDefaulted,
+                GridColumnHeaderAlignment = this.GridColumnHeaderAlignment,
+                GridCellAlignment = this.GridCellAlignment,
+                GridCellVerticalAlignment = this.GridCellVerticalAlignment,
+                UnlockDateDisplayMode = this.UnlockDateDisplayMode,
+                PlaytimeDisplayMode = this.PlaytimeDisplayMode,
+                CategoryCompletionBadgeMode = this.CategoryCompletionBadgeMode,
+                ProgressBadgeSource = this.ProgressBadgeSource,
+                FriendNameDisplayMode = this.FriendNameDisplayMode,
+                EnableAchievementCompactListControl = this.EnableAchievementCompactListControl,
+                EnableAchievementDataGridControl = this.EnableAchievementDataGridControl,
+                EnableAchievementCompactUnlockedListControl = this.EnableAchievementCompactUnlockedListControl,
+                EnableAchievementCompactLockedListControl = this.EnableAchievementCompactLockedListControl,
+                EnableAchievementProgressBarControl = this.EnableAchievementProgressBarControl,
+                EnableAchievementStatsControl = this.EnableAchievementStatsControl,
+                EnableAchievementButtonControl = this.EnableAchievementButtonControl,
+                EnableAchievementViewItemControl = this.EnableAchievementViewItemControl,
+                EnableAchievementPieChartControl = this.EnableAchievementPieChartControl,
+                EnableAchievementBarChartControl = this.EnableAchievementBarChartControl,
+                CompactListSortMode = this.CompactListSortMode,
+                CompactListSortDescending = this.CompactListSortDescending,
+                CompactUnlockedListSortMode = this.CompactUnlockedListSortMode,
+                CompactUnlockedListSortDescending = this.CompactUnlockedListSortDescending,
+                CompactLockedListSortMode = this.CompactLockedListSortMode,
+                CompactLockedListSortDescending = this.CompactLockedListSortDescending,
+                Showcase = this.Showcase?.Clone() ?? ShowcaseLayoutService.CreateDefault(
+                    this.ShowOverviewCollectionScoreCard,
+                    this.ShowOverviewPrestigeScoreCard),
+                GridOptions = this.GridOptions?.Clone() ?? new GridOptionsCatalog(),
+                StartPageActivityScope = this.StartPageActivityScope,
+                StartPageProgressScope = this.StartPageProgressScope,
+                EnableParallelProviderRefresh = this.EnableParallelProviderRefresh,
+                ScanDelayMs = this.ScanDelayMs,
+                MaxRetryAttempts = this.MaxRetryAttempts,
+                ResourceOverrides = this.ResourceOverrides != null
+                    ? this.ResourceOverrides.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value?.Clone(),
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, ResourceOverrideSetting>(StringComparer.OrdinalIgnoreCase),
+
+                // Layout State
+                OverviewLeftColumnRatio = this.OverviewLeftColumnRatio,
+                FriendsOverviewFriendColumnRatio = this.FriendsOverviewFriendColumnRatio,
+                FriendsOverviewGameColumnRatio = this.FriendsOverviewGameColumnRatio,
+                WindowPlacements = this.WindowPlacements != null
+                    ? this.WindowPlacements.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value?.Clone(),
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, WindowPlacementState>(StringComparer.OrdinalIgnoreCase),
+                OverviewTimeWindow = this.OverviewTimeWindow,
+                OverviewTimelineGranularity = this.OverviewTimelineGranularity,
+                ViewAchievementsTimeWindow = this.ViewAchievementsTimeWindow,
+                ViewAchievementsTimelineGranularity = this.ViewAchievementsTimelineGranularity,
+                ViewAchievementsTimelineVisible = this.ViewAchievementsTimelineVisible,
+
+                // General Settings
+                FirstTimeSetupCompleted = this.FirstTimeSetupCompleted,
+                SeenThemeMigration = this.SeenThemeMigration,
+                EnableAutomaticThemeMigration = this.EnableAutomaticThemeMigration,
+                UsePlayniteContextMenuOnStartPage = this.UsePlayniteContextMenuOnStartPage,
+                ThemeMigrationVersionCache = this.ThemeMigrationVersionCache != null
+                    ? this.ThemeMigrationVersionCache.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value == null
+                            ? null
+                            : new ThemeMigrationCacheEntry
+                            {
+                                ThemeName = kvp.Value.ThemeName,
+                                ThemePath = kvp.Value.ThemePath,
+                                MigratedThemeVersion = kvp.Value.MigratedThemeVersion,
+                                MigratedAtUtc = kvp.Value.MigratedAtUtc
+                            },
+                        StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, ThemeMigrationCacheEntry>(StringComparer.OrdinalIgnoreCase),
+
+                // User Preferences (Survive Cache Clear)
+                ExcludedGameIds = this.ExcludedGameIds != null
+                    ? new HashSet<Guid>(this.ExcludedGameIds)
+                    : new HashSet<Guid>(),
+                ExcludedFromSummariesGameIds = this.ExcludedFromSummariesGameIds != null
+                    ? new HashSet<Guid>(this.ExcludedFromSummariesGameIds)
+                    : new HashSet<Guid>(),
+                SeparateLockedIconEnabledGameIds = this.SeparateLockedIconEnabledGameIds != null
+                    ? new HashSet<Guid>(this.SeparateLockedIconEnabledGameIds)
+                    : new HashSet<Guid>(),
+                ManualCapstones = this.ManualCapstones != null
+                    ? new Dictionary<Guid, string>(this.ManualCapstones)
+                    : new Dictionary<Guid, string>(),
+                AchievementOrderOverrides = this.AchievementOrderOverrides != null
+                    ? this.AchievementOrderOverrides.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value != null
+                            ? new List<string>(kvp.Value)
+                            : new List<string>())
+                    : new Dictionary<Guid, List<string>>(),
+                AchievementCategoryOverrides = this.AchievementCategoryOverrides != null
+                    ? this.AchievementCategoryOverrides.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value != null
+                            ? new Dictionary<string, string>(kvp.Value, StringComparer.OrdinalIgnoreCase)
+                            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
+                    : new Dictionary<Guid, Dictionary<string, string>>(),
+                AchievementCategoryTypeOverrides = this.AchievementCategoryTypeOverrides != null
+                    ? this.AchievementCategoryTypeOverrides.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => kvp.Value != null
+                            ? new Dictionary<string, string>(kvp.Value, StringComparer.OrdinalIgnoreCase)
+                            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase))
+                    : new Dictionary<Guid, Dictionary<string, string>>(),
+
+                // Tagging Settings
+                TaggingSettings = this.TaggingSettings?.Clone() ?? new TaggingSettings()
+            };
+        }
+
+        public void ResetDisplaySettingsToDefaults()
+        {
+            var defaults = new PersistedSettings();
+
+            ShowHiddenIcon = defaults.ShowHiddenIcon;
+            ShowHiddenTitle = defaults.ShowHiddenTitle;
+            ShowHiddenDescription = defaults.ShowHiddenDescription;
+            ShowHiddenSuffix = defaults.ShowHiddenSuffix;
+            ShowLockedIcon = defaults.ShowLockedIcon;
+            ShowLockedTitle = defaults.ShowLockedTitle;
+            ShowLockedDescription = defaults.ShowLockedDescription;
+            ShowHiddenTrophy = defaults.ShowHiddenTrophy;
+            ShowHiddenPoints = defaults.ShowHiddenPoints;
+            ShowLockedTrophy = defaults.ShowLockedTrophy;
+            ShowLockedPoints = defaults.ShowLockedPoints;
+            ShowFriendSpoilers = defaults.ShowFriendSpoilers;
+            UseSeparateLockedIconsWhenAvailable = defaults.UseSeparateLockedIconsWhenAvailable;
+            SeparateLockedIconEnabledGameIds = new HashSet<Guid>();
+            LockedFallbackIconPath = defaults.LockedFallbackIconPath;
+            HiddenFallbackIconPath = defaults.HiddenFallbackIconPath;
+            ModernCompactListShowRarityGlow = defaults.ModernCompactListShowRarityGlow;
+            ModernUnlockedListShowRarityGlow = defaults.ModernUnlockedListShowRarityGlow;
+            AnimateRarityGlows = defaults.AnimateRarityGlows;
+            RarityGlowSoftTiers = defaults.RarityGlowSoftTiers;
+            RarityGlowRayTiers = defaults.RarityGlowRayTiers;
+            ShowHardcoreBorder = defaults.ShowHardcoreBorder;
+            RarityGlowPulseMinOpacity = defaults.RarityGlowPulseMinOpacity;
+            RarityGlowPulseMaxOpacity = defaults.RarityGlowPulseMaxOpacity;
+            RarityGlowPulseSpeed = defaults.RarityGlowPulseSpeed;
+            UseUniformRarityBadges = defaults.UseUniformRarityBadges;
+            UseTrophiesForRarity = defaults.UseTrophiesForRarity;
+            RoundRarityPercentages = defaults.RoundRarityPercentages;
+            RarityColors = RarityColorSettings.CreateDefault();
+            ProviderColorOverrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ResourceOverrides = CreateDefaultResourceOverrides();
+
+            ShowOverviewCollectionScoreCard = defaults.ShowOverviewCollectionScoreCard;
+            ShowOverviewPrestigeScoreCard = defaults.ShowOverviewPrestigeScoreCard;
+            ShowOverviewPieCharts = defaults.ShowOverviewPieCharts;
+            ShowOverviewGamesPieChart = defaults.ShowOverviewGamesPieChart;
+            ShowOverviewProviderPieChart = defaults.ShowOverviewProviderPieChart;
+            ShowOverviewRarityPieChart = defaults.ShowOverviewRarityPieChart;
+            ShowOverviewTrophyPieChart = defaults.ShowOverviewTrophyPieChart;
+            ShowOverviewPiePercentages = defaults.ShowOverviewPiePercentages;
+            OverviewPieSmallSliceMode = defaults.OverviewPieSmallSliceMode;
+            OverviewPieIncludeLocked = defaults.OverviewPieIncludeLocked;
+            ShowOverviewBarCharts = defaults.ShowOverviewBarCharts;
+            ShowTopMenuBarButton = defaults.ShowTopMenuBarButton;
+            ShowCompletedProgressColoring = defaults.ShowCompletedProgressColoring;
+            TintMissableLocks = defaults.TintMissableLocks;
+            ShowCompactListRarityBar = defaults.ShowCompactListRarityBar;
+
+            GridColumnHeaderAlignment = defaults.GridColumnHeaderAlignment;
+            GridCellAlignment = defaults.GridCellAlignment;
+            GridCellVerticalAlignment = defaults.GridCellVerticalAlignment;
+            UnlockDateDisplayMode = defaults.UnlockDateDisplayMode;
+            PlaytimeDisplayMode = defaults.PlaytimeDisplayMode;
+            CategoryCompletionBadgeMode = defaults.CategoryCompletionBadgeMode;
+            ProgressBadgeSource = defaults.ProgressBadgeSource;
+            FriendNameDisplayMode = defaults.FriendNameDisplayMode;
+
+            EnableAchievementCompactListControl = defaults.EnableAchievementCompactListControl;
+            EnableAchievementDataGridControl = defaults.EnableAchievementDataGridControl;
+            EnableAchievementCompactUnlockedListControl = defaults.EnableAchievementCompactUnlockedListControl;
+            EnableAchievementCompactLockedListControl = defaults.EnableAchievementCompactLockedListControl;
+            EnableAchievementProgressBarControl = defaults.EnableAchievementProgressBarControl;
+            EnableAchievementStatsControl = defaults.EnableAchievementStatsControl;
+            EnableAchievementButtonControl = defaults.EnableAchievementButtonControl;
+            EnableAchievementViewItemControl = defaults.EnableAchievementViewItemControl;
+            EnableAchievementPieChartControl = defaults.EnableAchievementPieChartControl;
+            EnableAchievementBarChartControl = defaults.EnableAchievementBarChartControl;
+
+            CompactListSortMode = defaults.CompactListSortMode;
+            CompactListSortDescending = defaults.CompactListSortDescending;
+            CompactUnlockedListSortMode = defaults.CompactUnlockedListSortMode;
+            CompactUnlockedListSortDescending = defaults.CompactUnlockedListSortDescending;
+            CompactLockedListSortMode = defaults.CompactLockedListSortMode;
+            CompactLockedListSortDescending = defaults.CompactLockedListSortDescending;
+
+
+            Showcase = ShowcaseLayoutService.CreateDefault(
+                defaults.ShowOverviewCollectionScoreCard,
+                defaults.ShowOverviewPrestigeScoreCard);
+            GridOptions = new GridOptionsCatalog();
+            StartPageActivityScope = defaults.StartPageActivityScope;
+            StartPageProgressScope = defaults.StartPageProgressScope;
+
+
+            OverviewLeftColumnRatio = defaults.OverviewLeftColumnRatio;
+            FriendsOverviewFriendColumnRatio = defaults.FriendsOverviewFriendColumnRatio;
+            FriendsOverviewGameColumnRatio = defaults.FriendsOverviewGameColumnRatio;
+            ViewAchievementsTimeWindow = defaults.ViewAchievementsTimeWindow;
+            ViewAchievementsTimelineGranularity = defaults.ViewAchievementsTimelineGranularity;
+            ViewAchievementsTimelineVisible = defaults.ViewAchievementsTimelineVisible;
+        }
+
+        private static double NormalizeFriendsOverviewColumnRatio(double value, double fallback)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                return fallback;
+            }
+
+            return Math.Max(
+                MinFriendsOverviewColumnRatio,
+                Math.Min(MaxFriendsOverviewColumnRatio, value));
+        }
+
+        public static double? NormalizeGridRowHeight(double? value)
+        {
+            if (!value.HasValue ||
+                double.IsNaN(value.Value) ||
+                double.IsInfinity(value.Value) ||
+                value.Value <= 0)
+            {
+                return null;
+            }
+
+            return Math.Max(MinimumGridRowHeight, value.Value);
+        }
+
+        public static int? NormalizeGridMaxRows(int? value)
+        {
+            if (!value.HasValue || value.Value <= 0)
+            {
+                return null;
+            }
+
+            return Math.Max(MinimumGridMaxRows, value.Value);
+        }
+
+        public static GameActivityScope NormalizeStartPageActivityScope(GameActivityScope value)
+        {
+            return value & GameActivityScope.All;
+        }
+
+        public static GameProgressScope NormalizeStartPageProgressScope(GameProgressScope value)
+        {
+            return value & GameProgressScope.All;
+        }
+
+        private static string NormalizePath(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        }
+
+        private static string NormalizeHotkeyText(string value)
+        {
+            return AchievementHotkeyGesture.TryParse(value, out var gesture) && gesture != null
+                ? gesture.ToString()
+                : string.Empty;
+        }
+
+        // Content surfaces that ship transparent by default so embedded views blend into the host
+        // theme. Popout windows back themselves with the opaque PopupSurface instead (see
+        // PlayniteUiProvider.ApplyWindowThemeBrushes), so seeding WindowSurface transparent here does
+        // not make standalone windows see-through. Seeded for fresh installs / display reset and,
+        // once, for existing configs via AppearanceSettingsMigration.
+        internal static Dictionary<string, ResourceOverrideSetting> CreateDefaultResourceOverrides()
+        {
+            var defaults = new Dictionary<string, ResourceOverrideSetting>(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in new[]
+            {
+                "PlayAch.Brush.GridSurface",
+                "PlayAch.Brush.ControlSurface",
+                "PlayAch.Brush.WindowSurface"
+            })
+            {
+                defaults[key] = new ResourceOverrideSetting
+                {
+                    Mode = ResourceOverrideMode.Transparent,
+                    CustomValue = ResourceOverrideSetting.TransparentValue
+                };
+            }
+
+            return defaults;
+        }
+
+        private static Dictionary<string, ResourceOverrideSetting> NormalizeResourceOverrides(
+            Dictionary<string, ResourceOverrideSetting> value)
+        {
+            var normalized = new Dictionary<string, ResourceOverrideSetting>(StringComparer.OrdinalIgnoreCase);
+            if (value == null)
+            {
+                return normalized;
+            }
+
+            foreach (var pair in value)
+            {
+                var key = (pair.Key ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(key) || pair.Value == null)
+                {
+                    continue;
+                }
+
+                var setting = pair.Value;
+                switch (setting.Mode)
+                {
+                    case ResourceOverrideMode.FollowPlaynite:
+                        continue;
+
+                    case ResourceOverrideMode.Transparent:
+                        normalized[key] = new ResourceOverrideSetting
+                        {
+                            Mode = ResourceOverrideMode.Transparent,
+                            CustomValue = ResourceOverrideSetting.TransparentValue
+                        };
+                        break;
+
+                    case ResourceOverrideMode.Custom:
+                        var customValue = setting.CustomValue?.Trim();
+                        if (string.IsNullOrWhiteSpace(customValue))
+                        {
+                            continue;
+                        }
+
+                        normalized[key] = new ResourceOverrideSetting
+                        {
+                            Mode = ResourceOverrideMode.Custom,
+                            CustomValue = customValue
+                        };
+                        break;
+                }
+            }
+
+            return normalized;
+        }
+
+        private static Dictionary<string, ProviderNotificationOverride> NormalizeProviderNotificationOverrides(
+            IEnumerable<KeyValuePair<string, ProviderNotificationOverride>> value)
+        {
+            var normalized = new Dictionary<string, ProviderNotificationOverride>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in value ?? Enumerable.Empty<KeyValuePair<string, ProviderNotificationOverride>>())
+            {
+                var key = NormalizeProviderKeyToken(pair.Key);
+                if (key == null || pair.Value == null || pair.Value.IsAllInherit)
+                {
+                    continue;
+                }
+
+                normalized[key] = pair.Value;
+            }
+
+            return normalized;
+        }
+
+        private static Dictionary<string, NotificationStyleSettings> NormalizeProviderNotificationStyles(
+            IEnumerable<KeyValuePair<string, NotificationStyleSettings>> value)
+        {
+            var normalized = new Dictionary<string, NotificationStyleSettings>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in value ?? Enumerable.Empty<KeyValuePair<string, NotificationStyleSettings>>())
+            {
+                var key = NormalizeProviderKeyToken(pair.Key);
+                if (key == null || pair.Value == null)
+                {
+                    continue;
+                }
+
+                normalized[key] = pair.Value;
+            }
+
+            return normalized;
+        }
+
+        private static HashSet<string> NormalizeProviderKeySet(IEnumerable<string> value)
+        {
+            if (value == null)
+            {
+                return CreateDefaultAutoDiscoverFriendProviderKeys();
+            }
+
+            var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in value)
+            {
+                var token = NormalizeProviderKeyToken(key);
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    normalized.Add(token);
+                }
+            }
+
+            return normalized;
+        }
+
+        private static ObservableCollection<FriendSettingsEntry> NormalizeFriendEntries(
+            IEnumerable<FriendSettingsEntry> value)
+        {
+            var normalized = new ObservableCollection<FriendSettingsEntry>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var friend in value ?? Enumerable.Empty<FriendSettingsEntry>())
+            {
+                var entry = friend?.Clone()?.Normalize();
+                var key = FriendSettingsEntry.BuildKey(entry?.ProviderKey, entry?.ExternalUserId);
+                if (string.IsNullOrWhiteSpace(key) || !seen.Add(key))
+                {
+                    continue;
+                }
+
+                normalized.Add(entry);
+            }
+
+            return normalized;
+        }
+
+        private static ObservableCollection<FriendMergeGroup> NormalizeFriendMergeGroups(
+            IEnumerable<FriendMergeGroup> value,
+            IEnumerable<FriendSettingsEntry> friends)
+        {
+            var normalized = new ObservableCollection<FriendMergeGroup>();
+            var friendKeys = new HashSet<string>(
+                (friends ?? Enumerable.Empty<FriendSettingsEntry>())
+                    .Select(friend => FriendAccountRef.BuildKey(friend?.ProviderKey, friend?.ExternalUserId))
+                    .Where(key => !string.IsNullOrWhiteSpace(key)),
+                StringComparer.OrdinalIgnoreCase);
+            var claimedAccounts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenGroupIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var source in value ?? Enumerable.Empty<FriendMergeGroup>())
+            {
+                var group = source?.Clone()?.Normalize();
+                if (group == null || string.IsNullOrWhiteSpace(group.Id) || !seenGroupIds.Add(group.Id))
+                {
+                    continue;
+                }
+
+                group.Members = NormalizeFriendMergeMembers(group.Members, friends)
+                    .Where(member => !claimedAccounts.Contains(member.Key))
+                    .ToList();
+                if (friendKeys.Count > 0)
+                {
+                    group.Members = group.Members
+                        .Where(member => friendKeys.Contains(member.Key))
+                        .ToList();
+                }
+
+                if (group.Members.Count < 2)
+                {
+                    continue;
+                }
+
+                foreach (var member in group.Members)
+                {
+                    claimedAccounts.Add(member.Key);
+                }
+
+                if (group.AvatarAccount == null ||
+                    !group.Members.Any(member => member.Matches(group.AvatarAccount.ProviderKey, group.AvatarAccount.ExternalUserId)))
+                {
+                    group.AvatarAccount = group.Members.FirstOrDefault()?.Clone();
+                }
+
+                normalized.Add(group.Normalize());
+            }
+
+            return normalized;
+        }
+
+        private static List<FriendAccountRef> NormalizeFriendMergeMembers(
+            IEnumerable<FriendAccountRef> members,
+            IEnumerable<FriendSettingsEntry> friends)
+        {
+            var friendKeys = new HashSet<string>(
+                (friends ?? Enumerable.Empty<FriendSettingsEntry>())
+                    .Select(friend => FriendAccountRef.BuildKey(friend?.ProviderKey, friend?.ExternalUserId))
+                    .Where(key => !string.IsNullOrWhiteSpace(key)),
+                StringComparer.OrdinalIgnoreCase);
+            var seenAccounts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenProviders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var normalized = new List<FriendAccountRef>();
+
+            foreach (var member in members ?? Enumerable.Empty<FriendAccountRef>())
+            {
+                var account = member?.Clone()?.Normalize();
+                var key = account?.Key;
+                if (string.IsNullOrWhiteSpace(key) ||
+                    !seenAccounts.Add(key) ||
+                    !seenProviders.Add(account.ProviderKey) ||
+                    (friendKeys.Count > 0 && !friendKeys.Contains(key)))
+                {
+                    continue;
+                }
+
+                normalized.Add(account);
+            }
+
+            return normalized
+                .OrderBy(member => member.ProviderKey, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(member => member.ExternalUserId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private void PruneFriendMergeGroupsForRemovedAccount(string providerKey, string externalUserId)
+        {
+            var removedKey = FriendAccountRef.BuildKey(providerKey, externalUserId);
+            if (string.IsNullOrWhiteSpace(removedKey) || FriendMergeGroups.Count == 0)
+            {
+                return;
+            }
+
+            var groups = NormalizeFriendMergeGroups(FriendMergeGroups, Friends);
+            foreach (var group in groups)
+            {
+                group.Members = (group.Members ?? new List<FriendAccountRef>())
+                    .Where(member => !string.Equals(member?.Key, removedKey, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            FriendMergeGroups = groups;
+        }
+
+        private bool MigrateLegacySteamFriends(ObservableCollection<FriendSettingsEntry> entries)
+        {
+            var steam = GetProviderSettingsObject("Steam");
+            if (steam == null)
+            {
+                return false;
+            }
+
+            var changed = false;
+            foreach (var item in steam["IgnoredFriends"] as JArray ?? new JArray())
+            {
+                if (!(item is JObject row))
+                {
+                    continue;
+                }
+
+                var steamId = NormalizeProviderKeyToken(row["SteamId"]?.ToString());
+                if (string.IsNullOrWhiteSpace(steamId))
+                {
+                    continue;
+                }
+
+                var existed = ContainsFriendEntry(entries, "Steam", steamId);
+                var entry = EnsureFriendEntry(
+                    entries,
+                    "Steam",
+                    steamId,
+                    row["DisplayName"]?.ToString(),
+                    row["AvatarUrl"]?.ToString(),
+                    null,
+                    FriendSettingsSource.AutoDiscovered);
+                changed |= !existed;
+                if (!entry.IsIgnored)
+                {
+                    entry.IsIgnored = true;
+                    changed = true;
+                }
+            }
+
+            foreach (var item in steam["FullLibraryFriends"] as JArray ?? new JArray())
+            {
+                if (!(item is JObject row))
+                {
+                    continue;
+                }
+
+                var steamId = NormalizeProviderKeyToken(row["SteamId"]?.ToString());
+                if (string.IsNullOrWhiteSpace(steamId))
+                {
+                    continue;
+                }
+
+                var existed = ContainsFriendEntry(entries, "Steam", steamId);
+                EnsureFriendEntry(
+                    entries,
+                    "Steam",
+                    steamId,
+                    row["DisplayName"]?.ToString(),
+                    row["AvatarUrl"]?.ToString(),
+                    null,
+                    FriendSettingsSource.AutoDiscovered);
+                changed |= !existed;
+            }
+
+            return changed;
+        }
+
+        private bool MigrateLegacyExophaseFriends(ObservableCollection<FriendSettingsEntry> entries)
+        {
+            var exophase = GetProviderSettingsObject("Exophase");
+            var friends = exophase?["Friends"] as JArray;
+            if (friends == null || friends.Count == 0)
+            {
+                return false;
+            }
+
+            var changed = false;
+            foreach (var item in friends)
+            {
+                if (!(item is JObject row))
+                {
+                    continue;
+                }
+
+                var username = NormalizeProviderKeyToken(row["Username"]?.ToString());
+                if (string.IsNullOrWhiteSpace(username))
+                {
+                    continue;
+                }
+
+                var existed = ContainsFriendEntry(entries, "Exophase", username);
+                var entry = EnsureFriendEntry(
+                    entries,
+                    "Exophase",
+                    username,
+                    row["DisplayName"]?.ToString(),
+                    row["AvatarUrl"]?.ToString(),
+                    row["AvatarPath"]?.ToString(),
+                    FriendSettingsSource.Manual);
+                changed |= !existed;
+
+                var nextPlatforms = FriendSettingsEntry.NormalizePlatformList(
+                    (row["SelectedPlatforms"] as JArray)?.Select(token => token?.ToString()));
+
+                var previousPlatformText = string.Join("\u001f", entry.SelectedPlatforms ?? new List<string>());
+                var nextPlatformText = string.Join("\u001f", nextPlatforms);
+                if (entry.Source != FriendSettingsSource.Manual)
+                {
+                    entry.Source = FriendSettingsSource.Manual;
+                    changed = true;
+                }
+
+                if (!string.Equals(previousPlatformText, nextPlatformText, StringComparison.OrdinalIgnoreCase))
+                {
+                    entry.SelectedPlatforms = nextPlatforms;
+                    changed = true;
+                }
+
+                entry.LastRefreshedUtc = ParseNullableUtc(row["LastRefreshedUtc"]) ?? entry.LastRefreshedUtc;
+                entry.LastProbedUtc = ParseNullableUtc(row["LastProbedUtc"]) ?? entry.LastProbedUtc;
+                entry.LastProbeStatus = NormalizeNullableString(row["LastProbeStatus"]?.ToString()) ?? entry.LastProbeStatus;
+                entry.LastError = NormalizeNullableString(row["LastError"]?.ToString()) ?? entry.LastError;
+            }
+
+            return changed;
+        }
+
+        private JObject GetProviderSettingsObject(string providerKey)
+        {
+            if (string.IsNullOrWhiteSpace(providerKey) ||
+                ProviderSettings == null ||
+                !ProviderSettings.TryGetValue(providerKey, out var settings))
+            {
+                return null;
+            }
+
+            return settings;
+        }
+
+        private static bool ContainsFriendEntry(
+            IEnumerable<FriendSettingsEntry> entries,
+            string providerKey,
+            string externalUserId)
+        {
+            return (entries ?? Enumerable.Empty<FriendSettingsEntry>()).Any(entry =>
+                string.Equals(entry?.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(entry?.ExternalUserId, externalUserId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static FriendSettingsEntry EnsureFriendEntry(
+            ObservableCollection<FriendSettingsEntry> entries,
+            string providerKey,
+            string externalUserId,
+            string displayName,
+            string avatarUrl,
+            string avatarPath,
+            FriendSettingsSource source)
+        {
+            providerKey = NormalizeProviderKeyToken(providerKey);
+            externalUserId = NormalizeProviderKeyToken(externalUserId);
+            if (string.IsNullOrWhiteSpace(providerKey) || string.IsNullOrWhiteSpace(externalUserId))
+            {
+                return null;
+            }
+
+            var entry = entries.FirstOrDefault(item =>
+                string.Equals(item?.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item?.ExternalUserId, externalUserId, StringComparison.OrdinalIgnoreCase));
+            if (entry == null)
+            {
+                entry = new FriendSettingsEntry
+                {
+                    ProviderKey = providerKey,
+                    ExternalUserId = externalUserId,
+                    DisplayName = string.IsNullOrWhiteSpace(displayName) ? externalUserId : displayName.Trim(),
+                    AvatarUrl = NormalizeNullableString(avatarUrl),
+                    AvatarPath = NormalizeNullableString(avatarPath),
+                    Source = source,
+                    AddedUtc = DateTime.UtcNow
+                };
+                entries.Add(entry);
+                return entry;
+            }
+
+            if (!string.IsNullOrWhiteSpace(displayName))
+            {
+                entry.DisplayName = displayName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(avatarUrl))
+            {
+                entry.AvatarUrl = avatarUrl.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(avatarPath))
+            {
+                entry.AvatarPath = avatarPath.Trim();
+            }
+
+            return entry;
+        }
+
+        private static DateTime? ParseNullableUtc(JToken token)
+        {
+            if (token == null || string.IsNullOrWhiteSpace(token.ToString()))
+            {
+                return null;
+            }
+
+            if (!DateTime.TryParse(token.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+            {
+                return null;
+            }
+
+            return parsed.Kind == DateTimeKind.Local ? parsed.ToUniversalTime() : DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+        }
+
+        private static string NormalizeProviderKeyToken(string value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static string NormalizeNullableString(string value) =>
+            string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        private static Dictionary<Guid, List<string>> NormalizeAchievementOrderOverrides(
+            Dictionary<Guid, List<string>> value)
+        {
+            var normalized = new Dictionary<Guid, List<string>>();
+            if (value == null)
+            {
+                return normalized;
+            }
+
+            foreach (var pair in value)
+            {
+                var order = Services.Achievements.AchievementOrderHelper.NormalizeApiNames(pair.Value);
+                if (order.Count > 0)
+                {
+                    normalized[pair.Key] = order;
+                }
+            }
+
+            return normalized;
+        }
+
+        private static Dictionary<Guid, Dictionary<string, string>> NormalizeAchievementCategoryOverrides(
+            Dictionary<Guid, Dictionary<string, string>> value)
+        {
+            var normalized = new Dictionary<Guid, Dictionary<string, string>>();
+            if (value == null)
+            {
+                return normalized;
+            }
+
+            foreach (var gamePair in value)
+            {
+                var categories = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (gamePair.Value != null)
+                {
+                    foreach (var categoryPair in gamePair.Value)
+                    {
+                        var key = (categoryPair.Key ?? string.Empty).Trim();
+                        var category = (categoryPair.Value ?? string.Empty).Trim();
+                        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(category))
+                        {
+                            continue;
+                        }
+
+                        categories[key] = category;
+                    }
+                }
+
+                if (categories.Count > 0)
+                {
+                    normalized[gamePair.Key] = categories;
+                }
+            }
+
+            return normalized;
+        }
+
+        private static Dictionary<Guid, Dictionary<string, string>> NormalizeAchievementCategoryTypeOverrides(
+            Dictionary<Guid, Dictionary<string, string>> value)
+        {
+            var normalized = new Dictionary<Guid, Dictionary<string, string>>();
+            if (value == null)
+            {
+                return normalized;
+            }
+
+            foreach (var gamePair in value)
+            {
+                var categoryTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (gamePair.Value != null)
+                {
+                    foreach (var categoryTypePair in gamePair.Value)
+                    {
+                        var key = (categoryTypePair.Key ?? string.Empty).Trim();
+                        var categoryType = Services.Achievements.AchievementCategoryTypeHelper.Normalize(categoryTypePair.Value);
+                        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(categoryType))
+                        {
+                            continue;
+                        }
+
+                        categoryTypes[key] = categoryType;
+                    }
+                }
+
+                if (categoryTypes.Count > 0)
+                {
+                    normalized[gamePair.Key] = categoryTypes;
+                }
+            }
+
+            return normalized;
+        }
+
+        #endregion
+    }
+}

@@ -1,0 +1,223 @@
+<settings:ProviderSettingsViewBase x:Class="PlayniteAchievements.Providers.RetroAchievements.RetroAchievementsSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:settings="clr-namespace:PlayniteAchievements.Providers.Settings"
+             xmlns:controls="clr-namespace:PlayniteAchievements.Views.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="600"
+             d:DesignWidth="700">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Providers/ProviderSettingsScopedControlStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20">
+
+            <!-- Provider Header -->
+            <StackPanel Style="{StaticResource ProviderHeaderPanelStyle}">
+                <Viewbox Style="{StaticResource ProviderHeaderIconStyle}">
+                    <Path Data="{StaticResource GeoRetroAchievements}" Fill="{StaticResource PlayAch.Brush.ProviderRetroAchievements}"/>
+                </Viewbox>
+                <TextBlock Text="{DynamicResource LOCPlayAch_Provider_RetroAchievements}" Style="{StaticResource ProviderTitleTextStyle}"/>
+            </StackPanel>
+
+            <!-- Provider Enable Toggle -->
+            <Border Style="{StaticResource ProviderEnableToggleBorderStyle}" Grid.IsSharedSizeScope="True">
+                <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_ProviderEnabled}"
+                                     FontWeight="SemiBold"
+                                     Margin="0">
+                    <CheckBox IsChecked="{Binding Settings.IsEnabled, Mode=TwoWay}"/>
+                </controls:SettingRow>
+            </Border>
+
+            <!-- Provider Disabled Message -->
+            <TextBlock Text="{DynamicResource LOCPlayAch_Settings_ProviderDisabledMessage}" Style="{StaticResource ProviderDisabledMessageStyle}"/>
+
+            <!-- RetroAchievements Settings -->
+            <Border Style="{StaticResource SectionBorderStyle}"
+                    IsEnabled="{Binding Settings.IsEnabled}">
+                <StackPanel Grid.IsSharedSizeScope="True">
+                    <Grid Margin="{StaticResource PlayAch.Thickness.Bottom.Lg}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   x:Name="AuthLabel"
+                                   Foreground="{DynamicResource PlayAch.Brush.Text}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Top"
+                                   Margin="{StaticResource PlayAch.Thickness.Top.Sm}"/>
+
+                        <Border Grid.Column="1" Style="{StaticResource ProviderConfigStatusBorderStyle}">
+
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0"
+                                               Style="{StaticResource ProviderConfigStatusIconStyle}">
+                                        <TextBlock.RenderTransform>
+                                            <ScaleTransform ScaleX="1.5" ScaleY="1.5"/>
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding AuthStatus, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"/>
+                                </Grid>
+
+                                <Border BorderBrush="{DynamicResource PopupBorderBrush}"
+                                        BorderThickness="0,1,0,0"
+                                        Padding="0,12,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_RaUsername}"
+                                                   Margin="{StaticResource PlayAch.Thickness.Bottom.Sm}"/>
+                                        <TextBox Text="{Binding Settings.RaUsername, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 Padding="4"/>
+
+                                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_RaWebApiKey}"
+                                                   Margin="0,12,0,8"/>
+                                        <TextBox Text="{Binding Settings.RaWebApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 Padding="4"/>
+                                        <TextBlock Text="{DynamicResource LOCPlayAch_Settings_RaWebApiKey_Help}"
+                                                   Style="{StaticResource MutedTextStyle}"
+                                                   Margin="{StaticResource PlayAch.Thickness.Top.Sm}"
+                                                   TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- RetroAchievements Rarity Stats -->
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_RaRarityStats}"
+                                         Hint="{DynamicResource LOCPlayAch_Settings_RaRarityStats_Description}">
+                        <ComboBox SelectedValue="{Binding Settings.RaRarityStats, Mode=TwoWay}"
+                                  SelectedValuePath="Tag"
+                                  VerticalAlignment="Center"
+                                  MinWidth="160">
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_Settings_RaRarityStats_Casual}" Tag="casual"/>
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_Settings_RaRarityStats_Hardcore}" Tag="hardcore"/>
+                        </ComboBox>
+                    </controls:SettingRow>
+
+                    <!-- RetroAchievements Points Display Mode -->
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_RaPointsMode}"
+                                         Hint="{DynamicResource LOCPlayAch_Settings_RaPointsMode_Description}">
+                        <ComboBox SelectedValue="{Binding Settings.RaPointsMode, Mode=TwoWay}"
+                                  SelectedValuePath="Tag"
+                                  VerticalAlignment="Center"
+                                  MinWidth="160">
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_Settings_RaPointsMode_Points}" Tag="points"/>
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_Settings_RaPointsMode_Scaled}" Tag="scaled"/>
+                        </ComboBox>
+                    </controls:SettingRow>
+
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_ScanningHashing}"
+                               Style="{StaticResource SectionHeaderStyle}"
+                               Margin="0,8,0,12"/>
+
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_EnableArchiveScanning}">
+                        <CheckBox IsChecked="{Binding Settings.EnableArchiveScanning, Mode=TwoWay}"/>
+                    </controls:SettingRow>
+
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_EnableDiscHashing}">
+                        <CheckBox IsChecked="{Binding Settings.EnableDiscHashing, Mode=TwoWay}"/>
+                    </controls:SettingRow>
+
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_RaEnableFuzzyNameMatching}">
+                        <CheckBox IsChecked="{Binding Settings.EnableFuzzyNameMatching, Mode=TwoWay}"/>
+                    </controls:SettingRow>
+
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_RaEnableSubsetScanning}">
+                        <CheckBox IsChecked="{Binding Settings.EnableRaSubsetScanning, Mode=TwoWay}"/>
+                    </controls:SettingRow>
+
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_HashIndexMaxAgeDays}">
+                        <TextBox Text="{Binding Settings.HashIndexMaxAgeDays, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="60"
+                                 TextAlignment="Right"
+                                 VerticalAlignment="Center"/>
+                    </controls:SettingRow>
+
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_ForceHashIndexRebuild}"
+                                         Margin="0">
+                        <Button Content="{DynamicResource LOCPlayAch_Settings_RebuildNow}"
+                                Click="ForceRebuildHashIndex_Click"
+                                Padding="{StaticResource PlayAch.Thickness.ButtonPadding.Wide}"
+                                MinWidth="90"/>
+                    </controls:SettingRow>
+                </StackPanel>
+            </Border>
+
+            <!-- Instant in-game notifications via emulator log tracking -->
+            <Border Style="{StaticResource SectionBorderStyle}"
+                    IsEnabled="{Binding Settings.IsEnabled}">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_RaEmulatorLogTracking}"
+                               Style="{StaticResource SectionHeaderStyle}"/>
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_RaEmulatorLogTracking_Help}"
+                               Style="{StaticResource MutedTextStyle}"
+                               TextWrapping="Wrap"
+                               Margin="{StaticResource PlayAch.Thickness.Bottom.Lg}"/>
+
+                    <ItemsControl ItemsSource="{Binding EmulatorLogRows, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="{StaticResource PlayAch.Thickness.Bottom.Lg}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                               Text="{Binding DisplayName}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource PlayAch.Brush.Text}"/>
+
+                                    <TextBox Grid.Row="1" Grid.Column="0"
+                                             Text="{Binding OverridePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="4"
+                                             Margin="0,4,8,0"
+                                             VerticalAlignment="Center"/>
+
+                                    <Button Grid.Row="1" Grid.Column="1"
+                                            Content="{DynamicResource LOCPlayAch_Button_Browse}"
+                                            Click="EmulatorLogBrowse_Click"
+                                            VerticalAlignment="Center"
+                                            Margin="0,4,0,0"
+                                            Padding="{StaticResource PlayAch.Thickness.ButtonPadding.Compact}"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                               Text="{Binding DefaultPathDisplay}"
+                                               Style="{StaticResource MutedTextStyle}"
+                                               TextWrapping="Wrap"
+                                               Margin="{StaticResource PlayAch.Thickness.Top.Sm}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</settings:ProviderSettingsViewBase>

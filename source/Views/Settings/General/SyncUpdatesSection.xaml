@@ -1,0 +1,153 @@
+<UserControl x:Class="PlayniteAchievements.Views.Settings.General.SyncUpdatesSection"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:models="clr-namespace:PlayniteAchievements.Models"
+             xmlns:controls="clr-namespace:PlayniteAchievements.Views.Controls"
+             mc:Ignorable="d"
+             d:DesignHeight="600"
+             d:DesignWidth="700">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Resources/SettingsScopedControlStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20">
+
+            <!-- ================== SYNC & UPDATES ================== -->
+            <Border Style="{StaticResource SectionBorderStyle}">
+                <StackPanel Grid.IsSharedSizeScope="True">
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Section_SyncUpdates}"
+                               Style="{StaticResource SectionHeaderStyle}"/>
+
+                    <!-- Periodic Updates -->
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_EnablePeriodicUpdates}">
+                        <CheckBox IsChecked="{Binding Persisted.EnablePeriodicUpdates}"/>
+                    </controls:SettingRow>
+                    <StackPanel Margin="{StaticResource PlayAch.Thickness.SettingRow.Indent}"
+                                IsEnabled="{Binding Persisted.EnablePeriodicUpdates}"
+                                Grid.IsSharedSizeScope="True">
+                        <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_HoursBetweenUpdates}">
+                            <TextBox Text="{Binding Persisted.PeriodicUpdateHours, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="{StaticResource PlayAch.Size.Input.NarrowWidth}"
+                                     TextAlignment="Right"/>
+                        </controls:SettingRow>
+                    </StackPanel>
+
+                    <!-- Periodic Friends Updates -->
+                    <StackPanel Visibility="{Binding Persisted.EnableFriendsFeatures, Converter={StaticResource BoolToVis}}">
+                        <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_EnableFriendsPeriodicUpdates}">
+                            <CheckBox IsChecked="{Binding Persisted.EnableFriendsPeriodicUpdates}"/>
+                        </controls:SettingRow>
+                        <StackPanel Margin="{StaticResource PlayAch.Thickness.SettingRow.Indent}"
+                                    IsEnabled="{Binding Persisted.EnableFriendsPeriodicUpdates}"
+                                    Grid.IsSharedSizeScope="True">
+                            <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_HoursBetweenUpdates}">
+                                <TextBox Text="{Binding Persisted.FriendsPeriodicUpdateHours, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="{StaticResource PlayAch.Size.Input.NarrowWidth}"
+                                         TextAlignment="Right"/>
+                            </controls:SettingRow>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- In-Game Polling -->
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_EnableInGamePolling}"
+                                         Hint="{DynamicResource LOCPlayAch_Settings_EnableInGamePolling_Description}">
+                        <CheckBox IsChecked="{Binding Persisted.EnableInGamePolling}"/>
+                    </controls:SettingRow>
+                    <StackPanel Margin="{StaticResource PlayAch.Thickness.SettingRow.Indent}"
+                                IsEnabled="{Binding Persisted.EnableInGamePolling}"
+                                Grid.IsSharedSizeScope="True">
+                        <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_InGamePollIntervalSeconds}">
+                            <TextBox Text="{Binding Persisted.InGamePollIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="{StaticResource PlayAch.Size.Input.NarrowWidth}"
+                                     TextAlignment="Right"/>
+                        </controls:SettingRow>
+
+                        <!-- Friend Polling -->
+                        <StackPanel Visibility="{Binding Persisted.EnableFriendsFeatures, Converter={StaticResource BoolToVis}}">
+                            <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_InGamePollRefreshFriends}">
+                                <CheckBox IsChecked="{Binding Persisted.InGamePollRefreshFriends}"/>
+                            </controls:SettingRow>
+                            <StackPanel Margin="{StaticResource PlayAch.Thickness.SettingRow.Indent}"
+                                        IsEnabled="{Binding Persisted.InGamePollRefreshFriends}"
+                                        Grid.IsSharedSizeScope="True">
+                                <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_InGameFriendRefreshMultiplier}">
+                                    <TextBox Text="{Binding Persisted.InGameFriendRefreshMultiplier, UpdateSourceTrigger=PropertyChanged}"
+                                             Width="{StaticResource PlayAch.Size.Input.NarrowWidth}"
+                                             TextAlignment="Right"/>
+                                </controls:SettingRow>
+                                <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_InGameFriendBatchSize}">
+                                    <TextBox Text="{Binding Persisted.InGameFriendBatchSize, UpdateSourceTrigger=PropertyChanged}"
+                                             Width="{StaticResource PlayAch.Size.Input.NarrowWidth}"
+                                             TextAlignment="Right"/>
+                                </controls:SettingRow>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Default Overview Refresh Mode -->
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_DefaultOverviewRefreshMode}"
+                                         Hint="{DynamicResource LOCPlayAch_Settings_DefaultOverviewRefreshMode_Description}">
+                        <ComboBox SelectedValue="{Binding Persisted.DefaultOverviewRefreshMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  SelectedValuePath="Tag"
+                                  MinWidth="140">
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_RefreshMode_Recent}"    Tag="{x:Static models:RefreshModeType.Recent}"/>
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_RefreshMode_Full}"      Tag="{x:Static models:RefreshModeType.Full}"/>
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_RefreshMode_Installed}" Tag="{x:Static models:RefreshModeType.Installed}"/>
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_RefreshMode_Favorites}" Tag="{x:Static models:RefreshModeType.Favorites}"/>
+                            <ComboBoxItem Content="{DynamicResource LOCPlayAch_RefreshMode_Missing}"   Tag="{x:Static models:RefreshModeType.Missing}"/>
+                        </ComboBox>
+                    </controls:SettingRow>
+
+                    <!-- Recent Refresh. The row's own label is the count it edits; "Recent
+                         Refresh" names the mode, which the description already explains. -->
+                    <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_RecentRefresh_RecentGames}"
+                                         Hint="{DynamicResource LOCPlayAch_Settings_RecentRefresh_Description}">
+                        <TextBox Text="{Binding Persisted.RecentRefreshGamesCount, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="{StaticResource PlayAch.Size.Input.NarrowWidth}"
+                                 TextAlignment="Right"/>
+                    </controls:SettingRow>
+
+                    <!-- Advanced -->
+                    <Expander IsExpanded="False"
+                              Background="{StaticResource PlayAch.Brush.Overlay.Shade.12}"
+                              BorderBrush="{DynamicResource PlayAch.Brush.Border}"
+                              BorderThickness="{StaticResource PlayAch.Thickness.Border}"
+                              Margin="{StaticResource PlayAch.Thickness.Top.Lg}"
+                              Padding="12,10,12,12">
+                        <Expander.Header>
+                            <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Advanced}"
+                                       Foreground="{DynamicResource PlayAch.Brush.Text}"
+                                       FontWeight="SemiBold"/>
+                        </Expander.Header>
+
+                        <StackPanel Grid.IsSharedSizeScope="True">
+                            <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_IncludeHiddenGamesInBulkRefreshes}"
+                                                 Hint="{DynamicResource LOCPlayAch_Settings_IncludeHiddenGamesInBulkRefreshes_Description}">
+                                <CheckBox IsChecked="{Binding Persisted.IncludeHiddenGamesInBulkScans}"/>
+                            </controls:SettingRow>
+
+                            <controls:SettingRow Label="{DynamicResource LOCPlayAch_IncludeUnplayedGames}"
+                                                 Hint="{DynamicResource LOCPlayAch_IncludeUnplayedGames_Help}">
+                                <CheckBox IsChecked="{Binding Persisted.IncludeUnplayedGames}"/>
+                            </controls:SettingRow>
+
+                            <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_EnableParallelProviderRefresh}"
+                                                 Hint="{DynamicResource LOCPlayAch_Settings_EnableParallelProviderRefresh_Help}"
+                                                 Margin="0">
+                                <CheckBox IsChecked="{Binding Persisted.EnableParallelProviderRefresh}"/>
+                            </controls:SettingRow>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

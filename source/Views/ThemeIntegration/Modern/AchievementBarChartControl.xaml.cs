@@ -1,0 +1,63 @@
+using System.Collections.Generic;
+using System.Linq;
+using PlayniteAchievements.ViewModels;
+using PlayniteAchievements.Views.ThemeIntegration.Base;
+
+namespace PlayniteAchievements.Views.ThemeIntegration.Modern
+{
+    /// <summary>
+    /// Modern PlayniteAchievements bar chart control for theme integration.
+    /// Displays unlock timeline using LiveCharts with the same TimelineViewModel as the overview.
+    /// Uses the effective theme source so settings previews can inject mock data.
+    /// </summary>
+    public partial class AchievementBarChartControl : ThemeControlBase
+    {
+        /// <summary>
+        /// Gets a value indicating whether this control should subscribe to theme data change notifications.
+        /// </summary>
+        protected override bool EnableAutomaticThemeDataUpdates => true;
+        protected override bool UsesThemeBindings => true;
+
+        /// <summary>
+        /// Gets the timeline view model that manages chart data and state.
+        /// Shared with the overview for consistent behavior and styling.
+        /// </summary>
+        public TimelineViewModel TimelineViewModel { get; } = new TimelineViewModel();
+
+        public AchievementBarChartControl()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>
+        /// Determines whether a change raised from modern theme bindings should trigger a refresh.
+        /// </summary>
+        protected override bool ShouldHandleThemeDataChange(string propertyName)
+        {
+            return propertyName == nameof(Models.ThemeIntegration.ModernThemeBindings.AllAchievements);
+        }
+
+        /// <summary>
+        /// Called when theme data changes. Updates the chart.
+        /// </summary>
+        protected override void OnThemeDataUpdated()
+        {
+            var allAchievements = EffectiveTheme?.AllAchievements;
+            if (allAchievements == null || !allAchievements.Any())
+            {
+                TimelineViewModel.SetCounts(null);
+                return;
+            }
+
+            // Counts keyed by local calendar day, like every other unlock timeline source.
+            var countsByDate = allAchievements
+                .Where(a => a.Unlocked && a.UnlockTimeUtc.HasValue)
+                .GroupBy(a => Services.Overview.UnlockDayCounts.DayOf(a.UnlockTimeUtc.Value))
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            TimelineViewModel.SetCounts(countsByDate);
+        }
+    }
+}
+
+

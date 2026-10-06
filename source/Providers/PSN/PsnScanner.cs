@@ -1,0 +1,851 @@
+using Newtonsoft.Json;
+using PlayniteAchievements.Common;
+using PlayniteAchievements.Models;
+using PlayniteAchievements.Models.Achievements;
+using PlayniteAchievements.Providers.PSN.Models;
+using PlayniteAchievements.Services;
+using PlayniteAchievements.Services.Achievements;
+using PlayniteAchievements.Services.GameCustomData;
+using PlayniteAchievements.Services.Refresh;
+using Playnite.SDK;
+using Playnite.SDK.Models;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace PlayniteAchievements.Providers.PSN
+{
+    internal sealed class PsnScanner
+    {
+        private readonly ILogger _logger;
+        private readonly PsnSessionManager _sessionManager;
+        private readonly PlayniteAchievementsSettings _settings;
+
+        private const string UrlBase = "https://m.np.playstation.com/api/trophy/v1";
+        private const string UrlTrophiesDetailsAll = UrlBase + "/npCommunicationIds/{0}/trophyGroups/all/trophies";
+        private const string UrlTrophiesUserAll = UrlBase + "/users/me/npCommunicationIds/{0}/trophyGroups/all/trophies";
+        private const string UrlTrophyGroups = UrlBase + "/npCommunicationIds/{0}/trophyGroups";
+        private const string UrlTitlesWithIdsMobile = UrlBase + "/users/me/titles/trophyTitles?npTitleIds={0}";
+        private const string UrlAllTrophyTitles = UrlBase + "/users/me/trophyTitles";
+
+        public PsnScanner(
+            ILogger logger,
+            PlayniteAchievementsSettings settings,
+            PsnSessionManager sessionManager)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
+        }
+
+        public async Task<RebuildPayload> RefreshAsync(
+            IReadOnlyList<Game> gamesToRefresh,
+            Action<Game> onGameStarting,
+            Func<Game, GameAchievementData, Task> onGameCompleted,
+            CancellationToken cancel)
+        {
+            string token;
+            try
+            {
+                token = await _sessionManager.GetAccessTokenAsync(cancel).ConfigureAwait(false);
+            }
+            catch (PsnAuthRequiredException)
+            {
+                _logger?.Warn("[PSNAch] Not authenticated (PSN token missing).");
+                return new RebuildPayload
+                {
+                    Summary = new RebuildSummary(),
+                    AuthRequired = true
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "[PSNAch] Failed to acquire PSN token.");
+                return new RebuildPayload
+                {
+                    Summary = new RebuildSummary(),
+                    AuthRequired = true
+                };
+            }
+
+            if (gamesToRefresh == null || gamesToRefresh.Count == 0)
+            {
+                return new RebuildPayload { Summary = new RebuildSummary() };
+            }
+
+            using (var http = new HttpClient())
+            {
+                http.Timeout = TimeSpan.FromSeconds(45);
+                SetAuthorizationHeader(http, token);
+
+                var acceptLanguage = MapGlobalLanguageToPsnLocale(_settings?.Persisted?.GlobalLanguage);
+                if (!string.IsNullOrWhiteSpace(acceptLanguage))
+                {
+                    http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", acceptLanguage);
+                }
+
+                return await ProviderRefreshExecutor.RunProviderGamesAsync(
+                    gamesToRefresh,
+                    onGameStarting,
+                    async (game, tokenCancel) =>
+                    {
+                        var data = await FetchGameDataAsync(http, game, tokenCancel).ConfigureAwait(false);
+                        return new ProviderRefreshExecutor.ProviderGameResult
+                        {
+                            Data = data
+                        };
+                    },
+                    onGameCompleted,
+                    isAuthRequiredException: ex => ex is PsnAuthRequiredException,
+                    onGameError: (game, ex, consecutiveErrors) =>
+                    {
+                        _logger?.Debug(ex, $"[PSNAch] Failed to scan {game?.Name}");
+                    },
+                    delayBetweenGamesAsync: null,
+                    delayAfterErrorAsync: null,
+                    cancel).ConfigureAwait(false);
+            }
+        }
+
+        private async Task<GameAchievementData> FetchGameDataAsync(HttpClient http, Game game, CancellationToken cancel)
+        {
+            var sets = await ResolveTrophySetsAsync(http, game, cancel).ConfigureAwait(false);
+            if (sets == null || sets.Count == 0)
+            {
+                return null;
+            }
+
+            var normalizedId = NormalizeGameId(game?.GameId);
+            var serviceSuffixCandidates = PsnSuffixRetryHelper.BuildSuffixCandidates(normalizedId);
+            var isCollection = sets.Count > 1;
+
+            var achievements = new List<AchievementDetail>();
+            var categoryArt = new List<(string Label, string IconUrl)>();
+            foreach (var set in sets)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var setResult = await FetchSetAchievementsAsync(http, game, set, serviceSuffixCandidates, isCollection, cancel)
+                    .ConfigureAwait(false);
+
+                // A failed set fails the whole game so the destructive cache write cannot erase
+                // the missing set's previously stored trophies.
+                if (setResult == null)
+                {
+                    return null;
+                }
+
+                achievements.AddRange(setResult.Achievements);
+                if (isCollection &&
+                    !string.IsNullOrWhiteSpace(setResult.CategoryLabel) &&
+                    !string.IsNullOrWhiteSpace(set.IconUrl))
+                {
+                    categoryArt.Add((setResult.CategoryLabel, set.IconUrl));
+                }
+            }
+
+            await DownloadCategoryImagesAsync(game?.Id, categoryArt, cancel).ConfigureAwait(false);
+
+            return new GameAchievementData
+            {
+                ProviderKey = "PSN",
+                ProviderGameKey = PsnTrophySetResolutionHelper.BuildProviderGameKey(sets),
+                LibrarySourceName = game?.Source?.Name,
+                GameName = game?.Name,
+                PlayniteGameId = game?.Id,
+                HasAchievements = achievements.Count > 0,
+                Achievements = achievements,
+                LastUpdatedUtc = DateTime.UtcNow
+            };
+        }
+
+        private sealed class PsnSetFetchResult
+        {
+            public List<AchievementDetail> Achievements { get; set; }
+
+            public string CategoryLabel { get; set; }
+        }
+
+        private async Task<PsnSetFetchResult> FetchSetAchievementsAsync(
+            HttpClient http,
+            Game game,
+            PsnResolvedTrophySet set,
+            IReadOnlyList<string> serviceSuffixCandidates,
+            bool isCollection,
+            CancellationToken cancel)
+        {
+            var npCommId = set.NpCommunicationId;
+
+            string userJson = null;
+            try
+            {
+                userJson = await PsnSuffixRetryHelper.GetStringWithSuffixRetryAsync(
+                    suffix => GetStringWithAuthRetryAsync(
+                        http,
+                        string.Format(UrlTrophiesUserAll, npCommId) + suffix,
+                        $"user trophies for '{game?.Name}' ({npCommId})",
+                        cancel),
+                    serviceSuffixCandidates).ConfigureAwait(false);
+                cancel.ThrowIfCancellationRequested();
+            }
+            catch (PsnAuthRequiredException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Private profile or no earned progress data is non-fatal.
+                _logger?.Debug(ex, $"[PSNAch] User trophies fetch failed for '{game?.Name}' ({npCommId})");
+                userJson = null;
+            }
+
+            string detailsJson;
+            try
+            {
+                detailsJson = await PsnSuffixRetryHelper.GetStringWithSuffixRetryAsync(
+                    suffix => GetStringWithAuthRetryAsync(
+                        http,
+                        string.Format(UrlTrophiesDetailsAll, npCommId) + suffix,
+                        $"trophy details for '{game?.Name}' ({npCommId})",
+                        cancel),
+                    serviceSuffixCandidates).ConfigureAwait(false);
+                cancel.ThrowIfCancellationRequested();
+            }
+            catch (PsnAuthRequiredException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warn(ex, $"[PSNAch] Failed to fetch trophy details for '{game?.Name}' (npCommId='{npCommId}')");
+                return null;
+            }
+
+            var user = string.IsNullOrWhiteSpace(userJson)
+                ? null
+                : JsonConvert.DeserializeObject<PsnTrophiesUserResponse>(userJson);
+
+            var details = JsonConvert.DeserializeObject<PsnTrophiesDetailResponse>(detailsJson);
+
+            var groupNameById = await FetchGroupNamesAsync(http, npCommId, serviceSuffixCandidates, game, cancel)
+                .ConfigureAwait(false);
+
+            // Collections label each set's trophies with the set title so every included game
+            // renders as its own category: lookup title, then base-group name, then npCommId.
+            string setTitle = null;
+            if (isCollection)
+            {
+                setTitle = set.Title;
+                if (string.IsNullOrWhiteSpace(setTitle))
+                {
+                    groupNameById.TryGetValue("default", out setTitle);
+                }
+
+                if (string.IsNullOrWhiteSpace(setTitle))
+                {
+                    setTitle = npCommId;
+                }
+            }
+
+            var userByKey = PsnTrophyMatchHelper.BuildUserTrophyLookupByGroupAndId(user?.Trophies);
+            var userByTrophyId = PsnTrophyMatchHelper.BuildUserTrophyLookupById(user?.Trophies);
+
+            var achievements = new List<AchievementDetail>();
+            var fallbackMatchCount = 0;
+            var fallbackNonDefaultGroupCount = 0;
+            foreach (var detail in (details?.Trophies ?? new List<PsnTrophyDetail>())
+                .GroupBy(PsnTrophyMatchHelper.GetTrophyKey)
+                .Select(g => g.First()))
+            {
+                PsnTrophyMatchHelper.TryResolveUserTrophy(
+                    detail,
+                    userByKey,
+                    userByTrophyId,
+                    out var userEntry,
+                    out var usedIdFallback);
+
+                if (usedIdFallback)
+                {
+                    fallbackMatchCount++;
+                    var detailGroup = PsnTrophyMatchHelper.NormalizeGroupId(detail?.TrophyGroupId);
+                    if (!string.Equals(detailGroup, "default", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fallbackNonDefaultGroupCount++;
+                    }
+                }
+
+                DateTime? unlockUtc = null;
+                var unlocked = userEntry != null && userEntry.Earned;
+                if (unlocked)
+                {
+                    if (!string.IsNullOrWhiteSpace(userEntry.EarnedDateTime))
+                    {
+                        if (DateTime.TryParse(
+                            userEntry.EarnedDateTime,
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                            out var parsed))
+                        {
+                            unlockUtc = parsed;
+                        }
+                        else
+                        {
+                            unlockUtc = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+                        }
+                    }
+                    else
+                    {
+                        unlockUtc = DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+                    }
+                }
+
+                achievements.Add(new AchievementDetail
+                {
+                    ApiName = PsnTrophySetResolutionHelper.BuildApiName(
+                        isCollection, npCommId, PsnTrophyMatchHelper.GetTrophyKey(detail)),
+                    DisplayName = detail.TrophyName,
+                    Description = detail.TrophyDetail,
+                    UnlockedIconPath = detail.TrophyIconUrl,
+                    CategoryType = PsnTrophyCategoryHelper.MapTrophyGroupToCategoryType(detail.TrophyGroupId),
+                    Category = isCollection
+                        ? PsnTrophyCategoryHelper.ResolveCollectionCategory(detail.TrophyGroupId, groupNameById, setTitle)
+                        : PsnTrophyCategoryHelper.ResolveCategory(detail.TrophyGroupId, groupNameById),
+                    Hidden = detail.Hidden,
+                    Unlocked = unlocked,
+                    UnlockTimeUtc = unlockUtc,
+                    TrophyType = detail.TrophyType,
+                    IsCapstone = string.Equals(detail.TrophyType, "platinum", StringComparison.OrdinalIgnoreCase),
+                    Rarity = GetRarityFromTrophyType(detail.TrophyType)
+                });
+
+                var currentAchievement = achievements[achievements.Count - 1];
+                var normalizedPercent = NormalizePercent(userEntry?.TrophyEarnedRate);
+                currentAchievement.GlobalPercentUnlocked = normalizedPercent;
+                if (normalizedPercent.HasValue)
+                {
+                    currentAchievement.Rarity = PercentRarityHelper.GetRarityTier(normalizedPercent.Value);
+                }
+
+                if (!currentAchievement.HasRarityPercent)
+                {
+                    currentAchievement.Rarity = GetRarityFromTrophyType(detail.TrophyType);
+                }
+            }
+
+            if (fallbackMatchCount > 0)
+            {
+                _logger?.Debug(
+                    $"[PSNAch] User trophy fallback-by-id matched {fallbackMatchCount} trophies for '{game?.Name}' ({npCommId}, non-default groups: {fallbackNonDefaultGroupCount}).");
+            }
+
+            if (fallbackNonDefaultGroupCount > 0)
+            {
+                _logger?.Debug(
+                    $"[PSNAch] User trophy fallback-by-id used for non-default groups in '{game?.Name}' ({npCommId}, {fallbackNonDefaultGroupCount} trophies).");
+            }
+
+            return new PsnSetFetchResult
+            {
+                Achievements = achievements,
+                CategoryLabel = setTitle
+            };
+        }
+
+        // Downloads each set's title icon as default category art for its category label, so a
+        // collection's category groups render with per-game art. Uses the shared provider-default
+        // convention read by CategoryDefaultImageResolver: existing art is kept and user overrides
+        // win over defaults. Best-effort: failures never fail the scan, and existing targets are
+        // skipped so re-scans cost nothing.
+        private async Task DownloadCategoryImagesAsync(
+            Guid? playniteGameId,
+            IReadOnlyList<(string Label, string IconUrl)> entries,
+            CancellationToken cancel)
+        {
+            if (entries == null || entries.Count == 0 ||
+                playniteGameId == null || playniteGameId.Value == Guid.Empty)
+            {
+                return;
+            }
+
+            var diskImageService = PlayniteAchievementsPlugin.Instance?.DiskImageService;
+            if (diskImageService == null)
+            {
+                return;
+            }
+
+            var gameIdText = playniteGameId.Value.ToString("D");
+            var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var label = AchievementCategoryTypeHelper.NormalizeCategoryOrDefault(entry.Label);
+                if (string.Equals(
+                        label,
+                        AchievementCategoryTypeHelper.DefaultCategoryLabel,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !seenLabels.Add(label))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var artTarget = diskImageService.GetDefaultCategoryImagePath(gameIdText, label);
+                    // decodeSize 0 stores the original bytes: no square crop, original aspect.
+                    await diskImageService.GetOrDownloadIconToPathAsync(entry.IconUrl, artTarget, decodeSize: 0, cancel)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Debug(ex, $"[PSNAch] Default category image download failed for category '{entry.Label}'.");
+                }
+            }
+        }
+
+        private void SetAuthorizationHeader(HttpClient http, string token)
+        {
+            if (http == null)
+            {
+                return;
+            }
+
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+
+        private async Task<string> GetStringWithAuthRetryAsync(
+            HttpClient http,
+            string url,
+            string operationLabel,
+            CancellationToken cancel)
+        {
+            try
+            {
+                return await GetStringCoreAsync(http, url, cancel).ConfigureAwait(false);
+            }
+            catch (PsnUnauthorizedHttpException ex)
+            {
+                _logger?.Debug($"[PSNAch] Unauthorized ({(int)ex.StatusCode}) during {operationLabel}; forcing PSN token refresh and retry.");
+
+                _sessionManager.InvalidateAccessToken();
+                string refreshedToken;
+                try
+                {
+                    refreshedToken = await _sessionManager.GetAccessTokenAsync(cancel, forceRefresh: true).ConfigureAwait(false);
+                }
+                catch (PsnAuthRequiredException)
+                {
+                    _logger?.Warn($"[PSNAch] Token refresh failed while recovering unauthorized response for {operationLabel}.");
+                    throw;
+                }
+
+                SetAuthorizationHeader(http, refreshedToken);
+
+                try
+                {
+                    var retryJson = await GetStringCoreAsync(http, url, cancel).ConfigureAwait(false);
+                    _logger?.Debug($"[PSNAch] Unauthorized retry succeeded for {operationLabel}.");
+                    return retryJson;
+                }
+                catch (PsnUnauthorizedHttpException retryEx)
+                {
+                    _logger?.Warn($"[PSNAch] Unauthorized retry failed ({(int)retryEx.StatusCode}) for {operationLabel}.");
+                    throw new PsnAuthRequiredException(
+                        $"PlayStation authentication required after unauthorized retry failure ({(int)retryEx.StatusCode}).");
+                }
+                catch (Exception retryEx)
+                {
+                    _logger?.Debug(retryEx, $"[PSNAch] Retry failed for {operationLabel}.");
+                    throw;
+                }
+            }
+        }
+
+        private static async Task<string> GetStringCoreAsync(HttpClient http, string url, CancellationToken cancel)
+        {
+            using (var response = await http.GetAsync(url, cancel).ConfigureAwait(false))
+            {
+                if (response.StatusCode == HttpStatusCode.Unauthorized ||
+                    response.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    throw new PsnUnauthorizedHttpException(response.StatusCode, url);
+                }
+
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
+        }
+
+        private sealed class PsnUnauthorizedHttpException : Exception
+        {
+            public HttpStatusCode StatusCode { get; }
+
+            public string Url { get; }
+
+            public PsnUnauthorizedHttpException(HttpStatusCode statusCode, string url)
+                : base($"PSN request unauthorized: {(int)statusCode} ({statusCode})")
+            {
+                StatusCode = statusCode;
+                Url = url;
+            }
+        }
+
+        /// <summary>
+        /// Fetches the trophy-group metadata (base group plus each DLC group) and returns a
+        /// normalized groupId -> group title map. Non-fatal: any failure (private profile, missing
+        /// metadata) yields an empty map so categorization degrades to the base/DLC
+        /// <see cref="MapTrophyGroupToCategoryType"/> classification without a named label.
+        /// </summary>
+        private async Task<IReadOnlyDictionary<string, string>> FetchGroupNamesAsync(
+            HttpClient http,
+            string npCommId,
+            IReadOnlyList<string> serviceSuffixCandidates,
+            Game game,
+            CancellationToken cancel)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            string groupsJson;
+            try
+            {
+                groupsJson = await PsnSuffixRetryHelper.GetStringWithSuffixRetryAsync(
+                    suffix => GetStringWithAuthRetryAsync(
+                        http,
+                        string.Format(UrlTrophyGroups, npCommId) + suffix,
+                        $"trophy groups for '{game?.Name}'",
+                        cancel),
+                    serviceSuffixCandidates).ConfigureAwait(false);
+                cancel.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug(ex, $"[PSNAch] Trophy group metadata fetch failed for '{game?.Name}'; category labels unavailable.");
+                return map;
+            }
+
+            if (string.IsNullOrWhiteSpace(groupsJson))
+            {
+                return map;
+            }
+
+            try
+            {
+                var groups = JsonConvert.DeserializeObject<PsnTrophyGroupsResponse>(groupsJson);
+                foreach (var group in groups?.TrophyGroups ?? new List<PsnTrophyGroup>())
+                {
+                    if (group == null || string.IsNullOrWhiteSpace(group.TrophyGroupName))
+                    {
+                        continue;
+                    }
+
+                    map[PsnTrophyMatchHelper.NormalizeGroupId(group.TrophyGroupId)] = group.TrophyGroupName.Trim();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug(ex, $"[PSNAch] Failed to parse trophy group metadata for '{game?.Name}'.");
+            }
+
+            return map;
+        }
+
+        private static double? NormalizePercent(double? rawPercent)
+        {
+            if (!rawPercent.HasValue)
+            {
+                return null;
+            }
+
+            var value = rawPercent.Value;
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                return null;
+            }
+
+            if (value < 0)
+            {
+                return 0;
+            }
+
+            if (value > 100)
+            {
+                return 100;
+            }
+
+            return value;
+        }
+
+        private static RarityTier GetRarityFromTrophyType(string trophyType)
+        {
+            switch ((trophyType ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "platinum":
+                case "p":
+                    return RarityTier.UltraRare;
+                case "gold":
+                case "g":
+                    return RarityTier.Rare;
+                case "silver":
+                case "s":
+                    return RarityTier.Uncommon;
+                default:
+                    return RarityTier.Common;
+            }
+        }
+
+        private static string NormalizeGameId(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            var parts = raw.Split('#');
+            var normalized = parts.Length > 0 ? parts[parts.Length - 1] : raw;
+            return (normalized ?? string.Empty).Trim();
+        }
+
+        /// <summary>
+        /// Normalizes a game name for comparison by removing common variations.
+        /// </summary>
+        private static string NormalizeGameName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            var normalized = GameNameNormalizer.StripTrademarkSymbols(name);
+            return GameNameNormalizer.CollapseSeparators(normalized).ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// Maps the global language setting to a PSN-compatible Accept-Language header value.
+        /// PSN uses standard HTTP Accept-Language format (e.g., "en-US", "fr-FR").
+        /// </summary>
+        private static string MapGlobalLanguageToPsnLocale(string globalLanguage)
+        {
+            if (string.IsNullOrWhiteSpace(globalLanguage))
+            {
+                return "en-US";
+            }
+
+            var normalizedRaw = globalLanguage.Trim();
+            if (normalizedRaw.IndexOf('-') > 0)
+            {
+                return normalizedRaw;
+            }
+
+            var normalized = normalizedRaw.ToLowerInvariant();
+            var localeMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "english", "en-US" },
+                { "german", "de-DE" },
+                { "french", "fr-FR" },
+                { "spanish", "es-ES" },
+                { "latam", "es-419" },
+                { "italian", "it-IT" },
+                { "portuguese", "pt-PT" },
+                { "brazilian", "pt-BR" },
+                { "brazilianportuguese", "pt-BR" },
+                { "russian", "ru-RU" },
+                { "polish", "pl-PL" },
+                { "dutch", "nl-NL" },
+                { "swedish", "sv-SE" },
+                { "finnish", "fi-FI" },
+                { "danish", "da-DK" },
+                { "norwegian", "nb-NO" },
+                { "hungarian", "hu-HU" },
+                { "czech", "cs-CZ" },
+                { "romanian", "ro-RO" },
+                { "turkish", "tr-TR" },
+                { "greek", "el-GR" },
+                { "bulgarian", "bg-BG" },
+                { "ukrainian", "uk-UA" },
+                { "thai", "th-TH" },
+                { "vietnamese", "vi-VN" },
+                { "japanese", "ja-JP" },
+                { "koreana", "ko-KR" },
+                { "korean", "ko-KR" },
+                { "schinese", "zh-CN" },
+                { "tchinese", "zh-Hant" },
+                { "arabic", "ar" }
+            };
+
+            if (localeMap.TryGetValue(normalized, out var locale))
+            {
+                return locale;
+            }
+
+            return "en-US";
+        }
+
+        // Resolves every trophy set belonging to the game. Compilations (Spyro Reignited Trilogy,
+        // Crash Bandicoot N.Sane Trilogy, Kingdom Hearts 1.5+2.5) list one set per included game
+        // under the SKU's npTitleId, so the lookup can return several sets. An empty list means
+        // "unresolved" and preserves any cached achievements.
+        private async Task<IReadOnlyList<PsnResolvedTrophySet>> ResolveTrophySetsAsync(HttpClient http, Game game, CancellationToken cancel)
+        {
+            var empty = new List<PsnResolvedTrophySet>();
+
+            // A per-game override supplies the NP Communication ID(s) directly, bypassing GameId lookup.
+            if (game != null &&
+                GameCustomDataLookup.TryGetProviderOverrideValue(game.Id, "PSN", out var overrideValue))
+            {
+                var overrideSets = PsnTrophySetResolutionHelper.ParseOverrideSets(overrideValue);
+                if (overrideSets.Count > 0)
+                {
+                    return overrideSets;
+                }
+            }
+
+            var raw = game?.GameId?.Trim();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                _logger?.Warn($"[PSNAch] GameId is empty for '{game?.Name}'");
+                return empty;
+            }
+
+            var normalized = NormalizeGameId(raw);
+            if (normalized.IndexOf("NPWR", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return new List<PsnResolvedTrophySet>
+                {
+                    new PsnResolvedTrophySet { NpCommunicationId = normalized }
+                };
+            }
+
+            try
+            {
+                var url = string.Format(UrlTitlesWithIdsMobile, Uri.EscapeDataString(normalized));
+                var json = await GetStringWithAuthRetryAsync(
+                    http,
+                    url,
+                    $"npCommunicationId lookup for '{game?.Name}'",
+                    cancel).ConfigureAwait(false);
+                cancel.ThrowIfCancellationRequested();
+
+                var titles = JsonConvert.DeserializeObject<PsnTrophyTitleLookup>(json);
+                var sets = PsnTrophySetResolutionHelper.ExtractSets(titles);
+                if (sets.Count > 0)
+                {
+                    return sets;
+                }
+            }
+            catch (PsnAuthRequiredException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug(ex, $"[PSNAch] Lookup failed for '{normalized}' ({game?.Name})");
+            }
+
+            if (!normalized.EndsWith("_00", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var withSuffix = normalized + "_00";
+                    var url2 = string.Format(UrlTitlesWithIdsMobile, Uri.EscapeDataString(withSuffix));
+                    var json2 = await GetStringWithAuthRetryAsync(
+                        http,
+                        url2,
+                        $"npCommunicationId lookup for '{game?.Name}' with _00 suffix",
+                        cancel).ConfigureAwait(false);
+                    cancel.ThrowIfCancellationRequested();
+
+                    var titles2 = JsonConvert.DeserializeObject<PsnTrophyTitleLookup>(json2);
+                    var sets2 = PsnTrophySetResolutionHelper.ExtractSets(titles2);
+                    if (sets2.Count > 0)
+                    {
+                        return sets2;
+                    }
+                }
+                catch (PsnAuthRequiredException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Debug(ex, $"[PSNAch] Lookup failed for '{normalized}_00' ({game?.Name})");
+                }
+            }
+
+            // Fallback: search user's trophy titles by game name
+            var nameBasedResult = await ResolveByNameAsync(http, game?.Name, cancel).ConfigureAwait(false);
+            if (nameBasedResult != null)
+            {
+                _logger?.Info($"[PSNAch] Resolved '{game?.Name}' via name search to '{nameBasedResult.NpCommunicationId}'");
+                return new List<PsnResolvedTrophySet> { nameBasedResult };
+            }
+
+            _logger?.Warn($"[PSNAch] Unable to resolve npCommunicationId for '{game?.Name}' (GameId='{normalized}')");
+            return empty;
+        }
+
+        /// <summary>
+        /// Fallback method that searches the user's trophy titles by game name.
+        /// This matches SuccessStory's GetNPWR_2 approach.
+        /// </summary>
+        private async Task<PsnResolvedTrophySet> ResolveByNameAsync(HttpClient http, string gameName, CancellationToken cancel)
+        {
+            if (string.IsNullOrWhiteSpace(gameName))
+            {
+                return null;
+            }
+
+            try
+            {
+                var json = await GetStringWithAuthRetryAsync(
+                    http,
+                    UrlAllTrophyTitles,
+                    $"name-based npCommunicationId lookup for '{gameName}'",
+                    cancel).ConfigureAwait(false);
+                cancel.ThrowIfCancellationRequested();
+
+                var response = JsonConvert.DeserializeObject<PsnAllTrophyTitlesResponse>(json);
+                if (response?.TrophyTitles == null || response.TrophyTitles.Count == 0)
+                {
+                    return null;
+                }
+
+                var normalizedSearch = NormalizeGameName(gameName);
+                var match = response.TrophyTitles.FirstOrDefault(t =>
+                    NormalizeGameName(t?.TrophyTitleName) == normalizedSearch);
+
+                if (string.IsNullOrWhiteSpace(match?.NpCommunicationId))
+                {
+                    return null;
+                }
+
+                return new PsnResolvedTrophySet
+                {
+                    NpCommunicationId = match.NpCommunicationId,
+                    Title = string.IsNullOrWhiteSpace(match.TrophyTitleName) ? null : match.TrophyTitleName.Trim()
+                };
+            }
+            catch (PsnAuthRequiredException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Debug(ex, $"[PSNAch] Name-based lookup failed for '{gameName}'");
+                return null;
+            }
+        }
+    }
+}
+

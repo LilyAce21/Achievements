@@ -1,0 +1,43 @@
+<UserControl x:Class="PlayniteAchievements.Views.Controls.CategoryPickerBox"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="32"
+             d:DesignWidth="320">
+
+    <Grid>
+        <!-- Select-only: a category is picked from the list or created through the row at the top
+             of it, never named by typing into the box. An editable ComboBox ran WPF's text-search
+             pipeline on every keystroke - a prefix scan resolving a binding per option, an open
+             drop-down scrolled to each auto-match, and a tree guide realized per row - which made
+             the box lag, and it also turned a typo into a new category.
+
+             Items show the leaf, with the full path on hover: a list of paths sharing long
+             prefixes is hard to scan, but two leaves can share a name under different parents.
+             Depth is carried by the same tree connectors the category grid draws, so the list
+             places a leaf without spelling its path out.
+
+             TextSearch.TextPath rather than DisplayMemberPath: the latter cannot coexist with an
+             ItemTemplate. On a closed box it costs one prefix scan per keypress, which is what
+             makes jumping to a category by its first letters still work. -->
+        <ComboBox x:Name="PickerComboBox"
+                  IsTextSearchEnabled="True"
+                  TextSearch.TextPath="LeafDisplay"
+                  ItemContainerStyle="{StaticResource PlayAch.CategoryTreeComboBoxItemStyle}"
+                  ItemTemplate="{StaticResource PlayAch.CategoryTreeComboBoxItemTemplate}"
+                  MinHeight="{StaticResource PlayAch.Size.Control.Height}"
+                  VerticalContentAlignment="Center"
+                  PreviewKeyDown="PickerComboBox_PreviewKeyDown"/>
+
+        <TextBlock x:Name="PlaceholderText"
+                   Text="{Binding Placeholder, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                   VerticalAlignment="Center"
+                   Margin="9,0,0,0"
+                   Foreground="{DynamicResource PlayAch.Brush.Text}"
+                   Opacity="{StaticResource PlayAch.Opacity.Placeholder}"
+                   IsHitTestVisible="False"
+                   Visibility="Collapsed"/>
+    </Grid>
+</UserControl>

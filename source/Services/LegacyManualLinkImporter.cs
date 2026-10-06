@@ -1,0 +1,704 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Playnite.SDK;
+using PlayniteAchievements.Models.Settings;
+using PlayniteAchievements.Providers;
+using PlayniteAchievements.Providers.Exophase;
+using PlayniteAchievements.Providers.Manual;
+using PlayniteAchievements.Providers.Settings;
+using PlayniteAchievements.Services.GameCustomData;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+namespace PlayniteAchievements.Services
+{
+    internal sealed class LegacyManualImportResult
+    {
+        public int Scanned { get; internal set; }
+        public int Imported { get; internal set; }
+        public int ParseFailures { get; internal set; }
+        public int SkippedNotManual { get; internal set; }
+        public int SkippedIgnored { get; internal set; }
+        public int SkippedInvalidFileName { get; internal set; }
+        public int SkippedGameMissing { get; internal set; }
+        public int SkippedManualLinkExists { get; internal set; }
+        public int SkippedCachedProviderData { get; internal set; }
+        public int SkippedUnsupportedSource { get; internal set; }
+        public int SkippedUnresolvedSourceGameId { get; internal set; }
+        public bool ManualProviderAutoEnabled { get; internal set; }
+        public List<Guid> ImportedGameIds { get; } = new List<Guid>();
+        public Dictionary<string, int> UnsupportedSources { get; } =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal sealed class LegacyManualLinkImporter
+    {
+        private enum ExistingManualLinkLocation
+        {
+            None,
+            Store,
+            Settings
+        }
+
+        private static readonly DateTime MinimumLegacyUnlockUtc =
+            new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        private static readonly DateTime LegacySentinelDate =
+            new DateTime(1982, 12, 15);
+
+        private static readonly DateTimeOffset LegacySentinelUtcWindowStart =
+            new DateTimeOffset(1982, 12, 14, 10, 0, 0, TimeSpan.Zero);
+
+        private static readonly DateTimeOffset LegacySentinelUtcWindowEnd =
+            new DateTimeOffset(1982, 12, 15, 14, 0, 0, TimeSpan.Zero);
+
+        private static readonly Regex SteamStatsAppIdRegex = new Regex(
+            @"/stats/(?<id>\d+)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex SteamAppsAppIdRegex = new Regex(
+            @"/apps/(?<id>\d+)(?:/|$)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private readonly Func<PersistedSettings> _getPersistedSettings;
+        private readonly Func<Guid, bool> _gameExists;
+        private readonly Func<Guid, bool> _hasCachedProviderData;
+        private readonly Func<LegacyManualImportGameMetadata, Guid?> _resolveMissingGameId;
+        private readonly GameCustomDataStore _gameCustomDataStore;
+        private readonly ILogger _logger;
+        private readonly IReadOnlyDictionary<string, string> _sourceResolver;
+
+        public LegacyManualLinkImporter(
+            PersistedSettings persistedSettings,
+            Func<Guid, bool> gameExists,
+            Func<Guid, bool> hasCachedProviderData,
+            ILogger logger = null,
+            IReadOnlyDictionary<string, string> sourceResolver = null,
+            GameCustomDataStore gameCustomDataStore = null,
+            Func<LegacyManualImportGameMetadata, Guid?> resolveMissingGameId = null)
+            : this(
+                  () => persistedSettings,
+                  gameExists,
+                  hasCachedProviderData,
+                  logger,
+                  sourceResolver,
+                  gameCustomDataStore,
+                  resolveMissingGameId)
+        {
+        }
+
+        public LegacyManualLinkImporter(
+            Func<PersistedSettings> getPersistedSettings,
+            Func<Guid, bool> gameExists,
+            Func<Guid, bool> hasCachedProviderData,
+            ILogger logger = null,
+            IReadOnlyDictionary<string, string> sourceResolver = null,
+            GameCustomDataStore gameCustomDataStore = null,
+            Func<LegacyManualImportGameMetadata, Guid?> resolveMissingGameId = null)
+        {
+            _getPersistedSettings = getPersistedSettings ?? throw new ArgumentNullException(nameof(getPersistedSettings));
+            _gameExists = gameExists ?? throw new ArgumentNullException(nameof(gameExists));
+            _hasCachedProviderData = hasCachedProviderData ?? throw new ArgumentNullException(nameof(hasCachedProviderData));
+            _resolveMissingGameId = resolveMissingGameId;
+            _gameCustomDataStore = gameCustomDataStore;
+            _logger = logger;
+            _sourceResolver = sourceResolver ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Steam"] = "Steam",
+                ["Exophase"] = "Exophase"
+            };
+        }
+
+        public LegacyManualImportResult Import(string folderPath)
+        {
+            var result = new LegacyManualImportResult();
+
+            if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
+            {
+                return result;
+            }
+
+            var persistedSettings = _getPersistedSettings();
+            if (persistedSettings == null)
+            {
+                return result;
+            }
+
+            var manualSettings = ProviderRegistry.Settings<ManualSettings>();
+            var manualLinks = manualSettings.AchievementLinks ?? new Dictionary<Guid, ManualAchievementLink>();
+            manualSettings.AchievementLinks = manualLinks;
+
+            var jsonFiles = Directory
+                .EnumerateFiles(folderPath, "*.json", SearchOption.TopDirectoryOnly)
+                .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var jsonFile in jsonFiles)
+            {
+                result.Scanned++;
+
+                try
+                {
+                    if (!Guid.TryParse(Path.GetFileNameWithoutExtension(jsonFile), out var gameId))
+                    {
+                        result.SkippedInvalidFileName++;
+                        continue;
+                    }
+
+                    var payload = ParsePayload(jsonFile);
+                    if (payload == null)
+                    {
+                        result.ParseFailures++;
+                        continue;
+                    }
+
+                    if (!payload.IsManual)
+                    {
+                        result.SkippedNotManual++;
+                        continue;
+                    }
+
+                    if (payload.IsIgnored)
+                    {
+                        result.SkippedIgnored++;
+                        continue;
+                    }
+
+                    var hasSourceGameId = TryResolveSourceGameId(payload.SourceUrl, payload.Items, out var sourceGameId);
+                    if (!_gameExists(gameId) &&
+                        !TryResolveMissingGameId(gameId, payload, sourceGameId, out gameId))
+                    {
+                        result.SkippedGameMissing++;
+                        continue;
+                    }
+
+                    if (TryGetExistingManualLink(gameId, manualLinks, out var existingLink, out var existingLinkLocation))
+                    {
+                        if (IsValidManualLink(existingLink))
+                        {
+                            result.SkippedManualLinkExists++;
+                            continue;
+                        }
+
+                        // Clean stale/invalid entries so import can recreate a usable link.
+                        RemoveExistingManualLink(gameId, existingLinkLocation, manualLinks);
+                    }
+
+                    if (_hasCachedProviderData(gameId))
+                    {
+                        result.SkippedCachedProviderData++;
+                        continue;
+                    }
+
+                    if (!TryResolveSourceKey(payload.SourceName, out var sourceKey))
+                    {
+                        result.SkippedUnsupportedSource++;
+                        IncrementUnsupportedSourceCount(result, payload.SourceName);
+                        continue;
+                    }
+
+                    if (!hasSourceGameId)
+                    {
+                        result.SkippedUnresolvedSourceGameId++;
+                        continue;
+                    }
+
+                    var nowUtc = DateTime.UtcNow;
+                    BuildUnlockData(payload.Items, sourceKey, out var unlockTimes, out var unlockStates);
+                    var link = new ManualAchievementLink
+                    {
+                        SourceKey = sourceKey,
+                        SourceGameId = sourceGameId,
+                        UnlockTimes = unlockTimes,
+                        UnlockStates = unlockStates,
+                        AllowUnauthenticatedSchemaFetch = ShouldAllowUnauthenticatedSchemaFetch(sourceKey),
+                        CreatedUtc = nowUtc,
+                        LastModifiedUtc = nowUtc
+                    };
+                    SaveManualLink(gameId, link, ExistingManualLinkLocation.None, manualLinks);
+
+                    result.Imported++;
+                    result.ImportedGameIds.Add(gameId);
+                }
+                catch (Exception ex)
+                {
+                    result.ParseFailures++;
+                    _logger?.Warn(ex, $"Legacy manual import failed for '{jsonFile}'.");
+                }
+            }
+
+            ProviderRegistry.Write(manualSettings, persistToDisk: true);
+            return result;
+        }
+
+        private bool TryResolveMissingGameId(
+            Guid legacyGameId,
+            LegacyPayload payload,
+            string sourceGameId,
+            out Guid resolvedGameId)
+        {
+            resolvedGameId = legacyGameId;
+            if (_resolveMissingGameId == null || payload == null)
+            {
+                return false;
+            }
+
+            var metadata = new LegacyManualImportGameMetadata
+            {
+                LegacyGameId = legacyGameId,
+                GameName = payload.GameName,
+                SourceGameName = payload.SourceGameName,
+                SourceName = payload.SourceName,
+                SourceUrl = payload.SourceUrl,
+                SourceGameId = sourceGameId
+            };
+
+            var candidate = _resolveMissingGameId(metadata);
+            if (!candidate.HasValue ||
+                candidate.Value == Guid.Empty ||
+                !_gameExists(candidate.Value))
+            {
+                return false;
+            }
+
+            resolvedGameId = candidate.Value;
+            return true;
+        }
+
+        private bool TryResolveSourceKey(string sourceName, out string sourceKey)
+        {
+            sourceKey = null;
+            if (string.IsNullOrWhiteSpace(sourceName))
+            {
+                return false;
+            }
+
+            return _sourceResolver.TryGetValue(sourceName.Trim(), out sourceKey) &&
+                   !string.IsNullOrWhiteSpace(sourceKey);
+        }
+
+        private static bool IsValidManualLink(ManualAchievementLink link)
+        {
+            return link != null &&
+                   !string.IsNullOrWhiteSpace(link.SourceKey) &&
+                   !string.IsNullOrWhiteSpace(link.SourceGameId);
+        }
+
+        private bool TryGetExistingManualLink(
+            Guid gameId,
+            IReadOnlyDictionary<Guid, ManualAchievementLink> manualLinks,
+            out ManualAchievementLink link,
+            out ExistingManualLinkLocation location)
+        {
+            link = null;
+            location = ExistingManualLinkLocation.None;
+
+            if (_gameCustomDataStore != null &&
+                _gameCustomDataStore.TryLoad(gameId, out var customData) &&
+                customData?.ManualLink != null)
+            {
+                link = customData.ManualLink.Clone();
+                location = ExistingManualLinkLocation.Store;
+                return true;
+            }
+
+            if (manualLinks != null &&
+                manualLinks.TryGetValue(gameId, out var settingsLink) &&
+                settingsLink != null)
+            {
+                link = settingsLink;
+                location = ExistingManualLinkLocation.Settings;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void RemoveExistingManualLink(
+            Guid gameId,
+            ExistingManualLinkLocation location,
+            IDictionary<Guid, ManualAchievementLink> manualLinks)
+        {
+            switch (location)
+            {
+                case ExistingManualLinkLocation.Store:
+                    _gameCustomDataStore?.Update(gameId, customData =>
+                    {
+                        customData.ManualLink = null;
+                    });
+                    break;
+                case ExistingManualLinkLocation.Settings:
+                    manualLinks?.Remove(gameId);
+                    break;
+            }
+        }
+
+        private void SaveManualLink(
+            Guid gameId,
+            ManualAchievementLink link,
+            ExistingManualLinkLocation location,
+            IDictionary<Guid, ManualAchievementLink> manualLinks)
+        {
+            switch (location)
+            {
+                case ExistingManualLinkLocation.Store:
+                    _gameCustomDataStore?.Update(gameId, customData =>
+                    {
+                        customData.ManualLink = link;
+                    });
+                    return;
+                case ExistingManualLinkLocation.Settings:
+                    manualLinks[gameId] = link;
+                    return;
+                default:
+                    if (_gameCustomDataStore != null)
+                    {
+                        _gameCustomDataStore.Update(gameId, customData =>
+                        {
+                            customData.ManualLink = link;
+                        });
+                        return;
+                    }
+
+                    manualLinks[gameId] = link;
+                    return;
+            }
+        }
+
+        private static bool? ShouldAllowUnauthenticatedSchemaFetch(string sourceKey)
+        {
+            return string.Equals(sourceKey, "Exophase", StringComparison.OrdinalIgnoreCase)
+                ? true
+                : (bool?)null;
+        }
+
+        private static void IncrementUnsupportedSourceCount(
+            LegacyManualImportResult result,
+            string sourceName)
+        {
+            var key = string.IsNullOrWhiteSpace(sourceName) ? "<empty>" : sourceName.Trim();
+            if (!result.UnsupportedSources.TryGetValue(key, out var count))
+            {
+                count = 0;
+            }
+
+            result.UnsupportedSources[key] = count + 1;
+        }
+
+        private static void BuildUnlockData(
+            IReadOnlyList<LegacyAchievementItem> items,
+            string sourceKey,
+            out Dictionary<string, DateTime?> unlockTimes,
+            out Dictionary<string, bool> unlockStates)
+        {
+            unlockTimes = new Dictionary<string, DateTime?>(StringComparer.OrdinalIgnoreCase);
+            unlockStates = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            if (items == null)
+            {
+                return;
+            }
+
+            foreach (var item in items)
+            {
+                var apiName = ResolveLegacyAchievementApiName(item, sourceKey);
+                if (string.IsNullOrWhiteSpace(apiName))
+                {
+                    continue;
+                }
+
+                if (TryParseLegacyUnlock(item.DateUnlocked, out var unlockUtc))
+                {
+                    unlockStates[apiName] = true;
+                    if (unlockUtc.HasValue)
+                    {
+                        unlockTimes[apiName] = unlockUtc;
+                    }
+                }
+            }
+        }
+
+        private static string ResolveLegacyAchievementApiName(
+            LegacyAchievementItem item,
+            string sourceKey)
+        {
+            if (item == null)
+            {
+                return null;
+            }
+
+            var apiName = item.ApiName;
+            var isExophase = string.Equals(sourceKey, "Exophase", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(apiName) && isExophase)
+            {
+                // Exophase achievements in this plugin derive their ApiName from the display title.
+                // Some SuccessStory manual exports have blank ApiName but preserve Name.
+                apiName = item.Name;
+            }
+
+            if (string.IsNullOrWhiteSpace(apiName))
+            {
+                return null;
+            }
+
+            apiName = apiName.Trim();
+            if (!isExophase)
+            {
+                return apiName;
+            }
+
+            var normalizedExophaseApiName = ExophaseApiClient.NormalizeLegacyManualApiName(apiName);
+            return string.IsNullOrWhiteSpace(normalizedExophaseApiName)
+                ? null
+                : normalizedExophaseApiName;
+        }
+
+        private static bool TryResolveSourceGameId(
+            string sourceUrl,
+            IReadOnlyList<LegacyAchievementItem> items,
+            out string sourceGameId)
+        {
+            sourceGameId = null;
+
+            // Try Steam stats URL pattern first
+            if (TryExtractAppIdFromStatsUrl(sourceUrl, out sourceGameId))
+            {
+                return true;
+            }
+
+            // Try Exophase achievement page URL
+            if (TryExtractExophaseUrl(sourceUrl, out sourceGameId))
+            {
+                return true;
+            }
+
+            if (items == null)
+            {
+                return false;
+            }
+
+            foreach (var item in items)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                if (TryExtractAppIdFromIconUrl(item.UrlUnlocked, out sourceGameId))
+                {
+                    return true;
+                }
+
+                if (TryExtractAppIdFromIconUrl(item.UrlLocked, out sourceGameId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractAppIdFromStatsUrl(string url, out string appId)
+        {
+            appId = null;
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return false;
+            }
+
+            var match = SteamStatsAppIdRegex.Match(url);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            appId = match.Groups["id"]?.Value;
+            return !string.IsNullOrWhiteSpace(appId);
+        }
+
+        private static bool TryExtractAppIdFromIconUrl(string url, out string appId)
+        {
+            appId = null;
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return false;
+            }
+
+            var match = SteamAppsAppIdRegex.Match(url);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            appId = match.Groups["id"]?.Value;
+            return !string.IsNullOrWhiteSpace(appId);
+        }
+
+        private static bool TryExtractExophaseUrl(string url, out string exophaseId)
+        {
+            exophaseId = null;
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return false;
+            }
+
+            // Exophase URLs follow patterns like:
+            // https://www.exophase.com/game/<game-slug>/achievements/
+            // https://www.exophase.com/game/<game-slug>/trophies/
+            // Extract just the slug for storage (more stable than full URL).
+            if (url.IndexOf("exophase.com/game/", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var match = Regex.Match(
+                    url,
+                    @"/game/([^/]+)(?:/(?:achievements|trophies))?/?(?:[?#].*)?$",
+                    RegexOptions.IgnoreCase);
+                if (match.Success && match.Groups.Count > 1)
+                {
+                    exophaseId = match.Groups[1].Value;
+                    return true;
+                }
+
+                // Fallback: store full URL if we can't extract slug (for edge cases)
+                exophaseId = url.Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseLegacyUnlock(string value, out DateTime? utc)
+        {
+            utc = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            if (DateTimeOffset.TryParse(
+                    value,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal,
+                    out var dto))
+            {
+                if (IsLegacySentinelDate(dto))
+                {
+                    return true;
+                }
+
+                var parsedUtc = dto.UtcDateTime;
+                if (parsedUtc < MinimumLegacyUnlockUtc)
+                {
+                    return false;
+                }
+
+                utc = parsedUtc;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsLegacySentinelDate(DateTimeOffset dto)
+        {
+            if (dto.Year == LegacySentinelDate.Year &&
+                dto.Month == LegacySentinelDate.Month &&
+                dto.Day == LegacySentinelDate.Day)
+            {
+                return true;
+            }
+
+            // SuccessStory commonly stores manual-only unlocks as a 1982-12-15 local midnight sentinel.
+            // Some legacy exports normalize that value to UTC, which shifts positive-offset users back into 1982-12-14Z.
+            var utc = dto.ToUniversalTime();
+            return utc >= LegacySentinelUtcWindowStart &&
+                   utc <= LegacySentinelUtcWindowEnd;
+        }
+
+        private static LegacyPayload ParsePayload(string filePath)
+        {
+            var json = File.ReadAllText(filePath);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            JObject root;
+            using (var stringReader = new StringReader(json))
+            using (var jsonReader = new JsonTextReader(stringReader) { DateParseHandling = DateParseHandling.None })
+            {
+                root = JObject.Load(jsonReader);
+            }
+            var sourcesLink = root["SourcesLink"] as JObject;
+            var itemArray = root["Items"] as JArray;
+
+            var items = new List<LegacyAchievementItem>();
+            if (itemArray != null)
+            {
+                foreach (var token in itemArray)
+                {
+                    if (!(token is JObject itemObject))
+                    {
+                        continue;
+                    }
+
+                    items.Add(new LegacyAchievementItem
+                    {
+                        Name = itemObject.Value<string>("Name"),
+                        ApiName = itemObject.Value<string>("ApiName"),
+                        DateUnlocked = itemObject.Value<string>("DateUnlocked"),
+                        UrlUnlocked = itemObject.Value<string>("UrlUnlocked"),
+                        UrlLocked = itemObject.Value<string>("UrlLocked")
+                    });
+                }
+            }
+
+            return new LegacyPayload
+            {
+                IsManual = root.Value<bool?>("IsManual") == true,
+                IsIgnored = root.Value<bool?>("IsIgnored") == true,
+                GameName = root.Value<string>("Name"),
+                SourceGameName = sourcesLink?.Value<string>("GameName"),
+                SourceName = sourcesLink?.Value<string>("Name"),
+                SourceUrl = sourcesLink?.Value<string>("Url"),
+                Items = items
+            };
+        }
+
+        private sealed class LegacyPayload
+        {
+            public bool IsManual { get; set; }
+            public bool IsIgnored { get; set; }
+            public string GameName { get; set; }
+            public string SourceGameName { get; set; }
+            public string SourceName { get; set; }
+            public string SourceUrl { get; set; }
+            public List<LegacyAchievementItem> Items { get; set; }
+        }
+
+        private sealed class LegacyAchievementItem
+        {
+            public string Name { get; set; }
+            public string ApiName { get; set; }
+            public string DateUnlocked { get; set; }
+            public string UrlUnlocked { get; set; }
+            public string UrlLocked { get; set; }
+        }
+    }
+
+    internal sealed class LegacyManualImportGameMetadata
+    {
+        public Guid LegacyGameId { get; set; }
+        public string GameName { get; set; }
+        public string SourceGameName { get; set; }
+        public string SourceName { get; set; }
+        public string SourceUrl { get; set; }
+        public string SourceGameId { get; set; }
+    }
+}
+
+
+
+

@@ -1,0 +1,222 @@
+<settings:ProviderSettingsViewBase x:Class="PlayniteAchievements.Providers.Exophase.ExophaseSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:settings="clr-namespace:PlayniteAchievements.Providers.Settings"
+             xmlns:controls="clr-namespace:PlayniteAchievements.Views.Controls"
+             mc:Ignorable="d" d:DesignHeight="600" d:DesignWidth="700">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/PlayniteAchievements;component/Providers/ProviderSettingsScopedControlStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20">
+
+            <!-- Provider Header -->
+            <TextBlock Text="{DynamicResource LOCPlayAch_Provider_Exophase}" Style="{StaticResource ProviderTitleOnlyTextStyle}"/>
+
+            <Border Style="{StaticResource ProviderEnableToggleBorderStyle}" Grid.IsSharedSizeScope="True">
+                <controls:SettingRow Label="{DynamicResource LOCPlayAch_Settings_ProviderEnabled}"
+                                     Hint="{DynamicResource LOCPlayAch_Settings_Exophase_EnableProvider_Help}"
+                                     FontWeight="SemiBold"
+                                     Margin="0">
+                    <CheckBox IsChecked="{Binding Settings.IsEnabled, Mode=TwoWay}"/>
+                </controls:SettingRow>
+            </Border>
+
+            <TextBlock Text="{DynamicResource LOCPlayAch_Settings_ProviderDisabledMessage}" Style="{StaticResource ProviderDisabledMessageStyle}"/>
+
+            <Border Style="{StaticResource SectionBorderStyle}" IsEnabled="{Binding Settings.IsEnabled}">
+                <StackPanel>
+                    <TextBlock x:Name="ConnectionLabel"
+                               Style="{StaticResource SectionHeaderStyle}"/>
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Exophase_Help}"
+                               Style="{StaticResource MutedTextStyle}"
+                               Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"
+                               TextWrapping="Wrap"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="AuthLabel"
+                                   Foreground="{DynamicResource PlayAch.Brush.Text}" VerticalAlignment="Top" Margin="{StaticResource PlayAch.Thickness.Top.Sm}"/>
+
+                        <Border Grid.Column="1"
+                                Style="{StaticResource AuthStatusBorderStyle}">
+
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Style="{StaticResource AuthStatusIconStyle}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding AuthStatus, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                               VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal">
+                                        <Button Content="{DynamicResource LOCPlayAch_Button_Login}" Click="LoginWeb_Click"
+                                            Style="{StaticResource AuthActionButtonStyle}" Margin="{StaticResource PlayAch.Thickness.Right.Sm}"/>
+                                        <Button Content="{DynamicResource LOCPlayAch_Common_Check}" Click="Auth_Check_Click"
+                                            Style="{StaticResource AuthActionButtonStyle}" Margin="{StaticResource PlayAch.Thickness.Right.Sm}"/>
+                                        <Button Content="{DynamicResource LOCPlayAch_Button_SignOut}" Click="Logout_Click"
+                                            Style="{StaticResource AuthActionButtonStyle}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SectionBorderStyle}"
+                    Margin="0,16,0,16"
+                    IsEnabled="{Binding Settings.IsEnabled}">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Exophase_ManagedPlatforms}"
+                               Style="{StaticResource SectionHeaderStyle}"/>
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Exophase_ManagedPlatforms_Help}"
+                               Style="{StaticResource MutedTextStyle}"
+                               Margin="{StaticResource PlayAch.Thickness.Bottom.Md}"/>
+
+                    <Border Background="{StaticResource PlayAch.Brush.Overlay.Shade.10}"
+                            CornerRadius="{StaticResource PlayAch.Radius.Card}"
+                            Padding="{StaticResource PlayAch.Thickness.CardPadding}"
+                            Margin="{StaticResource PlayAch.Thickness.Top.Xs}">
+                        <StackPanel Margin="0,2,0,0">
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="steam" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoSteam}" Fill="{StaticResource PlayAch.Brush.ProviderSteam}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_Steam}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="psn" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoPSN}" Fill="{StaticResource PlayAch.Brush.ProviderPsn}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_PSN}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="xbox" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoXbox}" Fill="{StaticResource PlayAch.Brush.ProviderXbox}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_Xbox}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="gog" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoGOG}" Fill="{StaticResource PlayAch.Brush.ProviderGog}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_GOG}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="epic" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoEpic}" Fill="{StaticResource PlayAch.Brush.ProviderEpic}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_Epic}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="blizzard" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoBattleNet}" Fill="{StaticResource PlayAch.Brush.ProviderBattleNet}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_BattleNet}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="origin" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoEA}" Fill="{StaticResource PlayAch.Brush.ProviderEA}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_EA}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="android" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoGooglePlay}" Fill="{StaticResource PlayAch.Brush.ProviderGooglePlay}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_GooglePlay}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="apple" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoApple}" Fill="{StaticResource PlayAch.Brush.ProviderApple}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_Apple}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="ubisoft" Margin="0,0,0,10"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoUbisoft}" Fill="{StaticResource PlayAch.Brush.ProviderUbisoft}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_Ubisoft}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox Loaded="ExophasePlatform_CheckboxLoaded"
+                                      Click="ExophasePlatform_CheckChanged"
+                                      Tag="retro" Margin="0,0,0,0"
+                                      FontSize="{DynamicResource PlayAch.FontSize.Body}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="18" Height="18" Margin="{StaticResource PlayAch.Thickness.Right.Sm}" VerticalAlignment="Center">
+                                        <Path Data="{StaticResource GeoRetroAchievements}" Fill="{StaticResource PlayAch.Brush.ProviderRetroAchievements}"/>
+                                    </Viewbox>
+                                    <TextBlock Text="{DynamicResource LOCPlayAch_Provider_RetroAchievements}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="{DynamicResource LOCPlayAch_Settings_Exophase_Note}"
+                               Style="{StaticResource MutedTextStyle}"
+                               Margin="{StaticResource PlayAch.Thickness.Top.Md}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</settings:ProviderSettingsViewBase>

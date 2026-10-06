@@ -1,0 +1,730 @@
+AddonId: PlayniteAchievementsSantodan
+Packages:
+  - Version: 4.0.1.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-09-09
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v4.0.1.1/PlayniteAchievementsSantodan_4_0_1_1.pext
+    Changelog:
+    - "v4.0.1 merge"
+      - "Hopefully I got everything fixed since there were a lot of conflicts"
+    - "New UI for the `Local Overrides` tab in the `Manage Achievements` to be equal to the `Platform` tab in the `Settings`"
+    - "RetroAchievements subnet selector was moved to the `Local Overrides` tab"
+    - "`Local` platform separated into tabs for a more user friendly UI ( General / Import / SuccessStory)"
+    - "`Custom Folders` and `Excluded Folders` are now presented side by side"
+    - "Added an option to respect the achievements cache if the new refresh ahs less achievements than the cache"
+      - "Also added to the `Local Overrides` --> `Local saves & schema` for individual game toggle"
+    - "Fixed Local achievement replay and screenshot floods"
+    - "Added epic emulator compatibility"
+    - "Fixed `SAN` transition screenshot"
+      - "There is now an option in `Memories` to choose the `SAN` view and how many ms before it ends to take the screenshot"
+    - "Added a preview of `VIew 1` and `View 2` for `SAN`transitions"
+      - "`Show Vew1` and `Show View2` buttons located under the `Show Notification` in the `Notification Style` menu"
+    - "Fix `<rarityIcon>` not taking the achievements points instead of the percentage rarity text"
+    - "Fixed the `Show Notification` not hiding on the second click"
+    - "Added a on/off background option for primary and secondary icons"
+    - "Added a color picker for the primary and secondary icon"
+    - "Builder will now populate all the element details under the `Manual Element CSS`"
+    - "Fixed the Builder not changing the preview to the correct `Position` when no `SAN` element / transition are present"
+    - "Fixed the `Cover` size after changing it size through the builder"
+    - "Added a on/off background option for the `Cover` background"
+    - "Added a color picker for the `Cover` background"
+    - "Added the possibility of attaching icons to the lines"
+    - "Corrected the height not changing in the builder with the `Auto height` enabled"
+    - "Added a center option for the cover when the `Auto height` is selected"
+    - "Added a border-aware text wrapping in both the builder and extension"
+    - "Cover element will now appear even when no `Preview Game` is selected"
+    - "Added a border size settings"
+    - "Added compatibility with `SOVEREIGN.ini`"
+    - "Added the installation folder to the Auto-scanned folders' list"
+    - "Added the file also to the `Local save folder override` shown path"
+    - "Added `<gameUnlockedCount>` and `<gameAchievementCount>` to the notification wildcards"
+    - "Added a setting for the extensions to continue to search for the local achievement file when it doesn't exist."
+      - "It will respect all the default nd custom folders, for all acceptable files"
+      - "The setting for the interval for this check is under `Local` platform in the top of the `Local Achievements Folders and Settings` (default is 5 seconds)"
+
+  - Version: 3.2.1.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-09-09
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.2.1.1/PlayniteAchievementsSantodan_3_2_1_1.pext
+    Changelog:
+    - "v3.2.1 merge"
+    - "Made the extension setting to open quicker. It will now load the `Achievement Notification` UI only when entering in it's tab."
+
+  - Version: 3.2.0.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-09-09
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.2.0.2/PlayniteAchievementsSantodan_3_2_0_2.pext
+    Changelog:
+    - "Fixed not taking the screenshot when achievements were unlocked"
+    - "Fixed video recording not working with the custom notification style"
+    - "Changed the `[InGameMonitor] Configured...` logs to only when there are changes or every 5 minutes"
+
+  - Version: 3.2.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-09-09
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.2.0.1/PlayniteAchievementsSantodan_3_2_0_1.pext
+    Changelog:
+    - "v3.2.0 merge"
+
+  - Version: 3.1.3.3
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-09-06
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.1.3.3/PlayniteAchievementsSantodan_3_1_3_3.pext
+    Changelog:
+    - "Fixed achievements not been retrieve correctly when an `<appid>.json` existed in the steam's folder"
+    - "Fixed freezing when right clicking a game in the library"
+    - "Fixed `Solaris` theme migration"
+
+  - Version: 3.1.3.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-08-30
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.1.3.2/PlayniteAchievementsSantodan_3_1_3_2.pext
+    Changelog:
+    - "Fixed missing categorized achievements fro `Local` platform"
+    - "Attempt to fix / prevent the `CookiesBadAfterRefresh` in steam refresh"
+
+  - Version: 3.1.3.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-08-24
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.1.3.1/PlayniteAchievementsSantodan_3_1_3_1.pext
+    Changelog:
+    - "v3.1.3 merge"
+
+  - Version: 3.1.2.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-08-13
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.1.2.1/PlayniteAchievementsSantodan_3_1_2_1.pext
+    Changelog:
+    - "v3.1.2 merge"
+    - "Fixed steamhunters hidden achievements not respecting the extension language setting"
+    - "Fixed the multiple folders dropdown not showing correctly"
+    - "Fixed the RA subset selection not been saved after Playnite's restart"
+    - "Added the option in the `Theme Migration` to change the right click behavior for the `StartPage` extension to use the default playnite context menu"
+
+  - Version: 3.1.1.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-08-06
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.1.1.1/PlayniteAchievementsSantodan_3_1_1_1.pext
+    Changelog:
+    - "v3.1.1 merge"
+    - "Fixed Hidden achievements description not respecting the language setting"
+    - "Added the option to apply a selected subset to the RA Game ID Override"
+    - "Fixed the achievement refresh to `New Game` when adding a new game to playnite"
+    - "Fixed the `clear` in the `Manage Achievements` not clearing the `Provider Override` selection"
+    - "Changed the `Inline real-time preview` to show the WebView2 preview instead of the WPF"
+    - "Added `Font` to the `Line` customization"
+    - "Added `Text formatting` below the `Corners` and `Opacity` settings"
+    - "Changed the `Achievement Notification` UI, it now has two tabs:"
+      - "`General`"
+      - "`Notification Style` with all the settings for the custom notification"
+      - "`Memories` with all the settings for the screenshot and the video recording"
+    - "Made the `Achievement Notification` screenshot and video recording to work independently if the notification is active or not"
+      - "This way it can be used with the original notification from the original fork with the changes to the settings."
+    - "Changed the Screenshot behavior to be a mirror of the original fork screenshot mechanism with the additional wildcard in the path and name"
+
+  - Version: 3.1.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-08-06
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.1.0.1/PlayniteAchievementsSantodan_3_1_0_1.pext
+    Changelog:
+    - "v3.1.0 merge"
+    - "Added the setting for the automatic theme migration under the `Theme Migration` tab"
+    - "Fixed the friend's achievements not appearing correctly when two friends's accounts are merged"
+    - "Added logs for the screenshot and for the video from the `Achievement Notification`"
+    - "Removed the always on overlay for the `Achievement Notification`"
+    - "Fixed the `<rarity>` wildcard showing the rarity tier instead of percentage."
+
+  - Version: 3.0.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-08-02
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v3.0.0.1/PlayniteAchievementsSantodan_3_0_0_1.pext
+    Changelog:
+    - "v3.0.0 merge"
+    - "`Start-page` migration fixed to not show the friend's achievements"
+    - "Added the option for the highlighted achievement in the `Theme Migration`"
+    - "Changed the trigger for the `Achievement Notification` to use the one from the original fork"
+    - "Changed the screenshot in the `Achievement Notification` to use the one from the original fork but with these custom settings"
+    - "Added the video settings to the `Achievement Notification` to use the one from the original fork but with these custom settings"
+    - "Change the `Local save folder override` to mention that it isn't using any local folder if that's the case"
+    - "Added a refresh icon in the `View Achievements` window to refresh the achievements from that window"
+    - "Added a dedicated file for the `Debug` setting for the `Achievement Notification`. The file is called `AchNotifDebug.log`"
+
+  - Version: 2.5.3.4
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-07-27
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.5.3.4/PlayniteAchievementsSantodan_2_5_3_4.pext
+    Changelog:
+    - "Fixed `RetroAchievements Game ID Override` displaying `No override set` after setting an override"
+    - "Removed `Display Order` column since the third click feature sorts with the correct RA order"
+    - "Restored the third click in the header to remove the column sort"
+    - "Fixed an error in the WebView2 warm-up window"
+    - "Fixed an issue where the `Achievement Notification` wasn't trigger any custom setting"
+    - "Fixed the first click in the column header is always ascending, the second descending and the third removes the sort"
+    - "Added `Opacity` setting for the `Achievement Notification`"
+    - "Fixed `Banner opacity` changing the notification opacity"
+    - "Fixed the defined overrides not appearing in the `Overview` tab"
+    - "Added Debug mode for the achievement notification to generate additional logs"
+    - "The setting to have the overlay in the same monitor as the game for multiple monitors is set to false as default"
+
+  - Version: 2.5.3.3
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-07-20
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.5.3.3/PlayniteAchievementsSantodan_2_5_3_3.pext
+    Changelog:
+    - "Trying to make the WebView notification quicker"
+    - "Fixed a duplicate playnite window in the `ALT+TAB` menu in windows"
+    - "Removed duplicated variables in the `Achievement Notification`"
+    - "Moved `Sound lead` to the sound part"
+    - "Removed the limit in the `Sound lead`, it can now accept negative values"
+    - "Added notification for `Prestige` and `Collection` level up and tier up"
+    - "Added wildcards to the `Save Folder` for the `Achievement Notification` screenshot"
+    - "Fixed `Auto resize window to fit text` not working with SAN elements / transitions"
+    - "Fixed the screenshot feature nto working with the `API Verification` for `exophase` and `RetroAchievements`"
+    - "Fixed the `Remove current slot` size and strange characters"
+    - "Fixed the san template remaining active when changed back to the "normal" notifications"
+    - "Added `Corners` setting for the icons"
+    - "Added `Preview Achievement` next to the `Preview Game`"
+    - "Fixed the square shadow when using corners in the notification"
+    - "Fixed the screenshot feature taking effect when enabled and the real-time notification been disabled"
+    - "Fixed the `Provider Override` not been properly set"
+    - "Fixed the `Clear` in the `Manage Achievement` not clearing the `Provider Override`"
+    - "Pressing the multiple folders notification will take you to the folder selection page"
+    - "Added a setting to have the overlay in the same monitor as the game for multiple monitors"
+    - "Fixed the notification not showing the achievement's icon when offline"
+    - "Guides added to the github"
+
+  - Version: 2.5.3.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-07-09
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.5.3.2/PlayniteAchievementsSantodan_2_5_3_2.pext
+    Changelog:
+    - "Fixed the multiple folders detection showing the list index instead of the folder path"
+    - "Fixed missing `Prestige Score` and `Collection Score` when using `SteamHunters` to fetch the schema"
+    - "Fixed `LumaPlay` refreshing without a `LumaPlay.ini` override setting been set"
+    - "Fixed the extension trying to fetch achievement for `New Game` when pressing to add a new manual game to the library"
+    - "Fixed freeze when `Custom Refresh` checks the authentications"
+    - "Fixed missing providers inside the `Overrides` -> `Local` -> `Change Providers`"
+    - "Changed the `Real-time monitoring` logs to only be generated every 10 minutes or in case of error"
+    - "Fixed some icons missing from schemas from Steam"
+    - "Fixed schema fetch not been done through steam when authenticated"
+    - "Added support for achievements with a progress bar"
+    - "Fixed fullscreen themes showing `Unknown` instead of `Local` provider in the achievements"
+    - "Added `RetroAchievement` to `Achievement Notification`"
+      - "It might trigger some rate-limit since it is through API"
+    - "`Achievement notification` reimagined (`SAN-Integration` branch merged)"
+      - "You can see the changelog in https://github.com/Santodan/PlayniteAchievements/issues/5#issuecomment-4877909986"
+
+  - Version: 2.5.3.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-06-22
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.5.3.1/PlayniteAchievementsSantodan_2_5_3_1.pext
+    Changelog:
+    - "v2.5.2 + v2.5.3 merge"
+    - "Fixed the missing `Collection Score`, `Prestige Score` and `Points` columns from the `Game Summary` tab"
+    - "Fixed the tooltip when hovering the `Prestige Score` and the `Collection Score` is not been the same as it is in the main fork"
+    - "Fixed the main extension page not saving the filters when exiting the page"
+    - "Fixed the locked achievements not been greyed out when doing the theme migrations without the scrollable option enabled."
+    - "Fixed the sort for the `Selected Game` in the `Custom (Manual)` menu not saving correctly"
+    - "Fixed the stuttering when using the `Game Overview` global hotkey"
+    - "Fixed the missing tooltip menu for the `Prestige Score` and the `Collection Score`"
+    - "Fixed the wrong placement for the level and points in `Prestige Score` and the `Collection Score`"
+
+  - Version: 2.5.1.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-06-18
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.5.1.1/PlayniteAchievementsSantodan_2_5_1_1.pext
+    Changelog:
+    - "v2.5.1 merge"
+    - "Fixed `RetroAchievement` sort"
+    - "Fixed missing the `DisplayOrder` to confirm the `RetroAchievement` order"
+    - "Fixed `Prestige Score` showing wrong values on startup"
+    - "Fixed missing tooltip from `Collection Score` and `Prestige Score`"
+    - "Fixed the missing right click options in the `Game Summary`"
+    - "Fixed the locked achievements have the same icon"
+    - "Fixed the Achievements rarity not been filled when there is no achievement file"
+
+  - Version: 2.5.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-06-16
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.5.0.1/PlayniteAchievementsSantodan_2_5_0_1.pext
+    Changelog:
+    - "v2.5.0 merge"
+    - "Possibility to change to `Manual` from inside the `Overrides`"
+    - "Correct string in the `Provider` inside the `Override` menu when set to something different than `Automatic`"
+    - "`Manual Tracking` will not appear when a `Provider` has been set besides `Automatic` and `Manual`"
+    - "Fix the `Achievement Notification` was not respecting the excluded setting"
+    - "The `Collection Score` and `Prestige Score` always appear the bronze and then it refreshes to the actual value"
+    - "Fixed the `Refresh this game when it closes` that was not possible to enable per game when the global setting was disabled"
+    - "Fixed the wrong notification template appearing when the refresh pool detected more than one achievement"
+
+  - Version: 2.4.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-06-03
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.4.0.1/PlayniteAchievementsSantodan_2_4_0_1.pext
+    Changelog:
+    - "v2.4.0 merge"
+    - "Fixed manual tracking custom refresh matching for manually linked games."
+    - "Added the option for a scrollable area in the `Theme Migration` maintaining the original fork option"
+
+  - Version: 2.3.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-05-31
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.3.0.1/PlayniteAchievementsSantodan_2_3_0_1.pext
+    Changelog:
+    - "v2.3.0 merge"
+    - "Added <rarityIcon> to the `Achievement Notification`"
+    - "Added stackable notification like in Steam"
+    - "Hopefully, fixed the settings reset issue"
+
+  - Version: 2.2.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-05-29
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.2.0.1/PlayniteAchievementsSantodan_2_2_0_1.pext
+    Changelog:
+    - "v2.2.0 merge"
+    - "`Custom Schema` always visible"
+    - "Fixed `Clear Data` not removing the `Custom Schema`"
+    - "Added `Custom Schema` enabled / disabled option"
+    - "Added the possibility to create the `Custom Schema` directly form the extension"
+    - "Added the option of fetching the icon from `View Achievements` when there is no icon in the `Custom Schema` JSON"
+    - "Added the option of setting a `Default` icon in the `Custom Schema`, in the `Icon` tab, that will be set for all the achievements that don't have an icon in the JSON."
+    - "Added more customizations to the `Achievement Notification`"
+    - "Added a template builder to create a JSON file that can be imported as the notification template"
+    - "Workaround for the reset of the configurations"
+    - "`Platform` filter also applies to `All Achievements` tab"
+    - "Added support to `TENOKE` achievements"
+    - "`Custom Schema` will now take priority over online schema when enabled"
+
+  - Version: 2.1.5.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-05-21
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.5.1/PlayniteAchievementsSantodan_2_1_5_1.pext
+    Changelog:
+    - "v2.1.5 merge"
+    - "Fixed local `Steam` achievements ( part 99 )"
+    - "Added the possibility to have a more than one steam account for achievements"
+      - "It is only possible through API for the additionall accounts"
+    - "Fixed some `LumaPlay` compatibility bugs"
+    - "Fixed `OnlineFix` games wrong achievement detection"
+    - "Fixed some missing `Theme Migration` compatibility"
+    - "Fixes the duplicated achievements in the `SuccessStory` import"
+    - "Added the option to overwritting existing achievements when using the `SuccessStory` import"
+    - "Added the possibility to exclude sources when using the `SuccessStory` import"
+    - "Added the possibility to edit the achievements through the `View Achievements` view in the game options"
+    - "Added the possibility to change the `Local` icon to one of the others platforms"
+    - "Added the option to refresh the achievements when the game closes"
+    - "Added the option to import custom achievements schemas"
+    - "Changed the `Overrides` page to seperate this fork's options fromthe main fork"
+    - "`Change Provider` added to the `Overrides`"
+    - "Added a dropdown in the `Local save folder override` when multiple folders are found"
+    - "Fixed the issue of no icons when the achievement file has a broken icon path"
+
+  - Version: 2.1.3.3
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-05-09
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.3.3/PlayniteAchievementsSantodan_2_1_3_3.pext
+    Changelog:
+    - "`LumaPLay` achievements integrated"
+    - "Import Local `SuccessStory` achievements history"
+    - "Fixed local `Steam` achievements ( Hopefully this is the one )"
+    - "Fixed Steam path auto-detect"
+    - "Added the option of showing the game's banner and cover in the `Achievement Notification`"
+    - "Added exception folders list to the Local tab to never get achievements from it"
+
+  - Version: 2.1.3.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-05-05
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.3.2/PlayniteAchievementsSantodan_2_1_3_2.pext
+    Changelog:
+    - "Fixed the `Local` achievements not respecting the language setting"
+      - "Added an API token fetch or manual insert for the hidden achievements"
+    - "Fixex the extension not clearing the `Steam` authentication"
+    - "Added `SteamGridDB` as a icon fetcher for `SteamHunters` and `Completionist` metadata providers"
+      - "If no icon found, will add the cover image as icon"
+    - "The `Automatic` metadata fetch will not attempt the correct order:"
+      - "Universal Steam Metadata"
+      - "Steamhunters"
+      - "Completionest.me"
+      - "IGDB"
+    - "Add more settings to the overlay notification"
+    - "Fixed the `Theme Migration`"
+    - "Add `Custom (Manual)` option for the `Default Achievement Sort`"
+    - "Add the `Default Achievement Sort` to the main page for a quicker change of sort order"
+    - "Sorting by the `Icon` will sort with `RetroAchievement` order"
+    - "Added a `StartPage` section in the `Theme Migration` to make it compatibile with the `Local` provider"
+
+  - Version: 2.1.3.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-04-30
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.3.1/PlayniteAchievementsSantodan_2_1_3_1.pext
+    Changelog:
+    - "Merge from original v2.1.3 - https://github.com/justin-delano/PlayniteAchievements/releases/tag/v2.1.3"
+    - "The default icon will now appear in the `Local` under the `Local provider Icon` when no custom icon was selected"
+    - "Corrected some sentence and button sizes in the `Achievement Notification` tab"
+    - "Fix the renaming a slot in the `Achievement Notification` custom style not saving"
+    - "Fix some settings not been saved in the `Achievement Notification`"
+    - "Changed the list of custom style in `Achievement Notification` to only show the saved slots"
+      - "You will have a big list in the dropdown which you can delete and maintain only the one that you want"
+    - "Added Exophase to `Achievement Notification`"
+      - "Exophase can apply a rate limit, to be honest, I wouldn't recommend it using it"
+    - "Change the default sort on the first click to Descending instead of ascending"
+      - "Text will be A to Z and dates will be newest to latest"
+    - "Added the possibility to sort for more than one column by pressing CTRL+MOUSE in the columns"
+    - "Added a RetroAchievement like sort"
+    - "Correct some UI aligments in the `Local` tab"
+    - "Correct an Out Of Memory error when saving the settings"
+    - "Added a setting to stop receiving the notificaitons when is detected more than one save location for the game"
+    - "Remove the notification for the upstream fork updates"
+    - "Fixed the compatibility with the new Aniki-Remake theme"
+    - "Fixed the compatibility with the new Solaris theme"
+    - "Fixed the compatibility with the Toggle theme"
+    - "Fixed the compatibility with the PS5Reborn theme"
+    - "Updated the `Theme Migration` for themes that are pointing to the original fork"
+    - "In the `Theme Migration` no more need to revert and apply again the same theme, it will now do that when applying it to a theme that was already migrated"
+
+  - Version: 2.1.2.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-04-22
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.2.2/PlayniteAchievementsSantodan_2_1_2_2.pext
+    Changelog:
+    - "Fixed the local steam achievements not having rarity"
+    - "Added the option to change the steam user for local steam achivements detection"
+    - "Added the option to do take a screenshot when a new achievemnt is unlocked with the `Real-time Local unlock checks`"
+    - "Moved `Real-time Local unlock checks` settings to its own setting tab called `Achievements Notification`"
+    - "Changed the sound notification settings for the achievement notification"
+    - "Added a windows notification for new achievements when using the `Achievement Notification`, this can be a Overlay or Windows notification"
+      - "The overlay notification is fully customizable"
+    - "Added the option to disable the `Achivement Notification` for that specific game"
+    - "The grid's column width will now maintain their size when moving out and then in the extension's page"
+    - "Added a setting in the `Display` tab to have the text in the grid as wrap"
+    - "Added an `All Achievements` tab"
+    - "Correct the Steam game import importing DLCs to the library addiitonally to the main game"
+    - "Changed the method to import steam games to be quicker ( I recommend to use the integrated Playnite Steam extension to get the games )"
+    - "Stop detecting all the achievements with the description `Local achievement from Local`"
+
+  - Version: 2.1.2.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-04-21
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.2.1/PlayniteAchievementsSantodan_2_1_2_1.pext
+    Changelog:
+    - "Merge from original v2.1.2 - https://github.com/justin-delano/PlayniteAchievements/releases/tag/v2.1.2"
+    - "Corrected the compatability with Anaki themes"
+    - "Corrected the steam import without API key"
+    - "Added the possibility to import Steam family-shared games"
+    - "Added an icon for the local provider and a way of changing to your own icon"
+    - "Import achievements metadata even when there is no achievements file locally"
+    - "Added a list of target games in the custom refresh"
+    - "Added Steam Family Sharing as a separate entry in the custom refresh platform list"
+
+  - Version: 2.1.1.3
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-04-17
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.1.3/PlayniteAchievementsSantodan_2_1_1_3.pext
+    Changelog:
+    - "Local provider now supports anonymous Steam metadata lookup without Steam API access, including selectable SteamHunters and Completionist.me source priority in Local settings."
+    - "Steam-mode anonymous fallback now prefers SteamHunters first, with Steam Community kept only as a later title-based fallback and old Community-first configs remapped away from that path."
+    - "Improved Local anonymous schema matching, hidden-achievement handling, and metadata enrichment so public titles, descriptions, icons, and hidden flags resolve more reliably when available."
+    - "Fixed Local provider fallback order so progress-only Goldberg or GSE achievement files are no longer mistaken for schema files."
+    - "Better refresh performance"
+    - "No longer needed the Steam API key for the extension to gather the owned games"
+    - "Added setting in the General tab to select the default filter in the main page"
+    - "Added the option to import all local games with achievements to the library ( Tested with Steam universal Metadata extension )"
+    - "Fixed theme migration"
+
+  - Version: 2.1.1.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-04-15
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.1.2/PlayniteAchievementsSantodan_2_1_1_2.pext
+    Changelog:
+    - "Fork update based on upstream 2.1.1 changes plus Santodan fork fixes."
+    - "Playnite now sees this as version 2.1.1.2 for fork update notifications."
+    - "Fixed custom refresh UI freezes by moving target estimation off the UI thread."
+    - "Preserved fork-specific addon identity so upstream releases no longer appear as direct Playnite updates for this fork."
+
+  - Version: 2.1.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-04-15
+    PackageUrl: https://github.com/santodan/PlayniteAchievements/releases/download/v2.1.0.1/PlayniteAchievements_2_1_0_1.pext
+    Changelog:
+    - "Fork release based on upstream 2.1.0 with Santodan local-achievement additions preserved."
+    - "Playnite now follows Santodan releases for plugin updates."
+    - "Startup notification added when the original PlayniteAchievements fork publishes a newer upstream release."
+    - "Game Options - New Custom Icon support via Game Options, supporting web links, local files, and even GIFs!"
+    - "Game Options - Export/import per-game custom data as .PA files or .PA.ZIP to share your configurations with others."
+    - "Display - Added basic default Fullscreen theme support."
+    - "Display - Added options to disable individual theme elements."
+    - "Display - Added compact list sorting controls (Unlock Time, Rarity)."
+    - "Display - Added option to show platform/playtime/region metadata in sidebar and single-game views."
+    - "Display - Added Show Completion Border option for completed games."
+    - "Display - Added more icon options (download full resolution/compressed, download separate locked icons or greyscale the unlocked icons)"
+    - "Game Options - Added override to download locked icons for specified game"
+    - "Manual Tracking - Exophase manual links no longer require authentication (localized achievements still require Authentication)."
+    - "RetroAchievements - Added experimental EmuLibrary game ID decoding support (including Yuzu mappings)."
+    - "RetroAchievements - Removed automatic capstone assignment."
+    - "RetroAchievements - Added option to disable fuzzy name matching."
+    - "Exophase - Added Google Play and Ubisoft/Uplay support."
+    - "Tagging - Added Customized and Not Customized tag options, which reflect Game Options customization."
+    - "Game Options - Added per-game overrides for Exophase Game ID, Xenia TitleID, and ShadPS4 Match ID."
+    - "Fixed manual tracking AM/PM and 24-hour time parsing."
+    - "Fixed ShadPS4 trophy path detection for newer folder layouts and emulator paths."
+    - "Localization - Massive optimization, and hundreds of strings were removed and consolidated. Hopefully this makes things easier on Crowdin."
+
+  - Version: 2.0.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-31
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v2.0.2/PlayniteAchievements_2_0_2.pext
+    Changelog:
+    - "Fixed some theme bindings"
+    - "Fixed rarity strings in compact achievement lists"
+    - "Fixed another rare crash"
+
+  - Version: 2.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-31
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v2.0.1/PlayniteAchievements_2_0_1.pext
+    Changelog:
+    - "Fixed issues with saving settings"
+    - "Fixed rare crash"
+
+
+  - Version: 2.0.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-30
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v2.0.0/PlayniteAchievements_2_0_0.pext
+    Changelog:
+        - "New Platforms: Xenia and Exophase. Thanks @matthew-pye for the work to add Xenia support!"
+        - "Exophase is now supported as a fully fledged provider, if you wish to use it to automatically fetch achievements for some services. For example, Exophase can be set to track your Xbox achievements, so you wouldn't need to log into Xbox within Playnite."
+        - "Full exophase support now also includes EA and Battle.net achievement tracking, which may also be added to the plugin in the future as standalone providers."
+        - "Theme Integration: New modern theme controls for better integration with existing themes and easier use in new themes. The theme migration tool has been updated to support this Full migration mode, as well as a Custom migration mode, if your theme needs more granular updates."
+        - "Github now has a full Wiki with documentation for using the plugin, troubleshooting, and developing themes. Check it out here: https://github.com/justin-delano/PlayniteAchievements/wiki"
+        - "Community localization is now set up via Crowdin, and the plugin is available for translation into more languages! If you'd like to contribute a translation, head over to the Crowdin page here: https://crowdin.com/project/playniteachievements"
+        - "Display settings tab now shows previews for each of the new theme controls, and adds additional new settings for pie chart display and other sidebar options."
+        - "Playnite Tagging support added. From the General settings tab, you can now automatically tag games with achievement data. Completing a game's achievements will now also add the builtin Completion Status."
+        - "RetroAchievements subset support option added, allowing automatic categorization of achievements."
+        - "Massive code refactor and optimization under the hood, improving performance and stability across the board, and setting the stage for future features and platforms."
+        - "Many small bug fixes, including some for Manual Achievement localization, and bulk game exclusions."
+        - "Thank you all for the support, this work would not be possible without feedback and testing from users on Github and Discord! This is a huge update, and I will try to resolve any issues as soon as possible."
+
+
+  - Version: 1.6.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-11
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.6.2/PlayniteAchievements_1_6_2.pext
+    Changelog:
+        - "Fixed issues with new cache creation."
+        - "Fixed issues with Pie Charts and Sidebar Display settings."
+        - "Added option to hide top menu button."
+
+  - Version: 1.6.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-10
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.6.1/PlayniteAchievements_1_6_1.pext
+    Changelog:
+        - "Manual achievement tracking now supports Exophase linking (with experimental SuccessStory legacy import)"
+        - "New Collectable, Missable, Difficulty, and Stackable category types"
+        - "Sidebar popout window accessible from top panel"
+        - "Sidebar ShowGamesWithNoUnlocks and ShowUnplayedGames options now moved to Display settings"
+        - "ShowGamesWithNoUnlocks and ShowUnplayedGames settings now apply to aggregate pie charts"
+        - "Rare startup crashes should be fixed."
+        - "Daylight Savings Time bugs fixed for Steam achievements, refreshes will fix any incorrect unlock times"
+        - "Additional Fullscreen theme integration implemented for upcoming AnikiReMake update"
+  
+  - Version: 1.6.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-01
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.6.0/PlayniteAchievements_1_6_0.pext
+    Changelog:
+       - "Game Options Window - New comprehensive options menu for each game"
+       - "Manual Achievement Tracking - Track achievements manually by linking to Steam data and entering your progress"
+       - "SuccessStory Import - Import manual tracking data from SuccessStory via Settings > Manual (do this first if you have existing data!)"
+       - "Achievement Categories - Organize achievements into custom categories"
+       - "Achievement Sort Order - Customize display order per game"
+       - "Multi-Select Filters - Filter sidebar by multiple providers, completion status, game type, and category"
+       - "Contextual Pie Charts - Trophy pie chart for PSN games, pie charts have more interactability, and rarity/trophy charts now reflect the selected game."
+       - "New Platform, Type, and Category columns"
+       - "Summary Exclusions - Exclude games from sidebar summaries"
+       - "Exclude Hidden Games - New option to automatically remove achievement data and exclude games from refreshes when hiding them in Playnite"
+       - "PSN Provider Fixes - Improved authentication and DLC trophy tracking"
+       - "Various other UI improvements, bug fixes, and optimizations throughout"
+
+  - Version: 1.5.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-03-01
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.5.1/PlayniteAchievements_1_5_1.pext
+    Changelog:
+      - ShadPS4 settings now accept user/game_data folder path instead of executable path
+      - Fixed rare cases of data loss
+      - Fixed locked icons in desktop theme integration
+      - Fixed startup crashes
+      - Experimental - Added option in Xbox settings to download lower resolution images. May help in cases where Xbox icon downloads are very slow.
+      - Experimental - RPCS3 suppport for unlaunched games
+      - SuccessStory theme integration improvements - Hidden achievements now hide and can be clicked to reveal 
+
+  - Version: 1.5.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-26
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.5.0/PlayniteAchievements_1_5_0.pext
+    Changelog:
+      - "New Platforms: Xbox Live, RPCS3 (PS3 emulator), and ShadPS4 (PS4 emulator). Please raise any issues on Github if you encounter any problems with these!"
+      - "PlayStation Trophy System added in addition to rarity & points"
+      - "Enhanced Pie Charts: New hover tooltips and icon placement"
+      - "Custom Refresh Dialog - New unified refresh UI allowing for full customization of which games and platforms are refreshed"
+      - "Started to implement Display settings via a new tab in settings, with options to hide some Sidebar charts."
+      - "Performance - Parallel platform refresh option (enabled by default) and various optimizations throughout"
+      - "Theme Migration - Auto-migrate upgraded themes that had been migrated, and notifications on startup"
+      - "New Logging - Dedicated plugin data folder & log file accessible from settings"
+      - "Steam, GOG, and Epic auth fixes"
+      - "Grids now sort by Playnite SortingName instead of display name"
+      - "Background refreshes are re-enabled, after fixing some issues"
+      - "Removed rarity imputation for games without rarity data, data refreshes will remove this stale data."
+      - "Various other UI improvements, bug fixes, and optimizations throughout"
+      - "Next up: New, modern theme integration (and updated migration), a few more platforms to add, and other UI elements and settings."
+
+  - Version: 1.4.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-22
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.4.2/PlayniteAchievements_1_4_2.pext
+    Changelog:
+      - PSN Authentication - Clarified instructions and authentication flow
+      - Exclude Games - Right-click to exclude games from achievement tracking (and clear data)
+      - Better handling of games without achievements
+      - Manual Capstones - Choose your own capstone achievement for any game, with searchable selection UI. Similar to Playstation platinum trophies, these mark game completion. Automatically set for PSN and RetroAchievements games, with support for manual overrides for all providers.
+      - RetroAchievements Game ID Override - Manually set RetroAchievements game IDs when auto-detection fails
+      - Experimental RVZ Support - GameCube/Wii RVZ compressed ROM format now supported for RetroAchievements
+      - Improved RetroAchievements Matching - Fuzzy title matching when exact game ID lookup fails
+      - RetroAchievements now supports Points as well as TrueRatio data.
+
+  - Version: 1.4.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-19
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.4.1/PlayniteAchievements_1_4_1.pext
+    Changelog:
+      - Critical Hotfix - Desktop themes show achievement data again
+      - PSN platinums now classify a game as perfect/completed
+
+  - Version: 1.4.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-19
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.4.0/PlayniteAchievements_1_4_0.pext
+    Changelog:
+      - PlayStation Network (PSN) support! Track trophies from your PlayStation library with full authentication flow in settings.
+      - New data grid options - resize and hide columns to customize your view, plus a new score column for gamerscore/rarity display.
+      - Right-click context menus - new polish in the sidebar view, allowing you to edit visible columns, open or scan games, via right clicking.
+      - Steam datetime parsing improvements - better handling of unlock times with automatic retry on Steam redirects and expanded language support.
+      - Improved parsing of legacy Steam achievement pages for users with older games
+      - Epic Games localization fixed - API clients now properly handle localization across all supported providers.
+      - Theme integration improvements - provider-aware completion tracking and sorted game lists for better theme compatibility.
+      - RetroAchievements duplicate game ID fix - resolved issue where games could not use the same achievement list
+
+  - Version: 1.3.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-17
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.3.0/PlayniteAchievements_1_3_0.pext
+    Changelog:
+      - Epic Games support! XP is being tracked, but UI is not quite prepared for displaying it yet.
+      - Critical Fix - database syncing fix, where scans could show achievements for single games, but not appear in the sidebar overview, or disappear completely.
+      - The database has changed again, and data should automatically migrate. If you encounter any issues, please report them, and try clearing your cache from settings and rescanning for achievements. 
+      - Steam - progress bar fallback should actually work now.
+      - More language fixes and global language setting. Please report any other datetime parsing issues you encounter.
+      - Per-provider disable options for scanning.
+      - Option to export data to CSV in settings.
+      - Next up is PSN+Xbox support and more UI polish with XP/gamerscore data.
+
+  - Version: 1.2.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-16
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.2.0/PlayniteAchievements_1_2_0.pext
+    Changelog:
+      - GOG support! - track achievements from your GOG library!
+      - Steam - improved unlock detection using progress bar as fallback
+      - Fullscreen mode - fixed game selection issues when opening achievement windows
+      - Localization updates for all supported steam languages (localization for other providers coming soon)
+      - Fixed grid view achievement counts - each game now shows its own achievement progress instead of the selected game's count
+      - Various UI improvements and bug fixes throughout
+      - Next up is Epic Games Store support, gamerscore tracking, streamlined authentication flows, more legacy SuccessStory support, and more
+
+  - Version: 1.1.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-15
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.1.0/PlayniteAchievements_1_1_0.pext
+    Changelog:
+      - New SQLite database backend - achievement data is now stored in a local database for faster loading and better performance
+      - Steam - fixed rate limiting errors when scanning large libraries
+      - Steam - fixed issue where all achievements could appear hidden incorrectly
+      - Steam - fixed unlock time parsing for Vietnamese language users
+      - Cache now automatically removes entries for games no longer in your library
+      - Progress bar now hides after 3 seconds instead of staying visible
+      - Clarified settings and filters by using positive language, e.g. "Show Locked Achievements" instead of "Hide Locked Achievements".
+      - Various UI improvements and bug fixes throughout
+
+  - Version: 1.0.5
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-14
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.0.5/PlayniteAchievements_1_0_5.pext
+    Changelog:
+      - Happy Valentine's Day!
+      - Achievement lists - added unlocked/locked/hidden visibility filters and a new status column with lock/check icons
+      - Sorting UX - improved default sort indicators and reset behavior when selecting or clearing games
+      - Sidebar/single-game UI - moved search above stats and refined spacing, margins, and control styling
+      - Steam and RetroAchievements - improved icon fallback, emulator path expansion, and console/path resolution
+      - Performance and stability - improved async threading and added Steam session warmup for smoother scans
+      - GOG support coming soon!
+
+  - Version: 1.0.4
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-12
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.0.4/PlayniteAchievements_1_0_4.pext
+    Changelog:
+      - Scanning - fixed final progress reporting and consolidated code for better maintenance
+      - Theme integration - fixed SuccessStory control heights and added granular hidden achievement controls
+      - RetroAchievements - fixed Genesis platform-to-console matching
+      - UI and performance tweaks throughout
+
+  - Version: 1.0.3
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-11
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.0.3/PlayniteAchievements_1_0_3.pext
+    Changelog:
+      - RetroAchievements improvements - hardened CSO parsing and base-set fallback matching
+      - Icon caching fixes - resolved file access conflicts with proper concurrency controls
+      - Performance optimizations - stabilized scan refresh cadence and cache operations
+      - Search feature - added achievement search bar to single-game details view
+      - UI refinements - fixed game title click area and added height constraints across controls
+      - Steam enhancements - improved unlock time parsing reliability with test coverage
+
+  - Version: 1.0.2
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-10
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.0.2/PlayniteAchievements_1_0_2.pext
+    Changelog:
+      - New "Missing" scan mode - quickly scan games that don't have achievement data yet
+      - Improved scan feedback - clear error messages when no provider is configured
+      - Performance improvements to reduce UI lag during large scans
+
+  - Version: 1.0.1
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-10
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.0.1/PlayniteAchievements_1_0_1.pext
+    Changelog:
+      - Fullscreen theme - fixed Aniki theme compatibility and added native progress bar for single game refresh
+      - Fullscreen theme - added sorted achievement list properties for better theme integration
+      - Settings - reorganized into Desktop, Fullscreen, and Legacy sections for clarity
+      - Settings - added proper property change notifications for computed theme properties
+      - Steam provider - consolidated session management and initialization
+      - Scanning - unified all scan methods and added quick, favorites, full, and installed refresh commands
+      - Bug Fix - Steam provider will now properly find achievements that share icons
+
+  - Version: 1.0.0
+    RequiredApiVersion: 6.14.0
+    ReleaseDate: 2026-02-09
+    PackageUrl: https://github.com/justin-delano/PlayniteAchievements/releases/download/v1.0.0/PlayniteAchievements_1_0_0.pext
+    Changelog:
+      - First public release
+      - Multi-platform support for Steam and RetroAchievements
+      - Beautiful achievement progression timelines and rarity breakdowns
+      - Theme migration and reversion functions, to quickly update existing themes. 
+      - SuccessStory legacy compatibility and modern native theme controls
+      - Intelligent caching with background updates
+      - Flexible scanning options including Quick Scan, Full Scan, favorites, single game, and auto-scan
+      - Graceful error handling throughout
+      - Localization support for multiple languages

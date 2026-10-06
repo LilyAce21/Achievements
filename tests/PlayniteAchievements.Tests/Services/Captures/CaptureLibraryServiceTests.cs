@@ -1,0 +1,199 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using PlayniteAchievements.Models.Settings;
+using PlayniteAchievements.Services.Captures;
+using PlayniteAchievements.Services.UI;
+
+namespace PlayniteAchievements.Services.Tests.Captures
+{
+    /// <summary>
+    /// Covers the notification and cache-maintenance contract the grids depend on: a capture saved
+    /// while a window is open has to reach the open grid, and doing so must not force a full
+    /// re-enumeration of every game folder.
+    /// </summary>
+    [TestClass]
+    public class CaptureLibraryServiceTests
+    {
+        private CaptureTestDirectory _captures;
+        private string _root;
+
+        [TestInitialize]
+        public void Setup()
+        {
+            _captures = new CaptureTestDirectory();
+            _root = _captures.Root;
+        }
+
+        [TestCleanup]
+        public void Cleanup() => _captures.Dispose();
+
+        private CaptureLibraryService CreateService() => _captures.CreateService();
+
+        private void WriteCapture(string gameName, string fileName) =>
+            _captures.WriteCapture(gameName, fileName);
+
+        [TestMethod]
+        public void Invalidate_RaisesCapturesChanged_WithTheSanitizedFolder()
+        {
+            var service = CreateService();
+            CapturesChangedEventArgs seen = null;
+            service.CapturesChanged += (_, e) => seen = e;
+
+            service.Invalidate("Half-Life 2");
+
+            Assert.IsNotNull(seen, "Writers rely on Invalidate to notify open grids.");
+            Assert.AreEqual("Half-Life 2", seen.GameName);
+            Assert.AreEqual(
+                UnlockScreenshotService.SanitizeCaptureGameName("Half-Life 2"),
+                seen.FolderName);
+        }
+
+        [TestMethod]
+        public void InvalidateAll_RaisesCapturesChanged_WithNoGame()
+        {
+            var service = CreateService();
+            CapturesChangedEventArgs seen = null;
+            var raised = 0;
+            service.CapturesChanged += (_, e) => { seen = e; raised++; };
+
+            service.Invalidate();
+
+            // The library-wide signal is debounced, so the raise lands off the calling thread.
+            Assert.IsTrue(
+                SpinWait.SpinUntil(() => raised > 0, TimeSpan.FromSeconds(5)),
+                "Writers rely on the debounced signal reaching open grids.");
+            Assert.AreEqual(1, raised);
+            Assert.IsNull(seen.GameName);
+            Assert.IsNull(seen.FolderName);
+        }
+
+        [TestMethod]
+        public void RefreshGame_DoesNotRaise()
+        {
+            WriteCapture("Portal", "001_Cake.png");
+            var service = CreateService();
+            var raised = 0;
+            service.CapturesChanged += (_, __) => raised++;
+
+            var set = service.RefreshGame("Portal");
+
+            Assert.IsTrue(set.HasAny);
+            Assert.AreEqual(0, raised, "Opening the gallery is a read and must not re-stamp open grids.");
+        }
+
+        [TestMethod]
+        public void GameHasCaptures_InvalidConfiguredDirectory_DoesNotThrow()
+        {
+            _captures.Settings.UnlockScreenshotDirectory = "invalid\0capture-path";
+            _captures.Settings.UnlockRecordingDirectory = null;
+            var service = CreateService();
+
+            Assert.IsFalse(service.GameHasCaptures("Game: With/Invalid*Characters?"));
+        }
+
+        [TestMethod]
+        public void ForeignScreenshots_AreNotCaptures()
+        {
+            // Other tools (Steam, NVIDIA) can save into the same per-game folders.
+            WriteCapture("Portal", "20240101123456_1.png");
+            WriteCapture("Portal", "Portal Screenshot 2024.01.01 - 12.34.56.78.png");
+            WriteCapture("Braid", "20240101123456_1.png");
+            WriteCapture("Braid", "001_Time.png");
+            var service = CreateService();
+
+            Assert.IsFalse(service.GameFolderHasCaptures("Portal"));
+            Assert.IsFalse(service.ScanGame("Portal").HasAny);
+            Assert.IsTrue(service.GameFolderHasCaptures("Braid"));
+            CollectionAssert.AreEqual(
+                new[] { "Time" },
+                service.ScanGame("Braid").Groups.Select(group => group.AchievementStem).ToArray());
+        }
+
+        [TestMethod]
+        public void Invalidate_AddsTheNewFolderToTheMembershipSet()
+        {
+            var service = CreateService();
+            // Materialize the set while the game has nothing, as an open grid would.
+            Assert.IsFalse(service.GameFolderHasCaptures("Portal"));
+
+            WriteCapture("Portal", "001_Cake.png");
+            service.Invalidate("Portal");
+
+            Assert.IsTrue(
+                service.GameFolderHasCaptures("Portal"),
+                "A capture saved while a grid is open must become visible without a rebuild.");
+        }
+
+        [TestMethod]
+        public void Invalidate_KeepsTheMembershipSetForOtherGames()
+        {
+            WriteCapture("Portal", "001_Cake.png");
+            WriteCapture("Braid", "001_Time.png");
+            var service = CreateService();
+            Assert.IsTrue(service.GameFolderHasCaptures("Portal"));
+
+            // Delete Braid's captures behind the service's back. A targeted invalidate of Portal
+            // must not re-enumerate (and therefore must not notice) the untouched game.
+            // Only observable because the test service does not watch the directory: with a
+            // watcher running this races it, and the deletion is noticed under load but not when
+            // the test runs alone.
+            Directory.Delete(
+                Path.Combine(_root, UnlockScreenshotService.SanitizeCaptureGameName("Braid")),
+                recursive: true);
+            service.Invalidate("Portal");
+
+            Assert.IsTrue(
+                service.GameFolderHasCaptures("Braid"),
+                "Invalidating one game should probe only that folder, not rebuild the whole set.");
+        }
+
+        [TestMethod]
+        public void Invalidate_RemovesTheFolderWhenItsCapturesAreGone()
+        {
+            WriteCapture("Portal", "001_Cake.png");
+            var service = CreateService();
+            Assert.IsTrue(service.GameFolderHasCaptures("Portal"));
+
+            Directory.Delete(
+                Path.Combine(_root, UnlockScreenshotService.SanitizeCaptureGameName("Portal")),
+                recursive: true);
+            service.Invalidate("Portal");
+
+            Assert.IsFalse(
+                service.GameFolderHasCaptures("Portal"),
+                "The probe re-reads reality, so a future delete path gets correct behavior.");
+        }
+
+        [TestMethod]
+        public void InvalidateAll_ForcesAFullRescan()
+        {
+            WriteCapture("Portal", "001_Cake.png");
+            var service = CreateService();
+            Assert.IsTrue(service.GameFolderHasCaptures("Portal"));
+
+            WriteCapture("Braid", "001_Time.png");
+            service.Invalidate();
+
+            Assert.IsTrue(
+                service.GetGameFoldersWithCaptures().Contains(
+                    UnlockScreenshotService.SanitizeCaptureGameName("Braid")),
+                "The parameterless overload means 'I know nothing' and must recompute everything.");
+        }
+
+        [TestMethod]
+        public void Invalidate_DropsTheParsedSetForThatGame()
+        {
+            WriteCapture("Portal", "001_Cake.png");
+            var service = CreateService();
+            Assert.AreEqual(1, service.ScanGame("Portal").Groups.Count);
+
+            WriteCapture("Portal", "002_Companion.png");
+            service.Invalidate("Portal");
+
+            Assert.AreEqual(2, service.ScanGame("Portal").Groups.Count);
+        }
+    }
+}
