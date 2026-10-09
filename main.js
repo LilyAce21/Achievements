@@ -276,6 +276,10 @@ const {
 } = require("./utils/process-name-utils");
 const { deriveSteamProcessNames } = require("./utils/steam-local-launch");
 const {
+  buildUnlockMessage,
+  createPlayniteBridge,
+} = require("./utils/playnite-bridge");
+const {
   PROCESS_CONFIG_MATCH,
   classifyProcessConfigMatch,
   getProcessConfigMatchRank,
@@ -13227,6 +13231,9 @@ function getUserPreferredSound() {
 
 const RANDOM_SOUND_VALUE = "random";
 let lastRandomAchievementSound = "";
+const playniteBridge = createPlayniteBridge({
+  logger: { info: (...args) => { try { appLogger.info(...args); } catch {} } },
+});
 let lastRandomRareSound = "";
 const lastRandomRareTierSounds = {};
 const RARITY_NOTIFICATION_TIERS = Object.freeze(["silver", "gold", "sapphire"]);
@@ -15854,6 +15861,24 @@ function queueAchievementNotification(achievement) {
     achievement.skipScreenshot === true
       ? true
       : prefs.disableAchievementScreenshot === true;
+
+  // Announce the unlock to PlayniteAchievements right away (detection time, not the time a
+  // queued or stacked card finally appears) so its screenshot is taken at that moment. Quiet and
+  // harmless when that add-on is not running.
+  if (!isTest && achievement.isPreview !== true) {
+    try {
+      const announcement = buildUnlockMessage({
+        configName: achievement.configName || achievement.config_name,
+        appid: achievement.appid || achievement.appId,
+        platform,
+        name: displayName,
+        apiName: achievement.name || achievement.apiName || achievement.api_name,
+        tier: isPlatinum ? "platinum" : rarityTier || percentTier || "bronze",
+        isPlatinum,
+      });
+      if (announcement) void playniteBridge.notifyUnlock(announcement);
+    } catch {}
+  }
 
   const notificationData = {
     displayName: displayName || "",
