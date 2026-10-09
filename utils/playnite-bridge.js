@@ -45,7 +45,7 @@ function buildUnlockMessage(input = {}) {
 function createPlayniteBridge(options = {}) {
   const pipePath = options.pipePath || DEFAULT_PIPE_PATH;
   const platform = options.platform || process.platform;
-  const connectTimeoutMs = options.connectTimeoutMs || 400;
+  const connectTimeoutMs = options.connectTimeoutMs || 1000;
   const dedupeMs = options.dedupeMs === undefined ? 60_000 : options.dedupeMs;
   const now = options.now || (() => Date.now());
   const logger = options.logger || null;
@@ -120,8 +120,11 @@ function createPlayniteBridge(options = {}) {
         return;
       }
       socket.setTimeout(connectTimeoutMs);
+      // Protocol: write the line, then stay connected until the add-on closes its end (it does
+      // that right after reading the line). Closing first can make a pipe server miss the
+      // message when several arrive together.
       socket.on("connect", () => {
-        socket.end(line, "utf8", () => {
+        socket.write(line, "utf8", () => {
           written = true;
         });
       });
@@ -129,13 +132,19 @@ function createPlayniteBridge(options = {}) {
         try {
           socket.destroy();
         } catch {}
-        finish(false, error);
+        finish(written, error);
       });
       socket.on("timeout", () => {
         try {
           socket.destroy();
         } catch {}
-        finish(false, new Error("timeout"));
+        // Written but never acknowledged: most likely delivered, so it counts as sent.
+        finish(written, new Error("timeout"));
+      });
+      socket.on("end", () => {
+        try {
+          socket.end();
+        } catch {}
       });
       socket.on("close", () => finish(written, new Error("closed-before-write")));
     });
