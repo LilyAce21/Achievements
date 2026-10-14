@@ -9,6 +9,7 @@ const {
   Tray,
   shell,
   Notification,
+  safeStorage,
 } = require("electron");
 // Polyfill File for environments where undici expects it (Electron main may lack global File)
 if (typeof globalThis.File === "undefined") {
@@ -2203,6 +2204,11 @@ const DEFAULT_PREFERENCES = {
   platinumSound: "mute",
   platinumPreset: "default",
   platinumPosition: "center-bottom",
+  psnPlatinumSanPreset: "",
+  psnPlatinumSound: "mute",
+  psnPlatinumPreset: "default",
+  psnPlatinumPosition: "center-bottom",
+  disablePsnPlatinum: false,
   showBlacklistedGames: false,
   disablePlatinum: false,
   showHiddenDescription: false,
@@ -14389,6 +14395,7 @@ function createNotificationWindow(message) {
       trophyType: message.trophyType || "",
       isRare: message.isRare === true,
       isPlatinum: message.isPlatinum === true,
+      isPsnPlatinum: message.isPsnPlatinum === true,
       showRarityPercentage: message.showRarityPercentage === true,
       preset: message.preset || preset,
       position: message.position || position,
@@ -14866,6 +14873,43 @@ ipcMain.on("show-test-platinum-notification", (_event, options = {}) => {
   });
 });
 
+ipcMain.on("show-test-psn-platinum-notification", (_event, options = {}) => {
+  const prefs = cachedPreferences || {};
+  const baseDir = app.isPackaged ? process.resourcesPath : __dirname;
+
+  queueAchievementNotification({
+    name: "TEST_PSN_PLATINUM_NOTIFICATION",
+    displayName: "Platinum Example",
+    description: "A sample PlayStation Platinum for this preset.",
+    icon: ICON_PNG_PATH,
+    icon_gray: ICON_PNG_PATH,
+    config_path: baseDir,
+    preset:
+      options.preset || prefs.psnPlatinumPreset || prefs.preset || "default",
+    position:
+      options.position ||
+      prefs.psnPlatinumPosition ||
+      prefs.position ||
+      "center-bottom",
+    sound: options.sound || prefs.psnPlatinumSound || prefs.sound || "mute",
+    useSanPreset: options.useSanPreset === true,
+    sanPreset: resolveTestNotificationSanPreset(
+      options,
+      prefs.psnPlatinumSanPreset,
+    ),
+    scale: parseFloat(
+      options.scale != null
+        ? options.scale
+        : prefs.notificationScale != null
+          ? prefs.notificationScale
+          : 1,
+    ),
+    skipScreenshot: true,
+    isTest: true,
+    isPsnPlatinum: true,
+  });
+});
+
 function markConfigPlatinumFlag(configName) {
   const safe = configName ? sanitizeConfigName(configName) : "";
   if (!safe) return false;
@@ -14886,7 +14930,26 @@ function markConfigPlatinumFlag(configName) {
   }
 }
 
-function handlePlatinumComplete({
+// A game with PSN Platinum data announces its base-game completion first. When that same
+// unlock also completes the whole game, the generic "100% Completed" notification would repeat
+// it, so it is held back briefly and dropped if the PSN Platinum just fired.
+const psnPlatinumDeferredCompletions = new Set();
+
+function handlePlatinumComplete(params = {}) {
+  const key = params.configName ? sanitizeConfigName(params.configName) : "";
+  if (!key || psnPlatinumDeferredCompletions.has(key) || !configHasPsnPlatinum(key)) {
+    return handlePlatinumCompleteNow(params);
+  }
+  psnPlatinumDeferredCompletions.add(key);
+  checkPsnPlatinum(key)
+    .catch(() => {})
+    .then(() => {
+      psnPlatinumDeferredCompletions.delete(key);
+      if (!psnPlatinumFiredRecently(key)) handlePlatinumCompleteNow(params);
+    });
+}
+
+function handlePlatinumCompleteNow({
   configName,
   appid,
   platform,
@@ -14947,6 +15010,336 @@ function handlePlatinumComplete({
 
   queuePlatinumAfterCurrent(message);
 }
+
+// === PSN Platinum (base-game capstone) ===
+// A game can carry a PlayStation Platinum's name, description and icon in its config
+// (psn_platinum). When every base-game achievement is earned, that Platinum is announced with
+// its own preset, once. The data is fetched from PlayStation on request only, with the user's
+// own NPSSO token, which is stored encrypted and never leaves the main process.
+const {
+  createPsnPlatinumService,
+  extractNpwrIds,
+  parsePlatinumJson,
+  looksLikeNpsso,
+} = require("./utils/psn-platinum");
+const { createNpssoStore } = require("./utils/psn-npsso-store");
+const {
+  getDlcApiNames,
+  isBaseGameComplete,
+} = require("./utils/steamhunters-base");
+
+const PSN_PLATINUM_FIRED_RECENTLY_MS = 2 * 60 * 1000;
+const PSN_PLATINUM_CHECK_DELAYS_MS = [1500, 7000];
+const STEAM_APPID_PLATFORMS = new Set(["steam", "steam-official"]);
+const psnPlatinumCheckTimers = new Map();
+let psnPlatinumService = null;
+let psnNpssoStore = null;
+
+function getPsnNpssoStore() {
+  if (!psnNpssoStore) {
+    psnNpssoStore = createNpssoStore({
+      safeStorage,
+      filePath: path.join(app.getPath("userData"), "psn-npsso.bin"),
+    });
+  }
+  return psnNpssoStore;
+}
+
+function getPsnPlatinumService() {
+  if (!psnPlatinumService) {
+    psnPlatinumService = createPsnPlatinumService({
+      psnApi: require("psn-api"),
+      fetchImpl: (...args) => globalThis.fetch(...args),
+    });
+  }
+  return psnPlatinumService;
+}
+
+function readConfigForPsn(configName) {
+  const safe = configName ? sanitizeConfigName(configName) : "";
+  if (!safe) return null;
+  const cfgPath = resolveConfigJsonPath(configsDir, configName);
+  if (!cfgPath || !fs.existsSync(cfgPath)) return null;
+  try {
+    return { safe, cfgPath, config: JSON.parse(fs.readFileSync(cfgPath, "utf8")) };
+  } catch {
+    return null;
+  }
+}
+
+function configHasPsnPlatinum(configName) {
+  const entry = readConfigForPsn(configName);
+  return Boolean(entry?.config?.psn_platinum?.name);
+}
+
+function psnPlatinumFiredRecently(configName) {
+  const firedAt = Number(readConfigForPsn(configName)?.config?.psn_platinum_fired_at);
+  return Number.isFinite(firedAt) && Date.now() - firedAt < PSN_PLATINUM_FIRED_RECENTLY_MS;
+}
+
+// steamhunters.com rejects Node's own HTTP fingerprint, so the group list is read through a
+// hidden browser window, the same way PlayniteAchievements does.
+async function fetchSteamHuntersText(url) {
+  const win = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      partition: "steamhunters-base-game",
+    },
+  });
+  try {
+    await Promise.race([
+      win.loadURL(url),
+      new Promise((_resolve, reject) =>
+        setTimeout(() => reject(new Error("steamhunters timeout")), 20000),
+      ),
+    ]);
+    return await win.webContents.executeJavaScript(
+      "document.body ? document.body.innerText : ''",
+      true,
+    );
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+  }
+}
+
+async function loadPsnBaseGameState(safeName, config) {
+  const platform = normalizePlatform(config?.platform) || "steam";
+  const snapshot = await loadPreviousAchievements(safeName, platform);
+  let dlcApiNames = null;
+  if (STEAM_APPID_PLATFORMS.has(platform) && config?.appid) {
+    try {
+      dlcApiNames = await getDlcApiNames({
+        appId: config.appid,
+        cacheDir: path.join(app.getPath("userData"), "steamhunters-cache"),
+        fetchText: fetchSteamHuntersText,
+        currentNames: Object.keys(snapshot || {}),
+      });
+    } catch {
+      dlcApiNames = null;
+    }
+  }
+  return { platform, snapshot, dlcApiNames };
+}
+
+function writePsnConfig(cfgPath, config) {
+  writeJsonAtomicSync(cfgPath, config, { backup: true });
+}
+
+/** Fires the PSN Platinum once when every base-game achievement of the game is earned. */
+async function checkPsnPlatinum(configName) {
+  const entry = readConfigForPsn(configName);
+  const platinum = entry?.config?.psn_platinum;
+  if (!platinum?.name || entry.config.psn_platinum_fired === true) return false;
+  if (cachedPreferences?.disablePsnPlatinum === true) return false;
+
+  const { platform, snapshot, dlcApiNames } = await loadPsnBaseGameState(
+    entry.safe,
+    entry.config,
+  );
+  if (!isBaseGameComplete(snapshot, dlcApiNames)) return false;
+
+  // Re-read before writing: another check may have fired it while this one was loading.
+  const fresh = readConfigForPsn(configName);
+  if (!fresh || fresh.config.psn_platinum_fired === true) return false;
+  fresh.config.psn_platinum_fired = true;
+  fresh.config.psn_platinum_fired_at = Date.now();
+  writePsnConfig(fresh.cfgPath, fresh.config);
+
+  notificationLogger.info("psn-platinum:fired", {
+    config: fresh.safe,
+    baseGameScope: dlcApiNames ? "steamhunters" : "all-achievements",
+  });
+  queueAchievementNotification({
+    isPsnPlatinum: true,
+    displayName: platinum.name,
+    description: platinum.description || "",
+    icon:
+      platinum.icon && fs.existsSync(platinum.icon) ? platinum.icon : undefined,
+    configName: fresh.safe,
+    config_path: fresh.config.config_path,
+    appid: fresh.config.appid || null,
+    platform,
+  });
+  queueDashboardSummaryReconcile(fresh.safe, "psn-platinum-fired");
+  return true;
+}
+
+function schedulePsnPlatinumChecks(configName) {
+  const safe = configName ? sanitizeConfigName(configName) : "";
+  if (!safe || !configHasPsnPlatinum(safe)) return;
+  if (psnPlatinumCheckTimers.has(safe)) return;
+  // The earned state is saved around the time the unlock is announced, so look a little later,
+  // and once more in case the first look was early.
+  const timers = PSN_PLATINUM_CHECK_DELAYS_MS.map((delay, index) =>
+    setTimeout(() => {
+      if (index === PSN_PLATINUM_CHECK_DELAYS_MS.length - 1) {
+        psnPlatinumCheckTimers.delete(safe);
+      }
+      checkPsnPlatinum(safe).catch((error) => {
+        notificationLogger.warn("psn-platinum:check-failed", {
+          config: safe,
+          error: error?.message || String(error),
+        });
+      });
+    }, delay),
+  );
+  psnPlatinumCheckTimers.set(safe, timers);
+}
+
+function describePsnError(error) {
+  return {
+    ok: false,
+    kind: error?.kind || "unknown",
+    message: String(error?.message || "Something went wrong."),
+  };
+}
+
+async function savePsnPlatinumForConfig(configName, platinum, icon, npwrIds) {
+  const entry = readConfigForPsn(configName);
+  if (!entry) return { ok: false, kind: "no-config", message: "That game's config was not found." };
+
+  let iconPath = "";
+  if (icon && icon.length > 0) {
+    const dir = path.join(app.getPath("userData"), "psn-platinum");
+    fs.mkdirSync(dir, { recursive: true });
+    iconPath = path.join(dir, `${entry.safe}.png`);
+    fs.writeFileSync(iconPath, icon);
+  }
+
+  // A game already finished when its Platinum is added must not announce it retroactively.
+  let alreadyComplete = false;
+  try {
+    const { snapshot, dlcApiNames } = await loadPsnBaseGameState(entry.safe, entry.config);
+    alreadyComplete = isBaseGameComplete(snapshot, dlcApiNames);
+  } catch {}
+
+  const fresh = readConfigForPsn(configName) || entry;
+  fresh.config.psn_platinum = {
+    npwr: platinum.npwr || "",
+    platform: platinum.platform || "",
+    gameName: platinum.gameName || "",
+    name: platinum.name,
+    description: platinum.description || "",
+    icon: iconPath,
+    generatedAt: Date.now(),
+  };
+  if (npwrIds?.length) fresh.config.psn_npwr_ids = npwrIds;
+  fresh.config.psn_platinum_fired = alreadyComplete;
+  if (!alreadyComplete) delete fresh.config.psn_platinum_fired_at;
+  writePsnConfig(fresh.cfgPath, fresh.config);
+  return { ok: true, platform: platinum.platform || "", npwr: platinum.npwr || "", alreadyComplete };
+}
+
+ipcMain.handle("psn:npsso-status", () => ({
+  hasNpsso: getPsnNpssoStore().has(),
+  canEncrypt: getPsnNpssoStore().canEncrypt(),
+}));
+
+ipcMain.handle("psn:npsso-save", (_event, value) => {
+  const token = String(value || "").trim();
+  if (token && !looksLikeNpsso(token)) {
+    return { ok: false, message: "That does not look like an NPSSO token (one code of roughly 64 letters and numbers)." };
+  }
+  const result = getPsnNpssoStore().write(token);
+  getPsnPlatinumService().forgetSession();
+  if (!result.ok) {
+    return { ok: false, message: "This computer cannot encrypt the token, so it was not saved." };
+  }
+  return { ok: true, hasNpsso: Boolean(token) };
+});
+
+ipcMain.handle("psn:npsso-test", async () => {
+  try {
+    await getPsnPlatinumService().authenticate(getPsnNpssoStore().read());
+    return { ok: true };
+  } catch (error) {
+    return describePsnError(error);
+  }
+});
+
+ipcMain.handle("psn:platinum-status", (_event, configName) => {
+  const platinum = readConfigForPsn(configName)?.config?.psn_platinum;
+  // Name and description are left out on purpose: they would spoil the Platinum.
+  return platinum?.name
+    ? { has: true, platform: platinum.platform || "", npwr: platinum.npwr || "" }
+    : { has: false };
+});
+
+ipcMain.handle("psn:platinum-generate", async (_event, configName, text) => {
+  try {
+    const ids = extractNpwrIds(text);
+    if (ids.length === 0) {
+      return { ok: false, kind: "not-found", message: "No NPWR ID was found in that text. It looks like NPWR12345_00." };
+    }
+    const service = getPsnPlatinumService();
+    const platinum = await service.fetchPlatinum(getPsnNpssoStore().read(), ids);
+    const icon = await service.downloadIcon(platinum.iconUrl);
+    return await savePsnPlatinumForConfig(configName, platinum, icon, ids);
+  } catch (error) {
+    return describePsnError(error);
+  }
+});
+
+ipcMain.handle("psn:platinum-import-file", async (_event, configName) => {
+  try {
+    const picked = await dialog.showOpenDialog(mainWindow || undefined, {
+      title: "platinum_data.json",
+      properties: ["openFile"],
+      filters: [{ name: "platinum_data.json", extensions: ["json"] }],
+    });
+    if (picked.canceled || !picked.filePaths?.[0]) return { ok: false, canceled: true };
+    const file = picked.filePaths[0];
+    if (fs.statSync(file).size > 256 * 1024) {
+      return { ok: false, kind: "bad-file", message: "That file is too large to be a platinum_data.json." };
+    }
+    const platinum = parsePlatinumJson(fs.readFileSync(file, "utf8"));
+    if (!platinum) {
+      return { ok: false, kind: "bad-file", message: "That file is not a platinum_data.json this app can read." };
+    }
+    // The icon the user's script saved beside the JSON is used first, so no request is needed.
+    let icon = null;
+    if (platinum.npwr) {
+      const local = path.join(path.dirname(file), `${platinum.npwr}_platinum.png`);
+      try {
+        if (fs.existsSync(local) && fs.statSync(local).size <= 2 * 1024 * 1024) {
+          icon = fs.readFileSync(local);
+        }
+      } catch {}
+    }
+    if (!icon) icon = await getPsnPlatinumService().downloadIcon(platinum.iconUrl);
+    return await savePsnPlatinumForConfig(
+      configName,
+      platinum,
+      icon,
+      platinum.npwr ? [platinum.npwr] : [],
+    );
+  } catch (error) {
+    return describePsnError(error);
+  }
+});
+
+ipcMain.handle("psn:platinum-remove", (_event, configName) => {
+  const entry = readConfigForPsn(configName);
+  if (!entry) return { ok: false };
+  const icon = entry.config.psn_platinum?.icon;
+  delete entry.config.psn_platinum;
+  delete entry.config.psn_platinum_fired;
+  delete entry.config.psn_platinum_fired_at;
+  writePsnConfig(entry.cfgPath, entry.config);
+  try {
+    if (icon) fs.unlinkSync(icon);
+  } catch {}
+  return { ok: true };
+});
+
+ipcMain.handle("psn:find-id", async (_event, gameName) => {
+  const query = `psprice ${String(gameName || "").trim()}`.trim();
+  await shell.openExternal(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`);
+  return { ok: true };
+});
 
 ipcMain.handle("load-presets", async () => {
   if (!fs.existsSync(userPresetsFolder)) {
@@ -15766,12 +16159,13 @@ function queueAchievementNotification(achievement) {
     achievement.isPlatinum === true ||
     achievement.__isPlatinum === true ||
     (usesTrophyTier && trophyType === "platinum");
+  const isPsnPlatinum = achievement.isPsnPlatinum === true;
   const isTest = achievement.isTest === true;
   const isTestRare = achievement.isTestRare === true;
   const hasExplicitRarity =
     normalizeNotificationRarityPercent(achievement?.rarityPct) !== null;
   const rarity =
-    isPlatinum || (isTest && !isTestRare && !hasExplicitRarity)
+    isPlatinum || isPsnPlatinum || (isTest && !isTestRare && !hasExplicitRarity)
       ? { percent: null, source: null }
       : resolveNotificationRarity(achievement);
   // Bronze (50.1-100%) uses the regular "Achievement Notification" profile.
@@ -15785,7 +16179,9 @@ function queueAchievementNotification(achievement) {
     usesTrophyTier && ["bronze", "silver", "gold"].includes(trophyType)
       ? trophyType
       : "";
-  const rarityTier = trophyRarityTier || (isRare ? percentTier : "");
+  const rarityTier = isPsnPlatinum
+    ? "psnplatinum"
+    : trophyRarityTier || (isRare ? percentTier : "");
   const preferredScale =
     achievement.scale != null
       ? achievement.scale
@@ -15816,17 +16212,23 @@ function queueAchievementNotification(achievement) {
   const emulatorSound = emulatorPreferencePrefix
     ? prefs[`${emulatorPreferencePrefix}Sound`] || normalSound
     : normalSound;
-  const resolvedPreset = isPlatinum
+  const resolvedPreset = isPsnPlatinum
+    ? prefs.psnPlatinumPreset || normalPreset
+    : isPlatinum
     ? prefs.platinumPreset || normalPreset
     : isRare
       ? prefs[`${percentTier}Preset`] || prefs.rarePreset || normalPreset
       : emulatorPreset;
-  const resolvedPosition = isPlatinum
+  const resolvedPosition = isPsnPlatinum
+    ? prefs.psnPlatinumPosition || normalPosition
+    : isPlatinum
     ? prefs.platinumPosition || normalPosition
     : isRare
       ? prefs[`${percentTier}Position`] || prefs.rarePosition || normalPosition
       : emulatorPosition;
-  const requestedSound = isPlatinum
+  const requestedSound = isPsnPlatinum
+    ? prefs.psnPlatinumSound || normalSound
+    : isPlatinum
     ? prefs.platinumSound || normalSound
     : isRare
       ? prefs[`${percentTier}Sound`] || prefs.rareSound || normalSound
@@ -15834,7 +16236,9 @@ function queueAchievementNotification(achievement) {
   const emulatorSanPreset = emulatorPreferencePrefix
     ? String(prefs[`${emulatorPreferencePrefix}SanPreset`] || "")
     : prefs.sanPreset || "";
-  const preferenceSanPreset = isPlatinum
+  const preferenceSanPreset = isPsnPlatinum
+    ? String(prefs.psnPlatinumSanPreset || "")
+    : isPlatinum
     ? String(prefs.platinumSanPreset || "")
     : isRare
       ? String(prefs[`${percentTier}SanPreset`] || prefs.rareSanPreset || "")
@@ -15883,6 +16287,7 @@ function queueAchievementNotification(achievement) {
     scale: parseFloat(achievement.scale || 1),
     skipScreenshot: resolvedSkipScreenshot,
     isPlatinum,
+    isPsnPlatinum,
     isTest,
   };
 
@@ -15923,6 +16328,7 @@ function queueAchievementNotification(achievement) {
   if (
     !notificationData.isTest &&
     !notificationData.isPlatinum &&
+    !notificationData.isPsnPlatinum &&
     prefs.disableAchievementRecords === false
   ) {
     void captureAchievementUnlockRecord(notificationData);
@@ -15932,6 +16338,9 @@ function queueAchievementNotification(achievement) {
   }
   earnedNotificationQueue.push(notificationData);
   processNextNotification();
+  if (!isPlatinum && !isPsnPlatinum && !isTest) {
+    schedulePsnPlatinumChecks(notificationData.configName);
+  }
 }
 
 function resolveGameHeaderPathForNotification(achievement = {}) {
@@ -16779,6 +17188,7 @@ function processNextNotification() {
     skipScreenshot: !!achievement.skipScreenshot,
     isPlatinum:
       achievement.isPlatinum === true || achievement.__isPlatinum === true,
+    isPsnPlatinum: achievement.isPsnPlatinum === true,
     isTest: !!achievement.isTest,
   };
 

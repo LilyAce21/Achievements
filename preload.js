@@ -623,6 +623,20 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.send("show-test-emulator-notification", options),
   showTestPlatinumNotification: (options) =>
     ipcRenderer.send("show-test-platinum-notification", options),
+  showTestPsnPlatinumNotification: (options) =>
+    ipcRenderer.send("show-test-psn-platinum-notification", options),
+  psnNpssoStatus: () => ipcRenderer.invoke("psn:npsso-status"),
+  psnNpssoSave: (value) => ipcRenderer.invoke("psn:npsso-save", value),
+  psnNpssoTest: () => ipcRenderer.invoke("psn:npsso-test"),
+  psnPlatinumStatus: (configName) =>
+    ipcRenderer.invoke("psn:platinum-status", configName),
+  psnPlatinumGenerate: (configName, text) =>
+    ipcRenderer.invoke("psn:platinum-generate", configName, text),
+  psnPlatinumImportFile: (configName) =>
+    ipcRenderer.invoke("psn:platinum-import-file", configName),
+  psnPlatinumRemove: (configName) =>
+    ipcRenderer.invoke("psn:platinum-remove", configName),
+  psnFindId: (gameName) => ipcRenderer.invoke("psn:find-id", gameName),
   showTestProgressNotification: (options) =>
     ipcRenderer.send("show-test-progress-notification", options),
   showTestPlaytimeNotification: () =>

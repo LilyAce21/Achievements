@@ -81,7 +81,8 @@
           explicitTier === "sapphire" ||
           explicitTier === "gold" ||
           explicitTier === "silver" ||
-          explicitTier === "bronze"
+          explicitTier === "bronze" ||
+          (explicitTier === "psnplatinum" && payload?.isPsnPlatinum === true)
             ? explicitTier
             : "";
         const rawValue = payload?.rarityPct;
@@ -118,10 +119,21 @@
 
       function pickRarityAsset(value, tier) {
         if (Array.isArray(value)) {
+          // A preset lists its tier icons as [bronze, silver, gold, sapphire, psn platinum].
+          // The PSN Platinum tier falls back to the gold icon in a preset made before it existed.
           const index =
-            tier === "sapphire" ? 3 : tier === "gold" ? 2 : tier === "silver" ? 1 : 0;
+            tier === "psnplatinum"
+              ? 4
+              : tier === "sapphire"
+                ? 3
+                : tier === "gold"
+                  ? 2
+                  : tier === "silver"
+                    ? 1
+                    : 0;
           return (
             value[index] ||
+            (tier === "psnplatinum" ? value[3] || value[2] : "") ||
             (tier === "sapphire" ? value[2] : "") ||
             value[0] ||
             ""
@@ -203,6 +215,14 @@
 
       function getSanTierValue(customisation, flagKey, prefix, fallback, tier) {
         if (!customisation?.[flagKey]) return fallback;
+        if (tier === "psnplatinum") {
+          return (
+            customisation[`${prefix}platinum`] ||
+            customisation[`${prefix}sapphire`] ||
+            customisation[`${prefix}gold`] ||
+            fallback
+          );
+        }
         if (tier === "sapphire") {
           return (
             customisation[`${prefix}sapphire`] ||
@@ -251,6 +271,8 @@
         if (payload?.isRare && (percent.tier === "gold" || percent.tier === "sapphire")) {
           body.setAttribute("rare", "");
         }
+        // The PSN Platinum gets the same animated glow behind its icon as Gold and Sapphire.
+        if (payload?.isPsnPlatinum === true) body.setAttribute("rare", "");
         if (payload?.isPlatinum) body.setAttribute("plat", "");
         if (customisation.fastanim) body.setAttribute("fastanim", "");
         if (isScreenshotSanMode(payload, customisation)) body.setAttribute("ss", "");
@@ -565,7 +587,10 @@
             : `${badgeFontSize / 4 / Math.max(0.1, badgeRoundness / 10)}px`,
         );
         const badgeAsset =
-          percent.tier === "sapphire"
+          percent.tier === "psnplatinum"
+            ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgplatinum") ||
+              getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
+            : percent.tier === "sapphire"
             ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgsapphire") ||
               getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
             : percent.tier === "gold"
