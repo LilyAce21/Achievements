@@ -1937,6 +1937,81 @@
                 </button>
 
                 <hr style="margin: 18px 0 14px" />
+                <h4 id="settings-psnPlatinumTitle" style="margin-top: 10px">
+                  PSN Platinum Notification (Base Game)
+                </h4>
+                <p style="margin: 4px 0 10px; opacity: 0.75; font-size: 0.9em">
+                  Shown once when every base-game achievement of a game with PSN
+                  Platinum data is earned. Add that data with "Generate PSN
+                  Platinum" in the dashboard right-click menu.
+                </p>
+                <div class="settings-control">
+                  <label for="settings-disablePsnPlatinumCheckbox"
+                    >Disable PSN Platinum notifications:</label
+                  >
+                  <input type="checkbox" id="settings-disablePsnPlatinumCheckbox" />
+                </div>
+                <div class="settings-control">
+                  <label for="settings-psnPlatinumPositionDropdown"
+                    >PSN Platinum Position:</label
+                  >
+                  <select id="settings-psnPlatinumPositionDropdown">
+                    <option value="center-bottom">Center Bottom</option>
+                    <option value="center-top">Center Top</option>
+                    <option value="top-right">Top Right</option>
+                    <option value="bottom-right">Bottom Right</option>
+                    <option value="middle-right">Middle Right</option>
+                    <option value="top-left">Top Left</option>
+                    <option value="bottom-left">Bottom Left</option>
+                    <option value="middle-left">Middle Left</option>
+                  </select>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-psnPlatinumPresetDropdown"
+                    >PSN Platinum Presets:</label
+                  >
+                  <select id="settings-psnPlatinumPresetDropdown"></select>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-psnPlatinumSoundSelect"
+                    >PSN Platinum Sound:</label
+                  >
+                  <select id="settings-psnPlatinumSoundSelect"></select>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-psnPlatinumSanPresetDropdown"
+                    >PSN Platinum SAN Preset:</label
+                  >
+                  <select id="settings-psnPlatinumSanPresetDropdown"></select>
+                </div>
+                <button
+                  id="settings-testPsnPlatinumNotificationBtn"
+                  class="settings-test-button"
+                  style="width: 100%; margin: 10px 0; padding: 10px"
+                >
+                  Test PSN Platinum Notification
+                </button>
+                <div class="settings-control">
+                  <label for="settings-psnNpssoInput">PSN NPSSO token:</label>
+                  <input
+                    type="password"
+                    id="settings-psnNpssoInput"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Paste your NPSSO token"
+                  />
+                </div>
+                <div style="display: flex; gap: 8px; margin: 6px 0">
+                  <button id="settings-psnNpssoSaveBtn" class="settings-test-button" style="flex: 1; padding: 8px">
+                    Save token
+                  </button>
+                  <button id="settings-psnNpssoTestBtn" class="settings-test-button" style="flex: 1; padding: 8px">
+                    Test connection
+                  </button>
+                </div>
+                <p id="settings-psnNpssoStatus" style="margin: 4px 0 10px; opacity: 0.75; font-size: 0.9em"></p>
+
+                <hr style="margin: 18px 0 14px" />
                 <h4
                   id="settings-progressNotificationTitle"
                   data-i18n="settings-progressNotificationTitle"
@@ -5830,6 +5905,22 @@
           data-action="ea-app"
         >
           Open in EA App
+        </button>
+        <button
+          id="dashboardMenuPsnPlatinum"
+          class="dash-menu-item"
+          type="button"
+          data-action="psn-platinum"
+        >
+          Generate PSN Platinum
+        </button>
+        <button
+          id="dashboardMenuPsnFindId"
+          class="dash-menu-item"
+          type="button"
+          data-action="psn-find-id"
+        >
+          Find NPWR ID (search)
         </button>
         <button
           id="dashboardMenuIgnore"
@@ -12543,6 +12634,53 @@
         return { confirmed, value: confirmInputValue };
       }
 
+      // "Generate PSN Platinum" from the dashboard menu: asks for an NPWR ID (or, left empty,
+      // a platinum_data.json) and stores that game's PlayStation Platinum in its config.
+      window.runPsnPlatinumFlow = async function runPsnPlatinumFlow(target) {
+        const name = target?.name;
+        if (!name || !window.api?.psnPlatinumGenerate) return;
+        const gameLabel = target.displayName || name;
+        try {
+          const status = await window.api.psnPlatinumStatus(name);
+          if (status?.has) {
+            const replace = await showAppConfirm({
+              title: "PSN Platinum",
+              message: `${gameLabel} already has a PSN Platinum${status.platform ? ` (${status.platform})` : ""}. Replace it?`,
+              okText: "Replace",
+            });
+            if (!replace) return;
+          }
+          const prompt = await showAppTextPrompt({
+            title: "Generate PSN Platinum",
+            message:
+              "Paste the game's NPWR ID (for example NPWR39144_00), or a trophy page title that contains one. Leave it empty to import a platinum_data.json file instead.",
+            inputLabel: "NPWR ID",
+            inputPlaceholder: "NPWR39144_00",
+            inputRequired: false,
+            okText: "Continue",
+          });
+          if (!prompt?.confirmed) return;
+          const text = String(prompt.value || "").trim();
+          showNotification("Working on the PSN Platinum...", "#2196f3");
+          const result = text
+            ? await window.api.psnPlatinumGenerate(name, text)
+            : await window.api.psnPlatinumImportFile(name);
+          if (result?.canceled) return;
+          if (!result?.ok) {
+            showNotification(result?.message || "The PSN Platinum could not be generated.", "#f44336");
+            return;
+          }
+          showNotification(
+            result.alreadyComplete
+              ? `PSN Platinum saved for ${gameLabel}. The base game is already complete, so it will not be announced.`
+              : `PSN Platinum saved for ${gameLabel}. It will be announced when every base-game achievement is earned.`,
+            "#4caf50",
+          );
+        } catch (error) {
+          showNotification(String(error?.message || "The PSN Platinum could not be generated."), "#f44336");
+        }
+      };
+
       function logUiEvent(level, message, meta) {
         try {
           const safeLevel = level || "info";
@@ -13488,6 +13626,13 @@
             `settings-${tier}SanPresetDropdown`,
           ],
         })),
+        {
+          presetId: "settings-psnPlatinumPresetDropdown",
+          controlIds: [
+            "settings-psnPlatinumPositionDropdown",
+            "settings-psnPlatinumSanPresetDropdown",
+          ],
+        },
         {
           presetId: "settings-platinumPresetDropdown",
           controlIds: [
@@ -14719,6 +14864,7 @@
             "rareSanPreset",
           ]),
           ["settings-platinumSanPresetDropdown", "platinumSanPreset"],
+          ["settings-psnPlatinumSanPresetDropdown", "psnPlatinumSanPreset"],
           ...EMULATOR_NOTIFICATION_SETTINGS.map((setting) => [
             setting.sanPresetId,
             getEmulatorPrefKey(setting, "SanPreset"),
@@ -19047,8 +19193,133 @@
           playPreviewSound(e.target.value, "settings-platinumSoundSelect");
         });
 
+      // PSN Platinum (base game) notification settings and the NPSSO token.
+      function syncPsnPlatinumSettings() {
+        const prefs = getCachedPreferences() || {};
+        for (const [fromId, toId] of [
+          ["settings-platinumPresetDropdown", "settings-psnPlatinumPresetDropdown"],
+          ["settings-platinumSoundSelect", "settings-psnPlatinumSoundSelect"],
+        ]) {
+          const from = document.getElementById(fromId);
+          const to = document.getElementById(toId);
+          if (from && to && to.options.length !== from.options.length) {
+            to.innerHTML = from.innerHTML;
+          }
+        }
+        const setValue = (id, value) => {
+          const el = document.getElementById(id);
+          if (el && value) el.value = value;
+        };
+        setValue(
+          "settings-psnPlatinumPositionDropdown",
+          prefs.psnPlatinumPosition || prefs.platinumPosition || "center-bottom",
+        );
+        setValue(
+          "settings-psnPlatinumPresetDropdown",
+          prefs.psnPlatinumPreset || prefs.platinumPreset || "default",
+        );
+        setValue(
+          "settings-psnPlatinumSoundSelect",
+          prefs.psnPlatinumSound || prefs.platinumSound || "mute",
+        );
+        const disable = document.getElementById("settings-disablePsnPlatinumCheckbox");
+        if (disable) disable.checked = prefs.disablePsnPlatinum === true;
+        refreshPsnNpssoStatus();
+      }
+
+      async function refreshPsnNpssoStatus() {
+        const status = document.getElementById("settings-psnNpssoStatus");
+        if (!status || !window.api?.psnNpssoStatus) return;
+        try {
+          const result = await window.api.psnNpssoStatus();
+          status.textContent = result?.hasNpsso
+            ? "A token is saved (stored encrypted on this computer)."
+            : result?.canEncrypt === false
+              ? "This computer cannot encrypt the token, so it cannot be saved."
+              : "No token saved yet.";
+        } catch {
+          status.textContent = "";
+        }
+      }
+
+      for (const [id, key] of [
+        ["settings-psnPlatinumPositionDropdown", "psnPlatinumPosition"],
+        ["settings-psnPlatinumPresetDropdown", "psnPlatinumPreset"],
+        ["settings-psnPlatinumSanPresetDropdown", "psnPlatinumSanPreset"],
+      ]) {
+        document.getElementById(id)?.addEventListener("change", (e) => {
+          window.api.savePreferences({ [key]: e.target.value });
+        });
+      }
+      document
+        .getElementById("settings-psnPlatinumSoundSelect")
+        ?.addEventListener("change", (e) => {
+          window.api.savePreferences({ psnPlatinumSound: e.target.value });
+          playPreviewSound(e.target.value, "settings-psnPlatinumSoundSelect");
+        });
+      document
+        .getElementById("settings-disablePsnPlatinumCheckbox")
+        ?.addEventListener("change", (e) => {
+          window.api.savePreferences({ disablePsnPlatinum: e.target.checked });
+        });
+      document
+        .getElementById("settings-testPsnPlatinumNotificationBtn")
+        ?.addEventListener("click", () => {
+          stopUiAudioPlayback();
+          window.api.showTestPsnPlatinumNotification({
+            preset:
+              document.getElementById("settings-psnPlatinumPresetDropdown")?.value ||
+              "default",
+            position:
+              document.getElementById("settings-psnPlatinumPositionDropdown")?.value ||
+              "center-bottom",
+            sound:
+              document.getElementById("settings-psnPlatinumSoundSelect")?.value ||
+              "mute",
+            useSanPreset:
+              document.getElementById("settings-useSanPresetCheckbox")?.checked === true,
+            sanPreset:
+              document.getElementById("settings-psnPlatinumSanPresetDropdown")?.value ||
+              "",
+            scale: parseFloat(
+              document.getElementById("settings-scaleSlider")?.value || 1,
+            ),
+          });
+        });
+      document
+        .getElementById("settings-psnNpssoSaveBtn")
+        ?.addEventListener("click", async () => {
+          const input = document.getElementById("settings-psnNpssoInput");
+          const status = document.getElementById("settings-psnNpssoStatus");
+          const result = await window.api.psnNpssoSave(input?.value || "");
+          if (result?.ok) {
+            if (input) input.value = "";
+            await refreshPsnNpssoStatus();
+          } else if (status) {
+            status.textContent = result?.message || "The token was not saved.";
+          }
+        });
+      document
+        .getElementById("settings-psnNpssoTestBtn")
+        ?.addEventListener("click", async () => {
+          const status = document.getElementById("settings-psnNpssoStatus");
+          if (status) status.textContent = "Testing...";
+          const result = await window.api.psnNpssoTest();
+          if (status) {
+            status.textContent = result?.ok
+              ? "Connected to PlayStation Network."
+              : result?.message || "The connection failed.";
+          }
+        });
+
       // Function to sync values between main UI and settings menu
       function syncSettingsToModal(options = {}) {
+        // Runs after the rest of this function has filled the shared dropdowns.
+        setTimeout(() => {
+          try {
+            syncPsnPlatinumSettings();
+          } catch {}
+        }, 0);
         const prefs = getCachedPreferences() || {};
         applyAppTheme(prefs.appTheme);
         applyHardwareAccelerationPreference(prefs?.disableHardwareAcceleration);
@@ -19534,6 +19805,25 @@
         );
         snapshot.platinumSanPreset =
           getVal("settings-platinumSanPresetDropdown") || "";
+        snapshot.psnPlatinumPreset = pick(
+          getVal("settings-psnPlatinumPresetDropdown"),
+          base.psnPlatinumPreset || snapshot.platinumPreset || snapshot.preset,
+        );
+        snapshot.psnPlatinumPosition = pick(
+          getVal("settings-psnPlatinumPositionDropdown"),
+          base.psnPlatinumPosition || snapshot.platinumPosition || snapshot.position,
+        );
+        snapshot.psnPlatinumSound = pick(
+          getVal("settings-psnPlatinumSoundSelect"),
+          base.psnPlatinumSound || snapshot.platinumSound || snapshot.sound,
+        );
+        snapshot.psnPlatinumSanPreset =
+          getVal("settings-psnPlatinumSanPresetDropdown") ||
+          base.psnPlatinumSanPreset ||
+          "";
+        snapshot.disablePsnPlatinum =
+          document.getElementById("settings-disablePsnPlatinumCheckbox")
+            ?.checked === true;
         for (const setting of EMULATOR_NOTIFICATION_SETTINGS) {
           snapshot[getEmulatorPrefKey(setting, "Preset")] = pick(
             getVal(setting.presetId),
@@ -24895,6 +25185,14 @@
                     refreshEmbedded: false,
                   });
                 }
+                return;
+              }
+              if (action === "psn-platinum") {
+                await window.runPsnPlatinumFlow?.(target);
+                return;
+              }
+              if (action === "psn-find-id") {
+                await window.api?.psnFindId?.(target.displayName || target.name);
                 return;
               }
               if (action === "select") {
