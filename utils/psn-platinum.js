@@ -49,8 +49,8 @@ function looksLikeNpsso(value) {
 }
 
 function toPlatinum(trophy, npwr, platform, gameName = "") {
-  const name = String(trophy?.trophyName || "").trim();
-  if (!name) return null;
+  // A Platinum PlayStation lists without a name (a hidden one, say) is still the Platinum.
+  const name = String(trophy?.trophyName || "").trim() || "Platinum Trophy";
   return {
     npwr,
     platform,
@@ -126,6 +126,44 @@ function createPsnPlatinumService({ psnApi, fetchImpl }) {
     }
   }
 
+  function shortError(error) {
+    const text = String(error?.message || error || "").replace(/\s+/g, " ").trim();
+    return text.length > 140 ? `${text.slice(0, 140)}...` : text;
+  }
+
+  /**
+   * Reads one trophy service's list page by page (100 at a time, as PlayniteAchievements does)
+   * until a Platinum turns up or the pages run out.
+   * @returns {{ platinum: object|null, note: string }}
+   */
+  async function findPlatinumInService(authorization, id, platform, serviceOptions) {
+    const types = {};
+    let offset = 0;
+    let seen = 0;
+    for (let page = 0; page < 20; page += 1) {
+      const response = await psnApi.getTitleTrophies(authorization, id, "all", {
+        ...(serviceOptions || {}),
+        limit: 100,
+        offset,
+      });
+      const trophies = Array.isArray(response?.trophies) ? response.trophies : [];
+      seen += trophies.length;
+      for (const trophy of trophies) {
+        const type = String(trophy?.trophyType || "unknown");
+        types[type] = (types[type] || 0) + 1;
+      }
+      const trophy = trophies.find((entry) => entry?.trophyType === "platinum");
+      if (trophy) {
+        return { platinum: toPlatinum(trophy, id, platform, response?.trophyTitleName), note: `${platform}: Platinum found` };
+      }
+      const next = Number(response?.nextOffset);
+      if (!Number.isFinite(next) || next <= offset) break;
+      offset = next;
+    }
+    const breakdown = Object.entries(types).map(([type, count]) => `${count} ${type}`).join(", ");
+    return { platinum: null, note: `${platform}: ${seen} trophies${breakdown ? ` (${breakdown})` : ""}, no Platinum` };
+  }
+
   /** The Platinum of whichever set has one, preferring PS5 over PS4. */
   async function fetchPlatinum(npsso, npwrIds) {
     const ids = [...new Set((npwrIds || []).map((id) => String(id || "").trim().toUpperCase()))].filter(isValidNpwr);
@@ -136,16 +174,14 @@ function createPsnPlatinumService({ psnApi, fetchImpl }) {
 
     let best = null;
     let lastError = null;
+    const notes = [];
     for (const id of ids) {
       for (const [platform, options] of [["PS5", { npServiceName: "trophy2" }], ["PS4", undefined]]) {
         try {
-          const response = options
-            ? await psnApi.getTitleTrophies(authorization, id, "all", options)
-            : await psnApi.getTitleTrophies(authorization, id, "all");
-          const trophy = (response?.trophies || []).find((entry) => entry?.trophyType === "platinum");
-          const platinum = trophy ? toPlatinum(trophy, id, platform, response?.trophyTitleName) : null;
-          if (platinum) {
-            if (!best || (platform === "PS5" && best.platform !== "PS5")) best = platinum;
+          const found = await findPlatinumInService(authorization, id, platform, options);
+          notes.push(`${id} ${found.note}`);
+          if (found.platinum) {
+            if (!best || (platform === "PS5" && best.platform !== "PS5")) best = found.platinum;
             break; // this set answered: no need to also try its PS4 service name
           }
         } catch (error) {
@@ -153,11 +189,17 @@ function createPsnPlatinumService({ psnApi, fetchImpl }) {
           // A rejected token or a pause request ends everything; a missing set just moves on.
           if (classified.kind === "auth" || classified.kind === "rate-limited") throw classified;
           lastError = classified;
+          notes.push(`${id} ${platform}: ${shortError(error)}`);
         }
       }
     }
     if (!best) {
-      throw lastError || new PsnPlatinumError("no-platinum", "That trophy set has no Platinum trophy.");
+      // What PlayStation actually answered goes into the message, so a failure can be diagnosed.
+      const detail = notes.length ? ` (${notes.join("; ")})` : "";
+      if (lastError && notes.every((note) => !/no Platinum/.test(note))) {
+        throw new PsnPlatinumError(lastError.kind, `${lastError.message}${detail}`);
+      }
+      throw new PsnPlatinumError("no-platinum", `That trophy set has no Platinum trophy.${detail}`);
     }
     return best;
   }

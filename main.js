@@ -15694,11 +15694,19 @@ function layoutStackedNotifications(position) {
   });
 }
 
-function registerStackedNotificationWindow(notificationWindow, position) {
+function registerStackedNotificationWindow(notificationWindow, position, sanTheme = null) {
+  const anchor = notificationWindow.getBounds();
+  // A SAN notification window is larger than its card by a transparent margin all round, and
+  // the card sits in the middle of it. Stacking spaces the cards, so it needs that margin.
+  const cardHeight = Number(sanTheme?.presetDimensions?.height) * Number(sanTheme?.scale);
+  const inset = Number.isFinite(cardHeight) && cardHeight > 0
+    ? Math.max(0, Math.floor((anchor.height - cardHeight) / 2))
+    : 0;
   const entry = {
     window: notificationWindow,
     position: position || "center-bottom",
-    anchor: notificationWindow.getBounds(),
+    anchor,
+    inset,
   };
   stackedNotificationEntries.push(entry);
   notificationWindow.once("closed", () => {
@@ -17377,6 +17385,7 @@ function showCustomAchievementNotification({
       registerStackedNotificationWindow(
         notificationWindow,
         notificationData.position || "center-bottom",
+        notificationData.sanTheme || null,
       );
     } catch (error) {
       notificationLogger.warn("notification-stack:register-failed", {

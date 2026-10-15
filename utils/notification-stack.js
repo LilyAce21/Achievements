@@ -6,6 +6,8 @@
 
 const STACK_LIMIT = 3;
 const STACK_GAP_PX = 8;
+// How much of the old visible gap between stacked cards is removed.
+const STACK_GAP_REDUCTION = 0.85;
 const STACKABLE_TIERS = new Set(["", "bronze", "silver"]);
 const BOTTOM_POSITIONS = new Set(["center-bottom", "bottom-right", "bottom-left"]);
 
@@ -34,27 +36,52 @@ function canStart({ activeCount, activeExclusiveCount, candidateStackable, max }
 }
 
 /**
+ * The space left between two neighbouring cards as the eye sees it. A notification window carries
+ * a transparent margin (`inset`) above and below its card, so two windows set edge to edge leave
+ * both margins plus the gap between them. This is 15% of that old visible gap, never less than 1px.
+ */
+function visibleGapBetween(insetA, insetB, gap = STACK_GAP_PX) {
+  const before = Math.max(0, insetA) + Math.max(0, insetB) + gap;
+  return Math.max(1, Math.round(before * (1 - STACK_GAP_REDUCTION)));
+}
+
+/**
  * Where each card of one position's stack goes, newest on top.
- * `group` is oldest first, each { anchor: { x, y, width, height } } where the anchor is where the
- * card would sit alone. Top-anchored and middle positions push older cards down; bottom-anchored
- * positions keep older cards in place and add new ones above them.
+ * `group` is oldest first, each { anchor: { x, y, width, height }, inset } where the anchor is where
+ * the card would sit alone and `inset` is the transparent margin above and below its card.
+ * Cards are spaced by their visible edges, so the margins overlap. Top-anchored and middle
+ * positions push older cards down; bottom-anchored positions keep older cards in place and add new
+ * ones above them.
  * @returns {{ x: number, y: number }[]} one entry per card, in the same order as `group`
  */
-function computeStackPositions(group, position, gap = STACK_GAP_PX) {
+function computeStackPositions(group, position) {
   if (!Array.isArray(group) || group.length === 0) return [];
+  const inset = (entry) => Math.max(0, Number(entry?.inset) || 0);
   const out = new Array(group.length);
   if (BOTTOM_POSITIONS.has(position)) {
-    let cursor = group[0].anchor.y + group[0].anchor.height;
-    for (let index = 0; index < group.length; index += 1) {
-      const y = cursor - group[index].anchor.height;
-      out[index] = { x: group[index].anchor.x, y: Math.round(y) };
-      cursor = y - gap;
+    // Oldest sits where it would alone; each newer card goes above the one before it.
+    out[0] = { x: group[0].anchor.x, y: group[0].anchor.y };
+    for (let index = 1; index < group.length; index += 1) {
+      const below = group[index - 1];
+      const card = group[index];
+      const gap = visibleGapBetween(inset(card), inset(below));
+      out[index] = {
+        x: card.anchor.x,
+        y: Math.round(out[index - 1].y + inset(below) + inset(card) - gap - card.anchor.height),
+      };
     }
   } else {
-    let cursor = group[0].anchor.y;
-    for (let index = group.length - 1; index >= 0; index -= 1) {
-      out[index] = { x: group[index].anchor.x, y: Math.round(cursor) };
-      cursor += group[index].anchor.height + gap;
+    // Newest sits where it would alone; each older card goes below the one before it.
+    const last = group.length - 1;
+    out[last] = { x: group[last].anchor.x, y: group[0].anchor.y };
+    for (let index = last - 1; index >= 0; index -= 1) {
+      const above = group[index + 1];
+      const card = group[index];
+      const gap = visibleGapBetween(inset(above), inset(card));
+      out[index] = {
+        x: card.anchor.x,
+        y: Math.round(out[index + 1].y + above.anchor.height - inset(above) - inset(card) + gap),
+      };
     }
   }
   return out;
@@ -76,7 +103,9 @@ function slideY(fromY, toY, elapsedMs, durationMs = STACK_SLIDE_MS) {
 module.exports = {
   STACK_LIMIT,
   STACK_GAP_PX,
+  STACK_GAP_REDUCTION,
   STACK_SLIDE_MS,
+  visibleGapBetween,
   clampStackMax,
   isStackableTier,
   canStart,
