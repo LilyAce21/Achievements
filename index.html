@@ -2035,6 +2035,15 @@
                   </button>
                 </div>
                 <p id="settings-psnNpssoStatus" style="margin: 4px 0 10px; opacity: 0.75; font-size: 0.9em"></p>
+                <div style="display: flex; gap: 8px; margin: 6px 0">
+                  <button id="settings-psnBulkGenerateBtn" class="settings-test-button" style="flex: 3; padding: 8px">
+                    Generate PSN Platinum for all games with a saved ID
+                  </button>
+                  <button id="settings-psnBulkCancelBtn" class="settings-test-button" style="flex: 1; padding: 8px" hidden>
+                    Cancel
+                  </button>
+                </div>
+                <p id="settings-psnBulkStatus" style="margin: 4px 0 10px; opacity: 0.75; font-size: 0.9em"></p>
 
                 <hr style="margin: 18px 0 14px" />
                 <h4
@@ -19378,6 +19387,54 @@
           } else if (status) {
             status.textContent = result?.message || "The token was not saved.";
           }
+        });
+      document
+        .getElementById("settings-psnBulkGenerateBtn")
+        ?.addEventListener("click", async () => {
+          const button = document.getElementById("settings-psnBulkGenerateBtn");
+          const cancel = document.getElementById("settings-psnBulkCancelBtn");
+          const status = document.getElementById("settings-psnBulkStatus");
+          const go = await showAppConfirm({
+            title: "Generate PSN Platinum for all games",
+            message:
+              "This looks up the PlayStation Platinum for every game that has a saved NPWR ID and no PSN Platinum yet, one game at a time. Games already completed will not be announced. Continue?",
+            okText: "Start",
+          });
+          if (!go) return;
+          button.disabled = true;
+          cancel.hidden = false;
+          status.textContent = "Starting...";
+          const stopListening = window.api.onPsnBulkProgress?.((progress) => {
+            status.textContent = `Working... ${progress.done} of ${progress.total}`;
+          });
+          try {
+            const result = await window.api.psnPlatinumGenerateAll();
+            if (!result?.ok) {
+              status.textContent = result?.message || "It could not start.";
+            } else {
+              const parts = [`${result.generated} generated`];
+              if (result.failed) parts.push(`${result.failed} failed`);
+              if (result.alreadyHad) parts.push(`${result.alreadyHad} already had one`);
+              if (result.noId) parts.push(`${result.noId} have no saved ID`);
+              status.textContent =
+                (result.stopped === "canceled"
+                  ? "Canceled. "
+                  : result.stopped
+                    ? `Stopped: ${result.message} `
+                    : "Done. ") + parts.join(", ") + ".";
+            }
+          } catch (error) {
+            status.textContent = String(error?.message || "It failed.");
+          } finally {
+            stopListening?.();
+            button.disabled = false;
+            cancel.hidden = true;
+          }
+        });
+      document
+        .getElementById("settings-psnBulkCancelBtn")
+        ?.addEventListener("click", () => {
+          window.api.psnPlatinumGenerateAllCancel();
         });
       document
         .getElementById("settings-psnNpssoTestBtn")

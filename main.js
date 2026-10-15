@@ -15142,18 +15142,20 @@ async function fetchSteamHuntersText(url) {
       partition: "steamhunters-base-game",
     },
   });
+  let timeout = null;
   try {
     await Promise.race([
       win.loadURL(url),
-      new Promise((_resolve, reject) =>
-        setTimeout(() => reject(new Error("steamhunters timeout")), 20000),
-      ),
+      new Promise((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error("steamhunters timeout")), 20000);
+      }),
     ]);
     return await win.webContents.executeJavaScript(
       "document.body ? document.body.innerText : ''",
       true,
     );
   } finally {
+    if (timeout) clearTimeout(timeout);
     if (!win.isDestroyed()) win.destroy();
   }
 }
@@ -15222,7 +15224,10 @@ async function checkPsnPlatinum(configName) {
 
 function schedulePsnPlatinumChecks(configName) {
   const safe = configName ? sanitizeConfigName(configName) : "";
-  if (!safe || !configHasPsnPlatinum(safe)) return;
+  if (!safe) return;
+  // Only games with PSN Platinum data that has not been announced yet need a look at all.
+  const entry = readConfigForPsn(safe);
+  if (!entry?.config?.psn_platinum?.name || entry.config.psn_platinum_fired === true) return;
   if (psnPlatinumCheckTimers.has(safe)) return;
   // The earned state is saved around the time the unlock is announced, so look a little later,
   // and once more in case the first look was early.
@@ -15337,19 +15342,100 @@ ipcMain.handle("psn:platinum-status", (_event, configName) => {
     : { has: false };
 });
 
+async function generatePsnPlatinumFromIds(configName, ids) {
+  const service = getPsnPlatinumService();
+  const platinum = await service.fetchPlatinum(getPsnNpssoStore().read(), ids);
+  const icon = await service.downloadIcon(platinum.iconUrl);
+  return savePsnPlatinumForConfig(configName, platinum, icon, ids);
+}
+
 ipcMain.handle("psn:platinum-generate", async (_event, configName, text) => {
   try {
     const ids = extractNpwrIds(text);
     if (ids.length === 0) {
       return { ok: false, kind: "not-found", message: "No NPWR ID was found in that text. It looks like NPWR12345_00." };
     }
-    const service = getPsnPlatinumService();
-    const platinum = await service.fetchPlatinum(getPsnNpssoStore().read(), ids);
-    const icon = await service.downloadIcon(platinum.iconUrl);
-    return await savePsnPlatinumForConfig(configName, platinum, icon, ids);
+    return await generatePsnPlatinumFromIds(configName, ids);
   } catch (error) {
     return describePsnError(error);
   }
+});
+
+// Generates the PSN Platinum for every game that has a saved NPWR ID and no PSN Platinum yet.
+// One game at a time with a pause between, and it stops at the first sign PlayStation is
+// unhappy (a rejected token or a request to slow down). Runs only when the user asks.
+const PSN_BULK_PAUSE_MS = 2000;
+let psnBulkRunning = false;
+let psnBulkCancel = false;
+
+function knownPsnIdsForConfig(entry) {
+  const own = Array.isArray(entry.config.psn_npwr_ids) ? entry.config.psn_npwr_ids : [];
+  const shared = getPsnSharedIdStore().lookup(psnIdentityForConfig(entry.config));
+  return [...new Set([...own, ...shared])];
+}
+
+ipcMain.handle("psn:platinum-generate-all", async (event) => {
+  if (psnBulkRunning) return { ok: false, message: "This is already running." };
+  if (!getPsnNpssoStore().has()) {
+    return { ok: false, message: "Save your NPSSO token first." };
+  }
+  psnBulkRunning = true;
+  psnBulkCancel = false;
+  const summary = { ok: true, total: 0, generated: 0, failed: 0, alreadyHad: 0, noId: 0, stopped: "", message: "" };
+  try {
+    const candidates = [];
+    for (const name of listConfigs()) {
+      const entry = readConfigForPsn(name);
+      if (!entry) continue;
+      if (entry.config.psn_platinum?.name) {
+        summary.alreadyHad += 1;
+        continue;
+      }
+      const ids = knownPsnIdsForConfig(entry);
+      if (ids.length === 0) {
+        summary.noId += 1;
+        continue;
+      }
+      candidates.push({ name, ids });
+    }
+    summary.total = candidates.length;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      if (psnBulkCancel) {
+        summary.stopped = "canceled";
+        break;
+      }
+      event.sender.send("psn:bulk-progress", { done: index, total: candidates.length });
+      let result;
+      try {
+        result = await generatePsnPlatinumFromIds(candidates[index].name, candidates[index].ids);
+      } catch (error) {
+        result = describePsnError(error);
+      }
+      if (result?.ok) {
+        summary.generated += 1;
+      } else {
+        summary.failed += 1;
+        if (result?.kind === "auth" || result?.kind === "rate-limited") {
+          summary.stopped = result.kind;
+          summary.message = result.message;
+          break;
+        }
+      }
+      if (index < candidates.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, PSN_BULK_PAUSE_MS));
+      }
+    }
+    event.sender.send("psn:bulk-progress", { done: candidates.length, total: candidates.length });
+  } finally {
+    psnBulkRunning = false;
+  }
+  return summary;
+});
+
+ipcMain.handle("psn:platinum-generate-all-cancel", () => {
+  psnBulkCancel = true;
+  return { ok: true };
 });
 
 ipcMain.handle("psn:platinum-import-file", async (_event, configName) => {

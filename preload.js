@@ -630,6 +630,14 @@ contextBridge.exposeInMainWorld("api", {
   psnNpssoStatus: () => ipcRenderer.invoke("psn:npsso-status"),
   psnNpssoSave: (value) => ipcRenderer.invoke("psn:npsso-save", value),
   psnNpssoTest: () => ipcRenderer.invoke("psn:npsso-test"),
+  psnPlatinumGenerateAll: () => ipcRenderer.invoke("psn:platinum-generate-all"),
+  psnPlatinumGenerateAllCancel: () =>
+    ipcRenderer.invoke("psn:platinum-generate-all-cancel"),
+  onPsnBulkProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("psn:bulk-progress", listener);
+    return () => ipcRenderer.removeListener("psn:bulk-progress", listener);
+  },
   psnSharedIds: (configName) => ipcRenderer.invoke("psn:shared-ids", configName),
   psnPlatinumStatus: (configName) =>
     ipcRenderer.invoke("psn:platinum-status", configName),

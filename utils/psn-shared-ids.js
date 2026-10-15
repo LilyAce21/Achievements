@@ -45,10 +45,22 @@ function cleanIds(ids) {
 function createSharedIdStore({ dir, now = () => Date.now() }) {
   const filePath = path.join(dir, FILE_NAME);
 
+  // The parsed file is reused while it has not changed on disk, so scanning every game for a
+  // known ID does not read and parse the file once per game.
+  let cached = null;
+  let cachedStamp = "";
+
   function read() {
     try {
+      const stat = fs.statSync(filePath);
+      const stamp = `${stat.mtimeMs}:${stat.size}`;
+      if (cached && stamp === cachedStamp) return cached;
       const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      if (data && typeof data === "object" && data.games && typeof data.games === "object") return data;
+      if (data && typeof data === "object" && data.games && typeof data.games === "object") {
+        cached = data;
+        cachedStamp = stamp;
+        return data;
+      }
     } catch {}
     return { version: 1, games: {} };
   }
@@ -70,13 +82,14 @@ function createSharedIdStore({ dir, now = () => Date.now() }) {
     if (ids.length === 0 || keys.length === 0) return false;
     try {
       fs.mkdirSync(dir, { recursive: true });
-      const data = read();
+      const data = JSON.parse(JSON.stringify(read()));
       for (const key of keys) {
         data.games[key] = { name: String(name || "").trim(), npwrIds: ids, updatedAt: now() };
       }
       const temp = `${filePath}.${process.pid}.tmp`;
       fs.writeFileSync(temp, JSON.stringify(data, null, 2));
       fs.renameSync(temp, filePath);
+      cached = null;
       return true;
     } catch {
       return false;
