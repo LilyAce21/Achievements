@@ -630,6 +630,7 @@ contextBridge.exposeInMainWorld("api", {
   psnNpssoStatus: () => ipcRenderer.invoke("psn:npsso-status"),
   psnNpssoSave: (value) => ipcRenderer.invoke("psn:npsso-save", value),
   psnNpssoTest: () => ipcRenderer.invoke("psn:npsso-test"),
+  psnSharedIds: (configName) => ipcRenderer.invoke("psn:shared-ids", configName),
   psnPlatinumStatus: (configName) =>
     ipcRenderer.invoke("psn:platinum-status", configName),
   psnPlatinumGenerate: (configName, text) =>

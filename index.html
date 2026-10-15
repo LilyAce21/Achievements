@@ -12675,6 +12675,32 @@
             });
             if (!replace) return;
           }
+          // An ID already known for this game (entered here before, or saved by
+          // PlayniteAchievements) needs no typing.
+          const known = await window.api.psnSharedIds(name);
+          if (known?.ids?.length) {
+            const useKnown = await showAppConfirm({
+              title: "Generate PSN Platinum",
+              message: `An NPWR ID is already saved for ${gameLabel}: ${known.ids.join(", ")}. Use it?`,
+              okText: "Use it",
+              cancelText: "Enter another",
+            });
+            if (useKnown) {
+              showNotification("Working on the PSN Platinum...", "#2196f3");
+              const result = await window.api.psnPlatinumGenerate(name, known.ids.join(" "));
+              if (!result?.ok) {
+                showNotification(result?.message || "The PSN Platinum could not be generated.", "#f44336");
+                return;
+              }
+              showNotification(
+                result.alreadyComplete
+                  ? `PSN Platinum saved for ${gameLabel}. The base game is already complete, so it will not be announced.`
+                  : `PSN Platinum saved for ${gameLabel}. It will be announced when every base-game achievement is earned.`,
+                "#4caf50",
+              );
+              return;
+            }
+          }
           const prompt = await showAppTextPrompt({
             title: "Generate PSN Platinum",
             message:

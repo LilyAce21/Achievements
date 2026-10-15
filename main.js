@@ -15053,6 +15053,10 @@ const {
 } = require("./utils/psn-platinum");
 const { createNpssoStore } = require("./utils/psn-npsso-store");
 const {
+  createSharedIdStore,
+  FOLDER_NAME: PSN_SHARED_IDS_FOLDER,
+} = require("./utils/psn-shared-ids");
+const {
   getDlcApiNames,
   isBaseGameComplete,
 } = require("./utils/steamhunters-base");
@@ -15072,6 +15076,26 @@ function getPsnNpssoStore() {
     });
   }
   return psnNpssoStore;
+}
+
+// NPWR IDs shared with PlayniteAchievements through %APPDATA%\PSN Platinum IDs\npwr-ids.json.
+let psnSharedIdStore = null;
+
+function getPsnSharedIdStore() {
+  if (!psnSharedIdStore) {
+    psnSharedIdStore = createSharedIdStore({
+      dir: path.join(app.getPath("appData"), PSN_SHARED_IDS_FOLDER),
+    });
+  }
+  return psnSharedIdStore;
+}
+
+function psnIdentityForConfig(config) {
+  const platform = normalizePlatform(config?.platform) || "steam";
+  return {
+    steamAppId: STEAM_APPID_PLATFORMS.has(platform) ? config?.appid : null,
+    name: config?.name || "",
+  };
 }
 
 function getPsnPlatinumService() {
@@ -15255,7 +15279,15 @@ async function savePsnPlatinumForConfig(configName, platinum, icon, npwrIds) {
     icon: iconPath,
     generatedAt: Date.now(),
   };
-  if (npwrIds?.length) fresh.config.psn_npwr_ids = npwrIds;
+  if (npwrIds?.length) {
+    fresh.config.psn_npwr_ids = npwrIds;
+    try {
+      getPsnSharedIdStore().remember({
+        ...psnIdentityForConfig(fresh.config),
+        npwrIds,
+      });
+    } catch {}
+  }
   fresh.config.psn_platinum_fired = alreadyComplete;
   if (!alreadyComplete) delete fresh.config.psn_platinum_fired_at;
   writePsnConfig(fresh.cfgPath, fresh.config);
@@ -15287,6 +15319,14 @@ ipcMain.handle("psn:npsso-test", async () => {
   } catch (error) {
     return describePsnError(error);
   }
+});
+
+ipcMain.handle("psn:shared-ids", (_event, configName) => {
+  const entry = readConfigForPsn(configName);
+  if (!entry) return { ids: [] };
+  const own = Array.isArray(entry.config.psn_npwr_ids) ? entry.config.psn_npwr_ids : [];
+  const shared = getPsnSharedIdStore().lookup(psnIdentityForConfig(entry.config));
+  return { ids: [...new Set([...shared, ...own])] };
 });
 
 ipcMain.handle("psn:platinum-status", (_event, configName) => {
