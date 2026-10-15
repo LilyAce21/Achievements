@@ -60,4 +60,27 @@ function computeStackPositions(group, position, gap = STACK_GAP_PX) {
   return out;
 }
 
-module.exports = { STACK_LIMIT, STACK_GAP_PX, clampStackMax, isStackableTier, canStart, computeStackPositions };
+const STACK_SLIDE_MS = 220;
+
+function easeOutCubic(t) {
+  const x = Math.min(1, Math.max(0, Number(t) || 0));
+  return 1 - Math.pow(1 - x, 3);
+}
+
+/** The y a sliding card should be at, `elapsedMs` into a slide from `fromY` to `toY`. */
+function slideY(fromY, toY, elapsedMs, durationMs = STACK_SLIDE_MS) {
+  if (!(durationMs > 0) || elapsedMs >= durationMs) return Math.round(toY);
+  return Math.round(fromY + (toY - fromY) * easeOutCubic(elapsedMs / durationMs));
+}
+
+module.exports = {
+  STACK_LIMIT,
+  STACK_GAP_PX,
+  STACK_SLIDE_MS,
+  clampStackMax,
+  isStackableTier,
+  canStart,
+  computeStackPositions,
+  easeOutCubic,
+  slideY,
+};

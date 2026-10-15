@@ -15484,6 +15484,8 @@ const {
   isStackableTier,
   canStart: canStartStackedNotification,
   computeStackPositions,
+  slideY,
+  STACK_SLIDE_MS,
 } = require("./utils/notification-stack");
 const stackedNotificationEntries = []; // oldest first
 
@@ -15512,22 +15514,57 @@ function canStartNotification(achievement) {
   });
 }
 
-// Newest card on top. On top-anchored positions the older cards shift down as new ones arrive;
-// on bottom-anchored positions the older cards stay put and new ones appear above them.
+// Moves an already-visible card to a new y with a short ease-out slide. A newer slide on the
+// same card replaces the one in progress, and a closed window stops its slide.
+function slideNotificationWindowTo(entry, targetY) {
+  const win = entry.window;
+  if (!win || win.isDestroyed()) return;
+  if (entry.slideTimer) {
+    clearInterval(entry.slideTimer);
+    entry.slideTimer = null;
+  }
+  const setY = (y) => {
+    try {
+      win.setBounds({
+        x: entry.anchor.x,
+        y,
+        width: entry.anchor.width,
+        height: entry.anchor.height,
+      });
+    } catch {}
+  };
+  const fromY = win.getBounds().y;
+  if (fromY === targetY || !entry.placed) {
+    setY(targetY);
+    entry.placed = true;
+    return;
+  }
+  const startedAt = Date.now();
+  entry.slideTimer = setInterval(() => {
+    if (win.isDestroyed()) {
+      clearInterval(entry.slideTimer);
+      entry.slideTimer = null;
+      return;
+    }
+    const elapsed = Date.now() - startedAt;
+    setY(slideY(fromY, targetY, elapsed));
+    if (elapsed >= STACK_SLIDE_MS) {
+      clearInterval(entry.slideTimer);
+      entry.slideTimer = null;
+    }
+  }, 16);
+}
+
+// Newest card on top. On top-anchored positions the older cards slide down as new ones arrive;
+// on bottom-anchored positions the older cards stay put and new ones appear above them. When a
+// card closes the rest slide together to close the gap.
 function layoutStackedNotifications(position) {
   const group = stackedNotificationEntries.filter(
     (entry) => entry.position === position && !entry.window.isDestroyed(),
   );
   const positions = computeStackPositions(group, position);
   group.forEach((entry, index) => {
-    try {
-      entry.window.setBounds({
-        x: positions[index].x,
-        y: positions[index].y,
-        width: entry.anchor.width,
-        height: entry.anchor.height,
-      });
-    } catch {}
+    slideNotificationWindowTo(entry, positions[index].y);
   });
 }
 
@@ -15539,6 +15576,10 @@ function registerStackedNotificationWindow(notificationWindow, position) {
   };
   stackedNotificationEntries.push(entry);
   notificationWindow.once("closed", () => {
+    if (entry.slideTimer) {
+      clearInterval(entry.slideTimer);
+      entry.slideTimer = null;
+    }
     const index = stackedNotificationEntries.indexOf(entry);
     if (index >= 0) stackedNotificationEntries.splice(index, 1);
     layoutStackedNotifications(entry.position);
