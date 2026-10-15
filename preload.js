@@ -623,6 +623,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.send("show-test-emulator-notification", options),
   showTestPlatinumNotification: (options) =>
     ipcRenderer.send("show-test-platinum-notification", options),
+  showTestStackNotifications: (options) =>
+    ipcRenderer.send("show-test-stack-notifications", options),
   showTestPsnPlatinumNotification: (options) =>
     ipcRenderer.send("show-test-psn-platinum-notification", options),
   psnNpssoStatus: () => ipcRenderer.invoke("psn:npsso-status"),

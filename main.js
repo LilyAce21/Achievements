@@ -2209,6 +2209,7 @@ const DEFAULT_PREFERENCES = {
   psnPlatinumPreset: "default",
   psnPlatinumPosition: "center-bottom",
   disablePsnPlatinum: false,
+  notificationStackMax: 3,
   showBlacklistedGames: false,
   disablePlatinum: false,
   showHiddenDescription: false,
@@ -14668,6 +14669,34 @@ ipcMain.on("show-test-notification", (event, options) => {
   queueAchievementNotification(notificationData);
 });
 
+ipcMain.on("show-test-stack-notifications", (_event, options = {}) => {
+  const prefs = cachedPreferences || {};
+  const baseDir = app.isPackaged ? process.resourcesPath : __dirname;
+  for (let index = 1; index <= NOTIFICATION_STACK_LIMIT; index += 1) {
+    queueAchievementNotification({
+      displayName: `Test Achievement ${index}`,
+      description: "One of several test notifications fired together to check stacking.",
+      icon: ICON_PNG_PATH,
+      icon_gray: ICON_PNG_PATH,
+      config_path: baseDir,
+      preset: options.preset || "default",
+      position: options.position || "center-bottom",
+      sound: options.sound || "mute",
+      useSanPreset: options.useSanPreset === true,
+      sanPreset: options.sanPreset || "",
+      scale: parseFloat(
+        options.scale != null
+          ? options.scale
+          : prefs.notificationScale != null
+            ? prefs.notificationScale
+            : 1,
+      ),
+      skipScreenshot: true,
+      isTest: true,
+    });
+  }
+});
+
 function getRandomTestRareRarity(requestedTier = "") {
   const tiers = [
     { name: "sapphire", min: 0.1, max: 5 },
@@ -15443,7 +15472,79 @@ ipcMain.handle("load-presets", async () => {
 });
 
 const earnedNotificationQueue = [];
-let isNotificationShowing = false;
+// Notifications run one at a time unless they may stack. Only Bronze-tier and Silver-tier
+// notifications (and ones with no rarity tier) stack, up to the "max at once" setting. Gold,
+// Sapphire, Platinum and PSN Platinum always show alone: they wait for everything on screen to
+// finish, and nothing starts while one of them is showing.
+let activeNotificationCount = 0;
+let activeExclusiveCount = 0;
+const {
+  STACK_LIMIT: NOTIFICATION_STACK_LIMIT,
+  clampStackMax,
+  isStackableTier,
+  canStart: canStartStackedNotification,
+  computeStackPositions,
+} = require("./utils/notification-stack");
+const stackedNotificationEntries = []; // oldest first
+
+function getNotificationStackMax() {
+  return clampStackMax(cachedPreferences?.notificationStackMax);
+}
+
+function isStackableNotification(achievement = {}) {
+  const preset = achievement.preset || "default";
+  return isStackableTier({
+    rarityTier: achievement.rarityTier,
+    isPlatinum: achievement.isPlatinum === true || achievement.__isPlatinum === true,
+    isPsnPlatinum: achievement.isPsnPlatinum === true,
+    // The system toast and Game Bar presets are drawn by Windows, which does its own stacking.
+    drawnBySystem:
+      isNativeWindowsNotificationPreset(preset) || isGameBarNotificationPreset(preset),
+  });
+}
+
+function canStartNotification(achievement) {
+  return canStartStackedNotification({
+    activeCount: activeNotificationCount,
+    activeExclusiveCount,
+    candidateStackable: isStackableNotification(achievement),
+    max: getNotificationStackMax(),
+  });
+}
+
+// Newest card on top. On top-anchored positions the older cards shift down as new ones arrive;
+// on bottom-anchored positions the older cards stay put and new ones appear above them.
+function layoutStackedNotifications(position) {
+  const group = stackedNotificationEntries.filter(
+    (entry) => entry.position === position && !entry.window.isDestroyed(),
+  );
+  const positions = computeStackPositions(group, position);
+  group.forEach((entry, index) => {
+    try {
+      entry.window.setBounds({
+        x: positions[index].x,
+        y: positions[index].y,
+        width: entry.anchor.width,
+        height: entry.anchor.height,
+      });
+    } catch {}
+  });
+}
+
+function registerStackedNotificationWindow(notificationWindow, position) {
+  const entry = {
+    window: notificationWindow,
+    position: position || "center-bottom",
+    anchor: notificationWindow.getBounds(),
+  };
+  stackedNotificationEntries.push(entry);
+  notificationWindow.once("closed", () => {
+    const index = stackedNotificationEntries.indexOf(entry);
+    if (index >= 0) stackedNotificationEntries.splice(index, 1);
+    layoutStackedNotifications(entry.position);
+  });
+  layoutStackedNotifications(entry.position);
+}
 const progressNotificationQueue = [];
 let isProgressShowing = false;
 let pendingPlatinumNotification = null;
@@ -17104,6 +17205,19 @@ function showCustomAchievementNotification({
     return null;
   }
 
+  if (notificationData.stackable === true) {
+    try {
+      registerStackedNotificationWindow(
+        notificationWindow,
+        notificationData.position || "center-bottom",
+      );
+    } catch (error) {
+      notificationLogger.warn("notification-stack:register-failed", {
+        error: error?.message || String(error),
+      });
+    }
+  }
+
   const notificationWebContentsId = notificationWindow.webContents.id;
   if (playSound) {
     playAchievementNotificationSound(achievement);
@@ -17147,15 +17261,28 @@ function showCustomAchievementNotification({
 }
 
 function processNextNotification() {
-  if (isNotificationShowing || earnedNotificationQueue.length === 0) return;
+  let guard = 0;
+  while (
+    earnedNotificationQueue.length > 0 &&
+    guard < 50 &&
+    canStartNotification(earnedNotificationQueue[0])
+  ) {
+    guard += 1;
+    startNextNotification();
+  }
+}
 
+function startNextNotification() {
   const achievement = earnedNotificationQueue.shift();
-  isNotificationShowing = true;
+  const stackable = isStackableNotification(achievement);
+  activeNotificationCount += 1;
+  if (!stackable) activeExclusiveCount += 1;
   let queueEntryFinished = false;
   const finishCurrentNotification = () => {
     if (queueEntryFinished) return;
     queueEntryFinished = true;
-    isNotificationShowing = false;
+    activeNotificationCount = Math.max(0, activeNotificationCount - 1);
+    if (!stackable) activeExclusiveCount = Math.max(0, activeExclusiveCount - 1);
     processNextNotification();
     flushPendingPlatinum();
   };
@@ -17190,6 +17317,7 @@ function processNextNotification() {
       achievement.isPlatinum === true || achievement.__isPlatinum === true,
     isPsnPlatinum: achievement.isPsnPlatinum === true,
     isTest: !!achievement.isTest,
+    stackable,
   };
 
   const preset = achievement.preset || "default";
@@ -17501,7 +17629,7 @@ function flushPendingPlatinum() {
   if (
     pendingPlatinumNotification &&
     !platinumAwaitingNormal &&
-    !isNotificationShowing &&
+    activeNotificationCount === 0 &&
     earnedNotificationQueue.length === 0
   ) {
     queueAchievementNotification(pendingPlatinumNotification);
@@ -17512,7 +17640,7 @@ function flushPendingPlatinum() {
     }
   } else if (
     !pendingPlatinumNotification &&
-    !isNotificationShowing &&
+    activeNotificationCount === 0 &&
     earnedNotificationQueue.length === 0 &&
     pendingPlatinumByConfig.size > 0
   ) {

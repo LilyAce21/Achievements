@@ -1937,6 +1937,31 @@
                 </button>
 
                 <hr style="margin: 18px 0 14px" />
+                <h4 id="settings-notificationStackTitle" style="margin-top: 10px">
+                  Stacked Notifications
+                </h4>
+                <p style="margin: 4px 0 10px; opacity: 0.75; font-size: 0.9em">
+                  Bronze and Silver notifications can be shown together, newest on
+                  top. Gold, Sapphire, Platinum and PSN Platinum always show alone.
+                </p>
+                <div class="settings-control">
+                  <label for="settings-notificationStackMaxDropdown"
+                    >Max notifications at once:</label
+                  >
+                  <select id="settings-notificationStackMaxDropdown">
+                    <option value="1">1 (stacking off)</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                  </select>
+                </div>
+                <button
+                  id="settings-testStackNotificationsBtn"
+                  class="settings-test-button"
+                  style="width: 100%; margin: 10px 0; padding: 10px"
+                >
+                  Test Stacked Notifications
+                </button>
+                <hr style="margin: 18px 0 14px" />
                 <h4 id="settings-psnPlatinumTitle" style="margin-top: 10px">
                   PSN Platinum Notification (Base Game)
                 </h4>
@@ -19224,6 +19249,11 @@
         );
         const disable = document.getElementById("settings-disablePsnPlatinumCheckbox");
         if (disable) disable.checked = prefs.disablePsnPlatinum === true;
+        const stackMax = document.getElementById("settings-notificationStackMaxDropdown");
+        if (stackMax) {
+          const value = Math.min(3, Math.max(1, Math.floor(Number(prefs.notificationStackMax)) || 3));
+          stackMax.value = String(value);
+        }
         refreshPsnNpssoStatus();
       }
 
@@ -19256,6 +19286,30 @@
         ?.addEventListener("change", (e) => {
           window.api.savePreferences({ psnPlatinumSound: e.target.value });
           playPreviewSound(e.target.value, "settings-psnPlatinumSoundSelect");
+        });
+      document
+        .getElementById("settings-notificationStackMaxDropdown")
+        ?.addEventListener("change", (e) => {
+          window.api.savePreferences({
+            notificationStackMax: Number(e.target.value) || 3,
+          });
+        });
+      document
+        .getElementById("settings-testStackNotificationsBtn")
+        ?.addEventListener("click", () => {
+          stopUiAudioPlayback();
+          window.api.showTestStackNotifications({
+            preset: document.getElementById("settings-presetDropdown")?.value || "default",
+            position: document.getElementById("settings-positionDropdown")?.value || "center-bottom",
+            sound: document.getElementById("settings-soundSelect")?.value || "mute",
+            useSanPreset:
+              document.getElementById("settings-useSanPresetCheckbox")?.checked === true,
+            sanPreset:
+              document.getElementById("settings-sanPresetDropdown")?.value || "",
+            scale: parseFloat(
+              document.getElementById("settings-scaleSlider")?.value || 1,
+            ),
+          });
         });
       document
         .getElementById("settings-disablePsnPlatinumCheckbox")
@@ -19821,6 +19875,19 @@
           getVal("settings-psnPlatinumSanPresetDropdown") ||
           base.psnPlatinumSanPreset ||
           "";
+        snapshot.notificationStackMax = Math.min(
+          3,
+          Math.max(
+            1,
+            Math.floor(
+              Number(
+                document.getElementById("settings-notificationStackMaxDropdown")?.value,
+              ),
+            ) ||
+              Math.floor(Number(base.notificationStackMax)) ||
+              3,
+          ),
+        );
         snapshot.disablePsnPlatinum =
           document.getElementById("settings-disablePsnPlatinumCheckbox")
             ?.checked === true;

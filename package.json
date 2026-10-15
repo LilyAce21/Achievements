@@ -15,6 +15,7 @@
     "test:achievement-recorder": "node tests/achievement-recorder.test.js",
     "test:dashboard-refresh": "node tests/dashboard-refresh.test.js",
     "test:gamebar-widget": "node tests/gamebar-widget-bridge.test.js",
+    "test:psn-and-stack": "node tests/psn-platinum.test.js && node tests/psn-npsso-store.test.js && node tests/steamhunters-base.test.js && node tests/notification-stack.test.js",
     "build:recorder": "cargo build --release --locked --manifest-path native/achievement-recorder/Cargo.toml",
     "copy:recorder": "node -e \"require('fs').copyFileSync('native/achievement-recorder/target/release/achievements-recorder.exe','utils/native/achievements-recorder.exe')\"",
     "build:hdr-screenshot": "cargo build --release --locked --manifest-path native/hdr-screenshot/Cargo.toml",
