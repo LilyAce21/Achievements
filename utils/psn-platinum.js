@@ -138,30 +138,40 @@ function createPsnPlatinumService({ psnApi, fetchImpl }) {
    */
   async function findPlatinumInService(authorization, id, platform, serviceOptions) {
     const types = {};
-    let offset = 0;
     let seen = 0;
-    for (let page = 0; page < 20; page += 1) {
-      const response = await psnApi.getTitleTrophies(authorization, id, "all", {
-        ...(serviceOptions || {}),
-        limit: 100,
-        offset,
-      });
-      const trophies = Array.isArray(response?.trophies) ? response.trophies : [];
-      seen += trophies.length;
-      for (const trophy of trophies) {
-        const type = String(trophy?.trophyType || "unknown");
-        types[type] = (types[type] || 0) + 1;
+    let shape = "";
+    // "all" lists every trophy group. A set that answers it with nothing at all gets asked for
+    // its default group too, which is where the base game's trophies (and Platinum) live.
+    for (const group of ["all", "default"]) {
+      let offset = 0;
+      for (let page = 0; page < 20; page += 1) {
+        const response = await psnApi.getTitleTrophies(authorization, id, group, {
+          ...(serviceOptions || {}),
+          limit: 100,
+          offset,
+        });
+        const trophies = Array.isArray(response?.trophies) ? response.trophies : [];
+        seen += trophies.length;
+        if (!shape && response && typeof response === "object") {
+          shape = `reply keys: ${Object.keys(response).slice(0, 8).join(",") || "none"}`;
+        }
+        for (const trophy of trophies) {
+          const type = String(trophy?.trophyType || "unknown");
+          types[type] = (types[type] || 0) + 1;
+        }
+        const trophy = trophies.find((entry) => entry?.trophyType === "platinum");
+        if (trophy) {
+          return { platinum: toPlatinum(trophy, id, platform, response?.trophyTitleName), note: `${platform}: Platinum found` };
+        }
+        const next = Number(response?.nextOffset);
+        if (!Number.isFinite(next) || next <= offset) break;
+        offset = next;
       }
-      const trophy = trophies.find((entry) => entry?.trophyType === "platinum");
-      if (trophy) {
-        return { platinum: toPlatinum(trophy, id, platform, response?.trophyTitleName), note: `${platform}: Platinum found` };
-      }
-      const next = Number(response?.nextOffset);
-      if (!Number.isFinite(next) || next <= offset) break;
-      offset = next;
+      if (seen > 0) break; // this set has trophies, just no Platinum: no need to ask another group
     }
     const breakdown = Object.entries(types).map(([type, count]) => `${count} ${type}`).join(", ");
-    return { platinum: null, note: `${platform}: ${seen} trophies${breakdown ? ` (${breakdown})` : ""}, no Platinum` };
+    const detail = seen === 0 && shape ? `; ${shape}` : "";
+    return { platinum: null, note: `${platform}: ${seen} trophies${breakdown ? ` (${breakdown})` : ""}, no Platinum${detail}` };
   }
 
   /** The Platinum of whichever set has one, preferring PS5 over PS4. */
@@ -176,7 +186,7 @@ function createPsnPlatinumService({ psnApi, fetchImpl }) {
     let lastError = null;
     const notes = [];
     for (const id of ids) {
-      for (const [platform, options] of [["PS5", { npServiceName: "trophy2" }], ["PS4", undefined]]) {
+      for (const [platform, options] of [["PS5", { npServiceName: "trophy2" }], ["PS4", { npServiceName: "trophy" }]]) {
         try {
           const found = await findPlatinumInService(authorization, id, platform, options);
           notes.push(`${id} ${found.note}`);
