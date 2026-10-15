@@ -18,9 +18,15 @@ const FILE_NAME = "npwr-ids.json";
 const FOLDER_NAME = "PSN Platinum IDs";
 const NPWR_EXACT = /^NPWR\d{5,6}_00$/;
 
+// This app adds " (Steam)" to the titles of Steam game configs. It must never reach the shared
+// file, because PlayniteAchievements matches on the plain game name.
+function stripSteamTag(name) {
+  return String(name || "").replace(/\s*\(Steam\)/gi, "").trim();
+}
+
 function normalizeName(name) {
   // Trademark signs go first: normalising them would turn "™" into the letters "tm".
-  return String(name || "")
+  return stripSteamTag(name)
     .replace(/[™®©]/g, "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -84,7 +90,7 @@ function createSharedIdStore({ dir, now = () => Date.now() }) {
       fs.mkdirSync(dir, { recursive: true });
       const data = JSON.parse(JSON.stringify(read()));
       for (const key of keys) {
-        data.games[key] = { name: String(name || "").trim(), npwrIds: ids, updatedAt: now() };
+        data.games[key] = { name: stripSteamTag(name), npwrIds: ids, updatedAt: now() };
       }
       const temp = `${filePath}.${process.pid}.tmp`;
       fs.writeFileSync(temp, JSON.stringify(data, null, 2));
