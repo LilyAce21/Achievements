@@ -2161,6 +2161,16 @@ const DEFAULT_PREFERENCES = {
   notificationScale: 1,
   playtimeNotificationScale: 1,
   notificationDuration: 0,
+  // Per-profile notification duration in seconds (0 = use the preset's own length).
+  // notificationDuration above is the Bronze / regular Achievement Notification profile.
+  silverDuration: 0,
+  goldDuration: 0,
+  sapphireDuration: 0,
+  platinumDuration: 0,
+  psnPlatinumDuration: 0,
+  xeniaDuration: 0,
+  rpcs3Duration: 0,
+  shadps4Duration: 0,
   position: "center-bottom",
   language: "english",
   uiLanguage: "english",
@@ -14655,6 +14665,10 @@ ipcMain.on("show-test-notification", (event, options) => {
     sound: options.sound || "mute",
     useSanPreset: options.useSanPreset === true,
     sanPreset: options.sanPreset || "",
+    // Bronze range (50.1-100%). Without a rarity the test notification had no percentage
+    // to show, unlike the Silver / Gold / Sapphire tests.
+    rarityPct: Math.round((50.1 + Math.random() * 49.9) * 100) / 100,
+    raritySource: "test",
     scale: parseFloat(
       options.scale != null
         ? options.scale
@@ -16458,6 +16472,15 @@ function queueAchievementNotification(achievement) {
   const rarityTier = isPsnPlatinum
     ? "psnplatinum"
     : trophyRarityTier || (isRare ? percentTier : "");
+  // Which settings profile this notification belongs to, so it can use that
+  // profile's own duration ("" = the regular Bronze / Achievement Notification profile).
+  const durationProfile = isPsnPlatinum
+    ? "psnPlatinum"
+    : isPlatinum
+      ? "platinum"
+      : isRare
+        ? percentTier
+        : emulatorPreferencePrefix;
   const preferredScale =
     achievement.scale != null
       ? achievement.scale
@@ -16548,6 +16571,7 @@ function queueAchievementNotification(achievement) {
     rarityPct: rarity.percent,
     raritySource: rarity.source,
     rarityTier,
+    durationProfile,
     trophyType,
     isRare,
     showRarityPercentage: prefs.showNotificationRarityPercentage !== false,
@@ -17478,6 +17502,7 @@ function startNextNotification() {
     rarityPct: achievement.rarityPct,
     raritySource: achievement.raritySource || null,
     rarityTier: achievement.rarityTier || "",
+    durationProfile: achievement.durationProfile || "",
     trophyType: achievement.trophyType || "",
     isRare: achievement.isRare === true,
     showRarityPercentage:
@@ -17579,7 +17604,11 @@ function startNextNotification() {
     iconResolved: iconPathFinal,
   });
 
-  const overrideDurationSec = Number(cachedPreferences?.notificationDuration);
+  // Each profile has its own duration; the Bronze / regular profile keeps notificationDuration.
+  const durationPrefKey = notificationData.durationProfile
+    ? `${notificationData.durationProfile}Duration`
+    : "notificationDuration";
+  const overrideDurationSec = Number(cachedPreferences?.[durationPrefKey]);
   const overrideDurationMs =
     Number.isFinite(overrideDurationSec) && overrideDurationSec > 0
       ? Math.round(overrideDurationSec * 1000)
