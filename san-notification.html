@@ -15,6 +15,41 @@
         display: grid;
         place-content: center;
       }
+
+      /* Xbox presets: the theme's own animation stays in the icon slot and the real
+         achievement icon is shown as a circle on the far right. */
+      #rightachicon { display: none; }
+      body[rightachicon] .wrapper#achcont { grid-template-columns: auto 1fr auto; }
+      body[rightachicon] #rightachicon {
+        --rsize: calc(var(--notifyheight) - (10px * var(--scale)));
+        display: grid;
+        grid-column: 3;
+        grid-row-start: 1;
+        place-self: center;
+        width: var(--rsize);
+        height: var(--rsize);
+        margin-inline: calc(2px * var(--scale)) calc(5px * var(--scale));
+        border-radius: 50%;
+        overflow: hidden;
+        background: var(--secondarycolor);
+        opacity: 0;
+        animation:
+          rightachicon-in calc(var(--transition) * 2) calc(var(--transition) * 8.5) forwards,
+          rightachicon-out calc(var(--transition) * 2) calc(var(--displaytime) - (var(--transition) * 14)) forwards;
+      }
+      body[fastanim][rightachicon] #rightachicon {
+        animation:
+          rightachicon-in calc(var(--transition) * 2) calc(var(--transition) * 8.5) forwards,
+          rightachicon-out calc(var(--transition) * 2) calc(var(--displaytime) - (var(--transition) * 2)) forwards;
+      }
+      body[rightachicon] #rightachicon img {
+        place-self: center;
+        width: var(--righticonfit, 80%);
+        height: var(--righticonfit, 80%);
+        object-fit: contain;
+      }
+      @keyframes rightachicon-in { to { opacity: 1; } }
+      @keyframes rightachicon-out { to { opacity: 0; } }
     </style>
   </head>
   <body>
@@ -609,12 +644,40 @@
           const platinumIcon = payload?.isPlatinum
             ? getPlatinumIcon(customisation)
             : "";
+          // Xbox presets: a theme that sets a custom image icon (the Xbox animation) keeps it in
+          // the icon slot. The real achievement icon moves to a circle on the far right.
+          const useThemeIcon =
+            customisation.preset === "xboxone" &&
+            customisation.usecustomimgicon === true &&
+            !!customisation.customimgicon &&
+            !isScreenshotSanMode(payload, customisation);
           const customIcon =
             platinumIcon ||
-            payload?.iconPath ||
-            (customisation.usecustomimgicon && customisation.customimgicon
+            (useThemeIcon
               ? customisation.customimgicon
-              : "");
+              : payload?.iconPath ||
+                (customisation.usecustomimgicon && customisation.customimgicon
+                  ? customisation.customimgicon
+                  : ""));
+          document.getElementById("rightachicon")?.remove();
+          document.body.removeAttribute("rightachicon");
+          const rightHost = document.getElementById("achcont");
+          if (useThemeIcon && payload?.iconPath && rightHost) {
+            const rightWrap = document.createElement("div");
+            rightWrap.id = "rightachicon";
+            const rightImg = document.createElement("img");
+            rightImg.draggable = false;
+            rightImg.onerror = () => {
+              rightWrap.remove();
+              document.body.removeAttribute("rightachicon");
+            };
+            rightImg.src = fileUrl(payload.iconPath);
+            rightWrap.appendChild(rightImg);
+            rightHost.appendChild(rightWrap);
+            document.body.setAttribute("rightachicon", "");
+            // Size of the icon inside the circle: 80% crops under 3% of a square icon.
+            setVar("--righticonfit", `${safeNumber(customisation.righticonfit, 80)}%`);
+          }
           const fallbackIconUrl = fileUrl(defaultAchIcon);
           achicon.onerror = () => {
             if (fallbackIconUrl && achicon.src !== fallbackIconUrl) {

@@ -737,7 +737,10 @@ contextBridge.exposeInMainWorld("api", {
   getSoundFullPath: (fileName) =>
     ipcRenderer.invoke("get-sound-path", fileName),
   onPlaySound: (callback) =>
-    subscribeIpc("play-sound", callback, (_event, sound) => [sound]),
+    subscribeIpc("play-sound", callback, (_event, sound, options) => [
+      sound,
+      options,
+    ]),
   onProgressUpdate: (callback) =>
     subscribeIpc("show-progress", callback, (_event, data) => [data]),
   closeNotificationWindow: () => ipcRenderer.send("close-notification-window"),

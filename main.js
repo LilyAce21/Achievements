@@ -2157,6 +2157,16 @@ const DEFAULT_PREFERENCES = {
   overlayInteractShortcut: "\\",
   sound: "mute",
   soundVolume: 100,
+  // Per-profile sound volume (percent, multiplies the global sound volume).
+  bronzeSoundVolume: 100,
+  silverSoundVolume: 100,
+  goldSoundVolume: 100,
+  sapphireSoundVolume: 100,
+  platinumSoundVolume: 100,
+  psnPlatinumSoundVolume: 100,
+  xeniaSoundVolume: 100,
+  rpcs3SoundVolume: 100,
+  shadps4SoundVolume: 100,
   preset: "default",
   notificationScale: 1,
   playtimeNotificationScale: 1,
@@ -6623,6 +6633,16 @@ function updatePreferences(patch = {}) {
       incoming.soundVolume = Math.max(0, Math.min(200, parsedSoundVolume));
     } else {
       delete incoming.soundVolume;
+    }
+  }
+
+  for (const volumeKey of ["bronzeSoundVolume", "silverSoundVolume", "goldSoundVolume", "sapphireSoundVolume", "platinumSoundVolume", "psnPlatinumSoundVolume", "xeniaSoundVolume", "rpcs3SoundVolume", "shadps4SoundVolume"]) {
+    if (!Object.prototype.hasOwnProperty.call(incoming, volumeKey)) continue;
+    const parsedVolume = Number.parseInt(incoming[volumeKey], 10);
+    if (Number.isFinite(parsedVolume)) {
+      incoming[volumeKey] = Math.max(0, Math.min(200, parsedVolume));
+    } else {
+      delete incoming[volumeKey];
     }
   }
 
@@ -17403,7 +17423,15 @@ function playAchievementNotificationSound(achievement = {}) {
     achievement.sound &&
     achievement.sound !== "mute"
   ) {
-    mainWindow.webContents.send("play-sound", achievement.sound);
+    // Each settings profile has its own volume that scales the global sound volume.
+    const soundProfile = achievement.durationProfile || "bronze";
+    const rawProfileVolume = Number(cachedPreferences?.[`${soundProfile}SoundVolume`]);
+    const profileVolumePercent = Number.isFinite(rawProfileVolume)
+      ? Math.max(0, Math.min(200, rawProfileVolume))
+      : 100;
+    mainWindow.webContents.send("play-sound", achievement.sound, {
+      volumeScale: profileVolumePercent / 100,
+    });
   }
 }
 
