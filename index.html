@@ -1267,7 +1267,7 @@
                 </h4>
                 <p style="margin: 0 0 8px; opacity: 0.7; font-size: 0.85em">
                   Bronze (50.1–100% rarity) and achievements without rarity
-                  data. Silver, Gold, Sapphire and Platinum have their own
+                  data. Silver, Gold, Sapphire, Diamond and Platinum have their own
                   settings below.
                 </p>
 
@@ -1281,7 +1281,7 @@
                       type="range"
                       id="settings-durationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -1375,7 +1375,7 @@
                       type="range"
                       id="settings-silverDurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -1502,7 +1502,7 @@
                       type="range"
                       id="settings-goldDurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -1617,7 +1617,7 @@
                   id="settings-sapphireTitle"
                   style="margin-top: 10px"
                 >
-                  Sapphire / Ultra-Rare Notification (0–5% rarity)
+                  Sapphire / Ultra-Rare Notification (1.01–5% rarity)
                 </h4>
                 <div class="settings-slider">
                   <label for="settings-sapphireDurationSlider"
@@ -1629,7 +1629,7 @@
                       type="range"
                       id="settings-sapphireDurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -1741,6 +1741,133 @@
 
                 <hr style="margin: 18px 0 14px" />
                 <h4
+                  id="settings-diamondTitle"
+                  style="margin-top: 10px"
+                >
+                  Diamond / Ultra-Rare Notification (0–1% rarity)
+                </h4>
+                <div class="settings-slider">
+                  <label for="settings-diamondDurationSlider"
+                    >Achievement Duration:
+                    <span id="settings-diamondDurationValue">Auto</span></label
+                  >
+                  <div class="slider-control">
+                    <input
+                      type="range"
+                      id="settings-diamondDurationSlider"
+                      min="0"
+                      max="30"
+                      step="0.5"
+                      value="0"
+                    />
+                    <span class="value" id="settings-diamondDurationValueDisplay">Auto</span>
+                  </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-diamondStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-diamondStackCheckbox" />
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-diamondPositionDropdown"
+                    >Diamond / Ultra-Rare Achievement Position:</label
+                  >
+                  <select id="settings-diamondPositionDropdown">
+                    <option
+                      value="center-bottom"
+                    >
+                      Center Bottom
+                    </option>
+                    <option
+                      value="center-top"
+                    >
+                      Center Top
+                    </option>
+                    <option
+                      value="top-right"
+                    >
+                      Top Right
+                    </option>
+                    <option
+                      value="bottom-right"
+                    >
+                      Bottom Right
+                    </option>
+                    <option
+                      value="middle-right"
+                    >
+                      Middle Right
+                    </option>
+                    <option
+                      value="top-left"
+                    >
+                      Top Left
+                    </option>
+                    <option
+                      value="bottom-left"
+                    >
+                      Bottom Left
+                    </option>
+                    <option
+                      value="middle-left"
+                    >
+                      Middle Left
+                    </option>
+                  </select>
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-diamondPresetDropdown"
+                    >Diamond / Ultra-Rare Achievement Preset:</label
+                  >
+                  <select id="settings-diamondPresetDropdown"></select>
+                </div>
+
+                <div class="settings-control">
+                  <label
+                    for="settings-diamondSoundSelect"
+                    >Diamond / Ultra-Rare Achievement Sound:</label
+                  >
+                  <select id="settings-diamondSoundSelect"></select>
+                </div>
+                <div class="settings-slider">
+                  <label for="settings-diamondSoundVolumeSlider"
+                    >Sound Volume:
+                    <span id="settings-diamondSoundVolumeValue">100%</span></label
+                  >
+                  <div class="slider-control">
+                    <input
+                      type="range"
+                      id="settings-diamondSoundVolumeSlider"
+                      min="0"
+                      max="200"
+                      step="5"
+                      value="100"
+                    />
+                    <span class="value" id="settings-diamondSoundVolumeValueDisplay">100%</span>
+                  </div>
+                </div>
+                <div class="settings-control">
+                  <label
+                    for="settings-diamondSanPresetDropdown"
+                    >Diamond / Ultra-Rare Achievement SAN Preset:</label
+                  >
+                  <select id="settings-diamondSanPresetDropdown"></select>
+                </div>
+                <button
+                  id="settings-testDiamondNotificationBtn"
+                  class="settings-test-button"
+                  style="width: 100%; margin: 10px 0; padding: 10px"
+                >
+                  Test Diamond / Ultra-Rare Notification
+                </button>
+
+                <hr style="margin: 18px 0 14px" />
+                <h4
                   id="settings-xeniaNotificationTitle"
                   data-i18n="settings-xeniaNotificationTitle"
                   style="margin-top: 10px"
@@ -1757,7 +1884,7 @@
                       type="range"
                       id="settings-xeniaDurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -1890,7 +2017,7 @@
                       type="range"
                       id="settings-rpcs3DurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -2023,7 +2150,7 @@
                       type="range"
                       id="settings-shadps4DurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -2152,7 +2279,7 @@
                       type="range"
                       id="settings-platinumDurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -2281,7 +2408,7 @@
                       type="range"
                       id="settings-psnPlatinumDurationSlider"
                       min="0"
-                      max="15"
+                      max="30"
                       step="0.5"
                       value="0"
                     />
@@ -6044,6 +6171,9 @@
       <input type="hidden" id="sapphirePresetValue" />
       <input type="hidden" id="sapphirePositionValue" />
       <input type="hidden" id="sapphireSoundValue" />
+      <input type="hidden" id="diamondPresetValue" />
+      <input type="hidden" id="diamondPositionValue" />
+      <input type="hidden" id="diamondSoundValue" />
       <input type="hidden" id="platinumPresetValue" />
       <input type="hidden" id="platinumPositionValue" />
       <input type="hidden" id="platinumSoundValue" />
@@ -13999,6 +14129,7 @@
         "silver",
         "gold",
         "sapphire",
+        "diamond",
       ]);
       const NATIVE_WINDOWS_PRESET_VALUE = "native windows";
       const GAME_BAR_NOTIFICATIONS_PRESET_VALUE = "game bar notifications";
@@ -15462,18 +15593,25 @@
       function applyRareNotificationPreferences(prefs = {}) {
         for (const tier of NOTIFICATION_RARITY_TIERS) {
           // Falls back to the legacy single "Rare" profile for existing users.
+          const fallbackTier = tier === "diamond" ? "sapphire" : "";
           const position =
             prefs[`${tier}Position`] ||
+            (fallbackTier && prefs[`${fallbackTier}Position`]) ||
             prefs.rarePosition ||
             prefs.position ||
             "center-bottom";
           const preset =
             prefs[`${tier}Preset`] ||
+            (fallbackTier && prefs[`${fallbackTier}Preset`]) ||
             prefs.rarePreset ||
             prefs.preset ||
             "default";
           const sound =
-            prefs[`${tier}Sound`] || prefs.rareSound || prefs.sound || "mute";
+            prefs[`${tier}Sound`] ||
+            (fallbackTier && prefs[`${fallbackTier}Sound`]) ||
+            prefs.rareSound ||
+            prefs.sound ||
+            "mute";
 
           const positionSelect = document.getElementById(
             `settings-${tier}PositionDropdown`,
@@ -19363,7 +19501,7 @@
         const seconds = Math.max(0.5, value);
         settingsDurationValue.textContent = `${seconds.toFixed(1)}s`;
         settingsDurationValueDisplay.textContent = `${seconds.toFixed(1)}s`;
-        const percentage = Math.round((seconds / 15) * 100);
+        const percentage = Math.round((seconds / 30) * 100);
         settingsDurationSlider.style.background = `linear-gradient(to right, var(--app-accent-2) 0%, var(--app-accent-2) ${percentage}%, var(--app-border-subtle) ${percentage}%, var(--app-border-subtle) 100%)`;
       }
 
@@ -19385,6 +19523,7 @@
         "silver",
         "gold",
         "sapphire",
+        "diamond",
         "platinum",
         "psnPlatinum",
         "xenia",
@@ -19398,6 +19537,7 @@
         silver: true,
         gold: false,
         sapphire: false,
+        diamond: false,
         platinum: false,
         psnPlatinum: false,
       };
@@ -19407,6 +19547,7 @@
         "silver",
         "gold",
         "sapphire",
+        "diamond",
         "platinum",
         "psnPlatinum",
         "xenia",
@@ -19446,7 +19587,7 @@
         if (Number.isFinite(seconds) && seconds > 0) {
           const safe = Math.max(0.5, seconds);
           text = `${safe.toFixed(1)}s`;
-          percentage = Math.round((safe / 15) * 100);
+          percentage = Math.round((safe / 30) * 100);
         }
         if (value) value.textContent = text;
         if (display) display.textContent = text;

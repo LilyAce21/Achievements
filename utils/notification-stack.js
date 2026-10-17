@@ -1,7 +1,7 @@
 "use strict";
 
 // Rules and layout for stacked achievement notifications. Pure functions, so they can be tested
-// without Electron. Only Bronze and Silver (and un-tiered) notifications stack; Gold, Sapphire,
+// without Electron. Only Bronze and Silver (and un-tiered) notifications stack; Gold, Sapphire, Diamond,
 // Platinum and PSN Platinum always show alone.
 
 const STACK_LIMIT = 3;

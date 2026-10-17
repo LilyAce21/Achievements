@@ -113,6 +113,7 @@
           .trim()
           .toLowerCase();
         const tierFromPayload =
+          explicitTier === "diamond" ||
           explicitTier === "sapphire" ||
           explicitTier === "gold" ||
           explicitTier === "silver" ||
@@ -127,13 +128,16 @@
             : Number(rawValue);
         const hasPercent = Number.isFinite(raw);
         const value = hasPercent ? Math.max(raw, 0.1) : 50;
-        // Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 0-5%.
+        // Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 1.01-5%, Diamond 0-1%.
+        const diamondlimit = 1;
         const rarity = 5;
         const semirarity = 20;
         const tier =
           tierFromPayload ||
           (!hasPercent
             ? "bronze"
+            : value <= diamondlimit
+            ? "diamond"
             : value <= rarity
             ? "sapphire"
             : value <= semirarity
@@ -154,10 +158,13 @@
 
       function pickRarityAsset(value, tier) {
         if (Array.isArray(value)) {
-          // A preset lists its tier icons as [bronze, silver, gold, sapphire, psn platinum].
-          // The PSN Platinum tier falls back to the gold icon in a preset made before it existed.
+          // A preset lists its tier icons as [bronze, silver, gold, sapphire, psn platinum, diamond].
+          // The PSN Platinum tier falls back to the gold icon in a preset made before it existed,
+          // and Diamond falls back to the Sapphire icon.
           const index =
-            tier === "psnplatinum"
+            tier === "diamond"
+              ? 5
+              : tier === "psnplatinum"
               ? 4
               : tier === "sapphire"
                 ? 3
@@ -168,6 +175,7 @@
                     : 0;
           return (
             value[index] ||
+            (tier === "diamond" ? value[3] || value[2] : "") ||
             (tier === "psnplatinum" ? value[3] || value[2] : "") ||
             (tier === "sapphire" ? value[2] : "") ||
             value[0] ||
@@ -258,6 +266,14 @@
             fallback
           );
         }
+        if (tier === "diamond") {
+          return (
+            customisation[`${prefix}diamond`] ||
+            customisation[`${prefix}sapphire`] ||
+            customisation[`${prefix}gold`] ||
+            fallback
+          );
+        }
         if (tier === "sapphire") {
           return (
             customisation[`${prefix}sapphire`] ||
@@ -302,8 +318,11 @@
         if (customisation.bgonly) body.setAttribute("bgonly", "");
         if (customisation.alldetails) body.setAttribute("alldetails", "");
         // The animated icon glow is tied to the "rare" attribute. Only the Gold
-        // (5.1-20%) and Sapphire (0-5%) ranges get it; Silver stays plain.
-        if (payload?.isRare && (percent.tier === "gold" || percent.tier === "sapphire")) {
+        // (5.1-20%), Sapphire (1.01-5%) and Diamond (0-1%) ranges get it; Silver stays plain.
+        if (
+          payload?.isRare &&
+          (percent.tier === "gold" || percent.tier === "sapphire" || percent.tier === "diamond")
+        ) {
           body.setAttribute("rare", "");
         }
         // The PSN Platinum gets the same animated glow behind its icon as Gold and Sapphire.
@@ -454,7 +473,13 @@
               ? customisation.bgimg || customisation.bgImage
               : "";
 
-        const displayTimeSec = Math.max(1, safeNumber(customisation.displaytime, 8));
+        const durationMs = Number(payload?.durationMs);
+        const displayTimeSec = Math.max(
+          1,
+          Number.isFinite(durationMs) && durationMs > 0
+            ? durationMs / 1000
+            : safeNumber(customisation.displaytime, 8),
+        );
         const requestedTransitionMs = Math.max(50, safeNumber(customisation.transition, 150));
         const transitionMs = Math.max(
           50,
@@ -583,7 +608,11 @@
             ? customisation.iconborderimgbronze
             : percent.tier === "silver"
               ? customisation.iconborderimgsilver
-              : percent.tier === "sapphire"
+              : percent.tier === "diamond"
+                ? customisation.iconborderimgdiamond ||
+                  customisation.iconborderimgsapphire ||
+                  customisation.iconborderimg
+                : percent.tier === "sapphire"
                 ? customisation.iconborderimgsapphire ||
                   customisation.iconborderimg
                 : customisation.iconborderimg
@@ -625,6 +654,10 @@
           percent.tier === "psnplatinum"
             ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgplatinum") ||
               getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
+            : percent.tier === "diamond"
+            ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgdiamond") ||
+              getActiveSanBadgeValue(payload, customisation, "percentbadgeimgsapphire") ||
+              getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
             : percent.tier === "sapphire"
             ? getActiveSanBadgeValue(payload, customisation, "percentbadgeimgsapphire") ||
               getActiveSanBadgeValue(payload, customisation, "percentbadgeimggold")
@@ -651,18 +684,22 @@
             customisation.usecustomimgicon === true &&
             !!customisation.customimgicon &&
             !isScreenshotSanMode(payload, customisation);
-          const customIcon =
-            platinumIcon ||
-            (useThemeIcon
-              ? customisation.customimgicon
-              : payload?.iconPath ||
-                (customisation.usecustomimgicon && customisation.customimgicon
-                  ? customisation.customimgicon
-                  : ""));
+          // The theme's animation wins over the platinum ribbon too, so a Mythic theme keeps its
+          // Xbox emblem animation for full-completion unlocks.
+          const customIcon = useThemeIcon
+            ? customisation.customimgicon
+            : platinumIcon ||
+              payload?.iconPath ||
+              (customisation.usecustomimgicon && customisation.customimgicon
+                ? customisation.customimgicon
+                : "");
           document.getElementById("rightachicon")?.remove();
           document.body.removeAttribute("rightachicon");
           const rightHost = document.getElementById("achcont");
-          if (useThemeIcon && payload?.iconPath && rightHost) {
+          // Full-completion (platinum) unlocks and the Mythic themes have no achievement icon.
+          const themeName = `${payload?.sanTheme?.label || ""} ${String(payload?.sanTheme?.cacheDir || "").split(/[\\/]/).pop()}`;
+          const hideRightIcon = payload?.isPlatinum === true || /mythic/i.test(themeName);
+          if (useThemeIcon && !hideRightIcon && payload?.iconPath && rightHost) {
             const rightWrap = document.createElement("div");
             rightWrap.id = "rightachicon";
             const rightImg = document.createElement("img");

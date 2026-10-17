@@ -17,6 +17,7 @@ function subscribeIpc(channel, callback, mapArgs = (_event, data) => [data]) {
 const RARITY_BORDER_STYLE_ID = "achievements-rarity-border-style";
 const RARITY_PERCENTAGE_ID = "achievements-rarity-percentage";
 const RARITY_BORDER_CLASSES = [
+  "achievements-rarity-border-diamond",
   "achievements-rarity-border-sapphire",
   "achievements-rarity-border-gold",
   "achievements-rarity-border-silver",
@@ -41,14 +42,15 @@ function parseNotificationRarityPercent(value) {
     : null;
 }
 
-// Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 0-5%.
+// Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 1.01-5%, Diamond 0-1%.
 function getNotificationRarityTier(value) {
   const percent = parseNotificationRarityPercent(value);
   if (percent === null) return "";
   if (percent > 50) return "bronze";
   if (percent > 20) return "silver";
   if (percent > 5) return "gold";
-  return "sapphire";
+  if (percent > 1) return "sapphire";
+  return "diamond";
 }
 
 function getExplicitNotificationRarityTier(data = {}) {
@@ -56,6 +58,7 @@ function getExplicitNotificationRarityTier(data = {}) {
     .trim()
     .toLowerCase();
   if (
+    value === "diamond" ||
     value === "sapphire" ||
     value === "gold" ||
     value === "silver" ||
@@ -118,6 +121,13 @@ function ensureRarityBorderStyles() {
         0 0 0 1px rgba(199, 208, 217, 0.55),
         0 0 12px rgba(199, 208, 217, 0.68) !important;
     }
+    .achievements-rarity-border-diamond {
+      box-sizing: border-box !important;
+      border: 2px solid #5ce1ff !important;
+      box-shadow:
+        0 0 0 1px rgba(92, 225, 255, 0.55),
+        0 0 14px rgba(92, 225, 255, 0.78) !important;
+    }
     .achievements-rarity-border-sapphire {
       box-sizing: border-box !important;
       border: 2px solid #3d7bff !important;
@@ -164,6 +174,10 @@ function ensureRarityBorderStyles() {
     #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-silver {
       border-color: rgba(199, 208, 217, 0.88);
       color: #edf3f8;
+    }
+    #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-diamond {
+      border-color: rgba(92, 225, 255, 0.88);
+      color: #b8f1ff;
     }
     #${RARITY_PERCENTAGE_ID}.achievements-rarity-percentage-sapphire {
       border-color: rgba(61, 123, 255, 0.88);

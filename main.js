@@ -2162,6 +2162,7 @@ const DEFAULT_PREFERENCES = {
   silverSoundVolume: 100,
   goldSoundVolume: 100,
   sapphireSoundVolume: 100,
+  diamondSoundVolume: 100,
   platinumSoundVolume: 100,
   psnPlatinumSoundVolume: 100,
   xeniaSoundVolume: 100,
@@ -2176,18 +2177,20 @@ const DEFAULT_PREFERENCES = {
   silverDuration: 0,
   goldDuration: 0,
   sapphireDuration: 0,
+  diamondDuration: 0,
   platinumDuration: 0,
   psnPlatinumDuration: 0,
   xeniaDuration: 0,
   rpcs3Duration: 0,
   shadps4Duration: 0,
   // Per-profile opt-in for stacked notifications. Bronze and Silver stack by default (as before);
-  // Gold, Sapphire, Platinum and PSN Platinum show alone unless turned on. The global
+  // Gold, Sapphire, Diamond, Platinum and PSN Platinum show alone unless turned on. The global
   // notificationStackMax below still caps how many show at once (1 = stacking off).
   bronzeStack: true,
   silverStack: true,
   goldStack: false,
   sapphireStack: false,
+  diamondStack: false,
   platinumStack: false,
   psnPlatinumStack: false,
   position: "center-bottom",
@@ -6636,7 +6639,7 @@ function updatePreferences(patch = {}) {
     }
   }
 
-  for (const volumeKey of ["bronzeSoundVolume", "silverSoundVolume", "goldSoundVolume", "sapphireSoundVolume", "platinumSoundVolume", "psnPlatinumSoundVolume", "xeniaSoundVolume", "rpcs3SoundVolume", "shadps4SoundVolume"]) {
+  for (const volumeKey of ["bronzeSoundVolume", "silverSoundVolume", "goldSoundVolume", "sapphireSoundVolume", "diamondSoundVolume", "platinumSoundVolume", "psnPlatinumSoundVolume", "xeniaSoundVolume", "rpcs3SoundVolume", "shadps4SoundVolume"]) {
     if (!Object.prototype.hasOwnProperty.call(incoming, volumeKey)) continue;
     const parsedVolume = Number.parseInt(incoming[volumeKey], 10);
     if (Number.isFinite(parsedVolume)) {
@@ -13275,16 +13278,22 @@ const RANDOM_SOUND_VALUE = "random";
 let lastRandomAchievementSound = "";
 let lastRandomRareSound = "";
 const lastRandomRareTierSounds = {};
-const RARITY_NOTIFICATION_TIERS = Object.freeze(["silver", "gold", "sapphire"]);
+const RARITY_NOTIFICATION_TIERS = Object.freeze([
+  "silver",
+  "gold",
+  "sapphire",
+  "diamond",
+]);
 
-// Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 0-5%.
+// Bronze 50.1-100%, Silver 20.1-50%, Gold 5.1-20%, Sapphire 1.01-5%, Diamond 0-1%.
 // Platinum is a separate completion condition and never goes through this.
 function getRarityTierFromPercent(percent) {
   if (typeof percent !== "number" || !Number.isFinite(percent)) return "";
   if (percent > 50) return "bronze";
   if (percent > 20) return "silver";
   if (percent > 5) return "gold";
-  return "sapphire";
+  if (percent > 1) return "sapphire";
+  return "diamond";
 }
 let lastRandomPlatinumSound = "";
 let lastRandomTestSound = "";
@@ -14742,7 +14751,8 @@ ipcMain.on("show-test-stack-notifications", (_event, options = {}) => {
 
 function getRandomTestRareRarity(requestedTier = "") {
   const tiers = [
-    { name: "sapphire", min: 0.1, max: 5 },
+    { name: "diamond", min: 0.1, max: 1 },
+    { name: "sapphire", min: 1.01, max: 5 },
     { name: "gold", min: 5.1, max: 20 },
     { name: "silver", min: 20.1, max: 50 },
   ];
@@ -15668,6 +15678,7 @@ const PROFILE_STACK_DEFAULTS = Object.freeze({
   silver: true,
   gold: false,
   sapphire: false,
+  diamond: false,
   platinum: false,
   psnPlatinum: false,
 });
@@ -16507,7 +16518,7 @@ function queueAchievementNotification(achievement) {
       ? { percent: null, source: null }
       : resolveNotificationRarity(achievement);
   // Bronze (50.1-100%) uses the regular "Achievement Notification" profile.
-  // Silver / Gold / Sapphire each have their own profile.
+  // Silver / Gold / Sapphire / Diamond each have their own profile.
   const percentTier =
     !usesEmulatorNotificationProfile && rarity.percent !== null
       ? getRarityTierFromPercent(rarity.percent)
@@ -16559,26 +16570,30 @@ function queueAchievementNotification(achievement) {
   const emulatorSound = emulatorPreferencePrefix
     ? prefs[`${emulatorPreferencePrefix}Sound`] || normalSound
     : normalSound;
+  // A Diamond (0-1%) notification uses the Sapphire profile's settings until Diamond has its own.
+  const tierPref = (suffix) =>
+    prefs[`${percentTier}${suffix}`] ||
+    (percentTier === "diamond" ? prefs[`sapphire${suffix}`] : "");
   const resolvedPreset = isPsnPlatinum
     ? prefs.psnPlatinumPreset || normalPreset
     : isPlatinum
     ? prefs.platinumPreset || normalPreset
     : isRare
-      ? prefs[`${percentTier}Preset`] || prefs.rarePreset || normalPreset
+      ? tierPref("Preset") || prefs.rarePreset || normalPreset
       : emulatorPreset;
   const resolvedPosition = isPsnPlatinum
     ? prefs.psnPlatinumPosition || normalPosition
     : isPlatinum
     ? prefs.platinumPosition || normalPosition
     : isRare
-      ? prefs[`${percentTier}Position`] || prefs.rarePosition || normalPosition
+      ? tierPref("Position") || prefs.rarePosition || normalPosition
       : emulatorPosition;
   const requestedSound = isPsnPlatinum
     ? prefs.psnPlatinumSound || normalSound
     : isPlatinum
     ? prefs.platinumSound || normalSound
     : isRare
-      ? prefs[`${percentTier}Sound`] || prefs.rareSound || normalSound
+      ? tierPref("Sound") || prefs.rareSound || normalSound
       : emulatorSound;
   const emulatorSanPreset = emulatorPreferencePrefix
     ? String(prefs[`${emulatorPreferencePrefix}SanPreset`] || "")
@@ -16588,7 +16603,7 @@ function queueAchievementNotification(achievement) {
     : isPlatinum
     ? String(prefs.platinumSanPreset || "")
     : isRare
-      ? String(prefs[`${percentTier}SanPreset`] || prefs.rareSanPreset || "")
+      ? String(tierPref("SanPreset") || prefs.rareSanPreset || "")
       : emulatorSanPreset;
   const sanPresetCandidate = String(
     Object.prototype.hasOwnProperty.call(achievement, "sanPreset")
