@@ -2144,7 +2144,32 @@ function resolveShadPs4AchievementCacheUserId(
     : "";
 }
 
+// Second notification style ("alt style") for Bronze, Silver, Gold, Sapphire and Platinum.
+// Off by default. When enabled for a tier, each unlock from that tier randomly (50/50)
+// shows either the tier's normal style or its second style, which has its own preset,
+// SAN preset, sound, sound volume and duration.
+const SECOND_STYLE_TIERS = Object.freeze([
+  "bronze",
+  "silver",
+  "gold",
+  "sapphire",
+  "platinum",
+]);
+const SECOND_STYLE_DEFAULT_PREFERENCES = Object.freeze(
+  Object.fromEntries(
+    SECOND_STYLE_TIERS.flatMap((tier) => [
+      [`${tier}AltEnabled`, false],
+      [`${tier}AltPreset`, "default"],
+      [`${tier}AltSanPreset`, ""],
+      [`${tier}AltSound`, "mute"],
+      [`${tier}AltSoundVolume`, 100],
+      [`${tier}AltDuration`, 0],
+    ]),
+  ),
+);
+
 const DEFAULT_PREFERENCES = {
+  ...SECOND_STYLE_DEFAULT_PREFERENCES,
   startInTray: false,
   screenshotFolder: getDefaultScreenshotFolder(),
   recordsFolder: getDefaultRecordFolder(),
@@ -6646,6 +6671,31 @@ function updatePreferences(patch = {}) {
       incoming[volumeKey] = Math.max(0, Math.min(200, parsedVolume));
     } else {
       delete incoming[volumeKey];
+    }
+  }
+
+  for (const tier of SECOND_STYLE_TIERS) {
+    const altVolumeKey = `${tier}AltSoundVolume`;
+    if (Object.prototype.hasOwnProperty.call(incoming, altVolumeKey)) {
+      const parsedAltVolume = Number.parseInt(incoming[altVolumeKey], 10);
+      if (Number.isFinite(parsedAltVolume)) {
+        incoming[altVolumeKey] = Math.max(0, Math.min(200, parsedAltVolume));
+      } else {
+        delete incoming[altVolumeKey];
+      }
+    }
+    const altDurationKey = `${tier}AltDuration`;
+    if (Object.prototype.hasOwnProperty.call(incoming, altDurationKey)) {
+      const parsedAltDuration = Number(incoming[altDurationKey]);
+      if (Number.isFinite(parsedAltDuration)) {
+        incoming[altDurationKey] = Math.max(0, Math.min(15, parsedAltDuration));
+      } else {
+        delete incoming[altDurationKey];
+      }
+    }
+    const altEnabledKey = `${tier}AltEnabled`;
+    if (Object.prototype.hasOwnProperty.call(incoming, altEnabledKey)) {
+      incoming[altEnabledKey] = incoming[altEnabledKey] === true;
     }
   }
 
@@ -14715,6 +14765,7 @@ ipcMain.on("show-test-notification", (event, options) => {
           : 1,
     ),
     skipScreenshot: true,
+    altStyle: options.altStyle === true,
     isTest: true,
   };
 
@@ -14832,6 +14883,7 @@ ipcMain.on("show-test-rare-notification", (_event, options = {}) => {
           : 1,
     ),
     skipScreenshot: true,
+    altStyle: options.altStyle === true,
     isTest: true,
     isTestRare: true,
   });
@@ -14949,6 +15001,7 @@ ipcMain.on("show-test-platinum-notification", (_event, options = {}) => {
           : 1,
     ),
     skipScreenshot: true,
+    altStyle: options.altStyle === true,
     isTest: true,
     isPlatinum: true,
     __isPlatinum: true,
@@ -16574,7 +16627,7 @@ function queueAchievementNotification(achievement) {
   const tierPref = (suffix) =>
     prefs[`${percentTier}${suffix}`] ||
     (percentTier === "diamond" ? prefs[`sapphire${suffix}`] : "");
-  const resolvedPreset = isPsnPlatinum
+  const primaryPreset = isPsnPlatinum
     ? prefs.psnPlatinumPreset || normalPreset
     : isPlatinum
     ? prefs.platinumPreset || normalPreset
@@ -16588,7 +16641,7 @@ function queueAchievementNotification(achievement) {
     : isRare
       ? tierPref("Position") || prefs.rarePosition || normalPosition
       : emulatorPosition;
-  const requestedSound = isPsnPlatinum
+  const primarySound = isPsnPlatinum
     ? prefs.psnPlatinumSound || normalSound
     : isPlatinum
     ? prefs.platinumSound || normalSound
@@ -16598,15 +16651,45 @@ function queueAchievementNotification(achievement) {
   const emulatorSanPreset = emulatorPreferencePrefix
     ? String(prefs[`${emulatorPreferencePrefix}SanPreset`] || "")
     : prefs.sanPreset || "";
-  const preferenceSanPreset = isPsnPlatinum
+  const primarySanPreset = isPsnPlatinum
     ? String(prefs.psnPlatinumSanPreset || "")
     : isPlatinum
     ? String(prefs.platinumSanPreset || "")
     : isRare
       ? String(tierPref("SanPreset") || prefs.rareSanPreset || "")
       : emulatorSanPreset;
+  // Second style: Bronze / Silver / Gold / Sapphire / Platinum only (not PSN Platinum or
+  // emulator profiles). Real unlocks roll 50/50 when the tier has it enabled; test
+  // notifications only use it when the test explicitly asks for the second style.
+  const secondStyleTier = isPsnPlatinum
+    ? ""
+    : isPlatinum
+      ? "platinum"
+      : isRare
+        ? percentTier
+        : usesEmulatorNotificationProfile
+          ? ""
+          : "bronze";
+  const secondStyleAvailable =
+    SECOND_STYLE_TIERS.includes(secondStyleTier) &&
+    prefs[`${secondStyleTier}AltEnabled`] === true;
+  const useSecondStyle = secondStyleAvailable
+    ? isTest
+      ? achievement.altStyle === true
+      : crypto.randomInt(2) === 1
+    : false;
+  const resolvedPreset = useSecondStyle
+    ? prefs[`${secondStyleTier}AltPreset`] || primaryPreset
+    : primaryPreset;
+  const requestedSound = useSecondStyle
+    ? prefs[`${secondStyleTier}AltSound`] || primarySound
+    : primarySound;
+  const preferenceSanPreset = useSecondStyle
+    ? String(prefs[`${secondStyleTier}AltSanPreset`] || "")
+    : primarySanPreset;
   const sanPresetCandidate = String(
-    Object.prototype.hasOwnProperty.call(achievement, "sanPreset")
+    !useSecondStyle &&
+      Object.prototype.hasOwnProperty.call(achievement, "sanPreset")
       ? achievement.sanPreset || ""
       : preferenceSanPreset || "",
   ).trim();
@@ -16635,6 +16718,7 @@ function queueAchievementNotification(achievement) {
     raritySource: rarity.source,
     rarityTier,
     durationProfile,
+    altStyle: useSecondStyle,
     trophyType,
     isRare,
     showRarityPercentage: prefs.showNotificationRarityPercentage !== false,
@@ -17440,7 +17524,10 @@ function playAchievementNotificationSound(achievement = {}) {
   ) {
     // Each settings profile has its own volume that scales the global sound volume.
     const soundProfile = achievement.durationProfile || "bronze";
-    const rawProfileVolume = Number(cachedPreferences?.[`${soundProfile}SoundVolume`]);
+    const soundVolumeKey = achievement.altStyle === true
+      ? `${soundProfile}AltSoundVolume`
+      : `${soundProfile}SoundVolume`;
+    const rawProfileVolume = Number(cachedPreferences?.[soundVolumeKey]);
     const profileVolumePercent = Number.isFinite(rawProfileVolume)
       ? Math.max(0, Math.min(200, rawProfileVolume))
       : 100;
@@ -17574,6 +17661,7 @@ function startNextNotification() {
     raritySource: achievement.raritySource || null,
     rarityTier: achievement.rarityTier || "",
     durationProfile: achievement.durationProfile || "",
+    altStyle: achievement.altStyle === true,
     trophyType: achievement.trophyType || "",
     isRare: achievement.isRare === true,
     showRarityPercentage:
@@ -17676,9 +17764,11 @@ function startNextNotification() {
   });
 
   // Each profile has its own duration; the Bronze / regular profile keeps notificationDuration.
-  const durationPrefKey = notificationData.durationProfile
-    ? `${notificationData.durationProfile}Duration`
-    : "notificationDuration";
+  const durationPrefKey = notificationData.altStyle === true
+    ? `${notificationData.durationProfile || "bronze"}AltDuration`
+    : notificationData.durationProfile
+      ? `${notificationData.durationProfile}Duration`
+      : "notificationDuration";
   const overrideDurationSec = Number(cachedPreferences?.[durationPrefKey]);
   const overrideDurationMs =
     Number.isFinite(overrideDurationSec) && overrideDurationSec > 0

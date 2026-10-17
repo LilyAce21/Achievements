@@ -19675,6 +19675,256 @@
       }
       window.__applyProfileDurationSliders(getCachedPreferences?.() || {});
 
+      // ---- Second notification style (Bronze / Silver / Gold / Sapphire / Platinum) ----
+      // Off by default. When on, every unlock from the tier randomly (50/50) uses either the
+      // tier's normal style or this second style, which has its own preset, SAN preset, sound,
+      // sound volume and duration. The controls are built here so each tier gets the same block.
+      const SECOND_STYLE_CONFIGS = [
+        {
+          tier: "bronze",
+          label: "Bronze",
+          presetId: "settings-presetDropdown",
+          soundId: "settings-soundSelect",
+          sanId: "settings-sanPresetDropdown",
+          testId: "settings-testAchievementBtn",
+        },
+        ...["silver", "gold", "sapphire", "platinum"].map((tier) => {
+          const label = tier.charAt(0).toUpperCase() + tier.slice(1);
+          return {
+            tier,
+            label,
+            presetId: `settings-${tier}PresetDropdown`,
+            soundId: `settings-${tier}SoundSelect`,
+            sanId: `settings-${tier}SanPresetDropdown`,
+            testId: `settings-test${label}NotificationBtn`,
+          };
+        }),
+      ];
+
+      function secondStyleIds(tier) {
+        return {
+          checkbox: `settings-${tier}AltEnabledCheckbox`,
+          fields: `settings-${tier}AltFields`,
+          preset: `settings-${tier}AltPresetDropdown`,
+          san: `settings-${tier}AltSanPresetDropdown`,
+          sound: `settings-${tier}AltSoundSelect`,
+          volume: `settings-${tier}AltSoundVolumeSlider`,
+          duration: `settings-${tier}AltDurationSlider`,
+          test: `settings-test${tier.charAt(0).toUpperCase() + tier.slice(1)}AltNotificationBtn`,
+        };
+      }
+
+      function buildSecondStyleControls(cfg) {
+        const ids = secondStyleIds(cfg.tier);
+        const primaryTest = document.getElementById(cfg.testId);
+        if (!primaryTest || document.getElementById(ids.checkbox)) return;
+        const block = document.createElement("div");
+        block.className = "settings-second-style";
+        block.innerHTML = `
+          <div class="settings-control">
+            <label for="${ids.checkbox}">Second style for ${cfg.label} (50/50 random):</label>
+            <input type="checkbox" id="${ids.checkbox}" />
+          </div>
+          <div id="${ids.fields}" hidden>
+            <div class="settings-control">
+              <label for="${ids.preset}">${cfg.label} Second Style Preset:</label>
+              <select id="${ids.preset}"></select>
+            </div>
+            <div class="settings-control">
+              <label for="${ids.san}">${cfg.label} Second Style SAN Preset:</label>
+              <select id="${ids.san}"></select>
+            </div>
+            <div class="settings-control">
+              <label for="${ids.sound}">${cfg.label} Second Style Sound:</label>
+              <select id="${ids.sound}"></select>
+            </div>
+            <div class="settings-slider">
+              <label for="${ids.volume}">Second Style Sound Volume:
+                <span id="${ids.volume}Value">100%</span></label>
+              <div class="slider-control">
+                <input type="range" id="${ids.volume}" min="0" max="200" step="5" value="100" />
+              </div>
+            </div>
+            <div class="settings-slider">
+              <label for="${ids.duration}">Second Style Duration:
+                <span id="${ids.duration}Value">Auto</span></label>
+              <div class="slider-control">
+                <input type="range" id="${ids.duration}" min="0" max="15" step="0.5" value="0" />
+              </div>
+            </div>
+          </div>`;
+        primaryTest.parentNode.insertBefore(block, primaryTest);
+        const altTest = document.createElement("button");
+        altTest.id = ids.test;
+        altTest.className = "settings-test-button";
+        altTest.style.cssText = "width: 100%; margin: 10px 0; padding: 10px";
+        altTest.textContent = `Test ${cfg.label} Second Style`;
+        altTest.hidden = true;
+        primaryTest.insertAdjacentElement("afterend", altTest);
+      }
+
+      function updateSecondStyleLabels(tier) {
+        const ids = secondStyleIds(tier);
+        const volume = document.getElementById(ids.volume);
+        if (volume) {
+          const percent = Math.max(0, Math.min(200, parseInt(volume.value, 10) || 0));
+          const label = document.getElementById(`${ids.volume}Value`);
+          if (label) label.textContent = `${percent}%`;
+          const fill = Math.round((percent / 200) * 100);
+          volume.style.background = `linear-gradient(to right, var(--app-accent-2) 0%, var(--app-accent-2) ${fill}%, var(--app-border-subtle) ${fill}%, var(--app-border-subtle) 100%)`;
+        }
+        const duration = document.getElementById(ids.duration);
+        if (duration) {
+          const seconds = parseFloat(duration.value);
+          const on = Number.isFinite(seconds) && seconds > 0;
+          const text = on ? `${Math.max(0.5, seconds).toFixed(1)}s` : "Auto";
+          const fill = on ? Math.round((Math.max(0.5, seconds) / 15) * 100) : 0;
+          const label = document.getElementById(`${ids.duration}Value`);
+          if (label) label.textContent = text;
+          duration.style.background = `linear-gradient(to right, var(--app-accent-2) 0%, var(--app-accent-2) ${fill}%, var(--app-border-subtle) ${fill}%, var(--app-border-subtle) 100%)`;
+        }
+      }
+
+      // The second style's dropdowns offer the same choices as the tier's normal ones.
+      function copySecondStyleOptions(source, target) {
+        if (!source || !target) return;
+        const keep = target.value;
+        target.innerHTML = "";
+        for (const child of Array.from(source.children)) {
+          target.appendChild(child.cloneNode(true));
+        }
+        if (keep && Array.from(target.options).some((o) => o.value === keep)) {
+          target.value = keep;
+        }
+      }
+
+      function applySecondStyleControls(prefs = {}) {
+        for (const cfg of SECOND_STYLE_CONFIGS) {
+          const ids = secondStyleIds(cfg.tier);
+          const checkbox = document.getElementById(ids.checkbox);
+          if (!checkbox) continue;
+          const enabled = prefs[`${cfg.tier}AltEnabled`] === true;
+          checkbox.checked = enabled;
+          document.getElementById(ids.fields).hidden = !enabled;
+          document.getElementById(ids.test).hidden = !enabled;
+          const setSelect = (id, value) => {
+            const el = document.getElementById(id);
+            if (el && Array.from(el.options).some((o) => o.value === value)) {
+              el.value = value;
+            }
+          };
+          setSelect(ids.preset, prefs[`${cfg.tier}AltPreset`] || "default");
+          setSelect(ids.san, prefs[`${cfg.tier}AltSanPreset`] || "");
+          setSelect(ids.sound, prefs[`${cfg.tier}AltSound`] || "mute");
+          const volume = document.getElementById(ids.volume);
+          if (volume) volume.value = prefs[`${cfg.tier}AltSoundVolume`] ?? 100;
+          const duration = document.getElementById(ids.duration);
+          if (duration) duration.value = prefs[`${cfg.tier}AltDuration`] ?? 0;
+          updateSecondStyleLabels(cfg.tier);
+        }
+      }
+
+      function syncSecondStyleOptions(cfg) {
+        const ids = secondStyleIds(cfg.tier);
+        copySecondStyleOptions(document.getElementById(cfg.presetId), document.getElementById(ids.preset));
+        copySecondStyleOptions(document.getElementById(cfg.sanId), document.getElementById(ids.san));
+        copySecondStyleOptions(document.getElementById(cfg.soundId), document.getElementById(ids.sound));
+        applySecondStyleControls(getCachedPreferences?.() || {});
+      }
+
+      function fireSecondStyleTest(cfg) {
+        const read = (id, fallback) => document.getElementById(id)?.value || fallback;
+        const ids = secondStyleIds(cfg.tier);
+        const options = {
+          preset: read(ids.preset, "default"),
+          position: read(
+            cfg.tier === "bronze" ? "settings-positionDropdown" : `settings-${cfg.tier}PositionDropdown`,
+            "center-bottom",
+          ),
+          sound: read(ids.sound, "mute"),
+          useSanPreset:
+            document.getElementById("settings-useSanPresetCheckbox")?.checked === true,
+          sanPreset: read(ids.san, ""),
+          scale: parseFloat(document.getElementById("settings-scaleSlider")?.value || 1),
+          altStyle: true,
+        };
+        stopUiAudioPlayback();
+        if (cfg.tier === "bronze") window.api.showTestNotification(options);
+        else if (cfg.tier === "platinum") window.api.showTestPlatinumNotification(options);
+        else window.api.showTestRareNotification({ tier: cfg.tier, ...options });
+      }
+
+      for (const cfg of SECOND_STYLE_CONFIGS) {
+        buildSecondStyleControls(cfg);
+        const ids = secondStyleIds(cfg.tier);
+        if (!document.getElementById(ids.checkbox)) continue;
+        const save = (patch) => window.api.savePreferences(patch);
+        document.getElementById(ids.checkbox).addEventListener("change", (e) => {
+          document.getElementById(ids.fields).hidden = !e.target.checked;
+          document.getElementById(ids.test).hidden = !e.target.checked;
+          save({ [`${cfg.tier}AltEnabled`]: e.target.checked });
+        });
+        document.getElementById(ids.preset).addEventListener("change", (e) =>
+          save({ [`${cfg.tier}AltPreset`]: e.target.value }));
+        document.getElementById(ids.san).addEventListener("change", (e) =>
+          save({ [`${cfg.tier}AltSanPreset`]: e.target.value }));
+        document.getElementById(ids.sound).addEventListener("change", (e) => {
+          save({ [`${cfg.tier}AltSound`]: e.target.value });
+          playPreviewSound(e.target.value, ids.sound);
+        });
+        const volume = document.getElementById(ids.volume);
+        volume.addEventListener("input", () => {
+          updateSecondStyleLabels(cfg.tier);
+          save({ [`${cfg.tier}AltSoundVolume`]: parseInt(volume.value, 10) });
+        });
+        volume.addEventListener("change", () => {
+          const sound = document.getElementById(ids.sound)?.value;
+          if (sound) playPreviewSound(sound, ids.sound);
+        });
+        const duration = document.getElementById(ids.duration);
+        duration.addEventListener("input", () => {
+          updateSecondStyleLabels(cfg.tier);
+          save({ [`${cfg.tier}AltDuration`]: Number(duration.value) });
+        });
+        document.getElementById(ids.test).addEventListener("click", () => fireSecondStyleTest(cfg));
+
+        // Keep the second style's choices in step with the normal dropdowns, which fill in
+        // asynchronously (presets, sounds and SAN presets load after the page opens).
+        const observer = new MutationObserver(() => syncSecondStyleOptions(cfg));
+        for (const sourceId of [cfg.presetId, cfg.sanId, cfg.soundId]) {
+          const source = document.getElementById(sourceId);
+          if (source) observer.observe(source, { childList: true });
+        }
+        syncSecondStyleOptions(cfg);
+      }
+
+      // Re-apply the second style values whenever the other profile controls are refreshed.
+      const originalApplyProfileSliders = window.__applyProfileDurationSliders;
+      window.__applyProfileDurationSliders = (prefs) => {
+        originalApplyProfileSliders(prefs);
+        applySecondStyleControls(prefs || {});
+      };
+      const originalCollectProfileDurations = window.__collectProfileDurations;
+      window.__collectProfileDurations = (base = {}) => {
+        const out = originalCollectProfileDurations(base);
+        for (const cfg of SECOND_STYLE_CONFIGS) {
+          const ids = secondStyleIds(cfg.tier);
+          const checkbox = document.getElementById(ids.checkbox);
+          if (!checkbox) continue;
+          const get = (id) => document.getElementById(id)?.value;
+          out[`${cfg.tier}AltEnabled`] = checkbox.checked;
+          out[`${cfg.tier}AltPreset`] = get(ids.preset) || base[`${cfg.tier}AltPreset`] || "default";
+          out[`${cfg.tier}AltSanPreset`] = get(ids.san) ?? base[`${cfg.tier}AltSanPreset`] ?? "";
+          out[`${cfg.tier}AltSound`] = get(ids.sound) || base[`${cfg.tier}AltSound`] || "mute";
+          const volume = parseInt(get(ids.volume), 10);
+          out[`${cfg.tier}AltSoundVolume`] = Number.isFinite(volume) ? volume : (base[`${cfg.tier}AltSoundVolume`] ?? 100);
+          const duration = parseFloat(get(ids.duration));
+          out[`${cfg.tier}AltDuration`] = Number.isFinite(duration) ? duration : (base[`${cfg.tier}AltDuration`] || 0);
+        }
+        return out;
+      };
+      applySecondStyleControls(getCachedPreferences?.() || {});
+
       function renderSteamApiKeyStatus(masked) {
         const inputEl = document.getElementById("settings-steamApiKeyInput");
         if (!inputEl) return;
