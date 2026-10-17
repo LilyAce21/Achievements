@@ -2145,7 +2145,7 @@ function resolveShadPs4AchievementCacheUserId(
 }
 
 // Second notification style ("alt style") for every notification profile (Bronze, Silver, Gold,
-// Sapphire, Platinum, PSN Platinum and the Xenia / RPCS3 / ShadPS4 profiles).
+// Sapphire, Diamond, Platinum, PSN Platinum and the Xenia / RPCS3 / ShadPS4 profiles).
 // Off by default. When enabled for a tier, each unlock from that tier randomly (50/50)
 // shows either the tier's normal style or its second style, which has its own preset,
 // SAN preset, sound, sound volume and duration.
@@ -2154,6 +2154,7 @@ const SECOND_STYLE_TIERS = Object.freeze([
   "silver",
   "gold",
   "sapphire",
+  "diamond",
   "platinum",
   "psnPlatinum",
   "xenia",
