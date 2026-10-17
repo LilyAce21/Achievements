@@ -2144,7 +2144,8 @@ function resolveShadPs4AchievementCacheUserId(
     : "";
 }
 
-// Second notification style ("alt style") for Bronze, Silver, Gold, Sapphire and Platinum.
+// Second notification style ("alt style") for every notification profile (Bronze, Silver, Gold,
+// Sapphire, Platinum, PSN Platinum and the Xenia / RPCS3 / ShadPS4 profiles).
 // Off by default. When enabled for a tier, each unlock from that tier randomly (50/50)
 // shows either the tier's normal style or its second style, which has its own preset,
 // SAN preset, sound, sound volume and duration.
@@ -2154,6 +2155,10 @@ const SECOND_STYLE_TIERS = Object.freeze([
   "gold",
   "sapphire",
   "platinum",
+  "psnPlatinum",
+  "xenia",
+  "rpcs3",
+  "shadps4",
 ]);
 const SECOND_STYLE_DEFAULT_PREFERENCES = Object.freeze(
   Object.fromEntries(
@@ -14959,6 +14964,7 @@ ipcMain.on("show-test-emulator-notification", (_event, options = {}) => {
           : 1,
     ),
     skipScreenshot: true,
+    altStyle: options.altStyle === true,
     isTest: true,
   });
 });
@@ -15040,6 +15046,7 @@ ipcMain.on("show-test-psn-platinum-notification", (_event, options = {}) => {
           : 1,
     ),
     skipScreenshot: true,
+    altStyle: options.altStyle === true,
     isTest: true,
     isPsnPlatinum: true,
   });
@@ -16658,17 +16665,16 @@ function queueAchievementNotification(achievement) {
     : isRare
       ? String(tierPref("SanPreset") || prefs.rareSanPreset || "")
       : emulatorSanPreset;
-  // Second style: Bronze / Silver / Gold / Sapphire / Platinum only (not PSN Platinum or
-  // emulator profiles). Real unlocks roll 50/50 when the tier has it enabled; test
+  // Second style: available to every profile. Real unlocks roll 50/50 when the tier has it enabled; test
   // notifications only use it when the test explicitly asks for the second style.
   const secondStyleTier = isPsnPlatinum
-    ? ""
+    ? "psnPlatinum"
     : isPlatinum
       ? "platinum"
       : isRare
         ? percentTier
         : usesEmulatorNotificationProfile
-          ? ""
+          ? emulatorPreferencePrefix
           : "bronze";
   const secondStyleAvailable =
     SECOND_STYLE_TIERS.includes(secondStyleTier) &&

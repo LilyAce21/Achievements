@@ -19675,7 +19675,7 @@
       }
       window.__applyProfileDurationSliders(getCachedPreferences?.() || {});
 
-      // ---- Second notification style (Bronze / Silver / Gold / Sapphire / Platinum) ----
+      // ---- Second notification style (every notification profile) ----
       // Off by default. When on, every unlock from the tier randomly (50/50) uses either the
       // tier's normal style or this second style, which has its own preset, SAN preset, sound,
       // sound volume and duration. The controls are built here so each tier gets the same block.
@@ -19688,6 +19688,25 @@
           sanId: "settings-sanPresetDropdown",
           testId: "settings-testAchievementBtn",
         },
+        {
+          tier: "psnPlatinum",
+          label: "PSN Platinum",
+          presetId: "settings-psnPlatinumPresetDropdown",
+          soundId: "settings-psnPlatinumSoundSelect",
+          sanId: "settings-psnPlatinumSanPresetDropdown",
+          testId: "settings-testPsnPlatinumNotificationBtn",
+          positionId: "settings-psnPlatinumPositionDropdown",
+        },
+        ...EMULATOR_NOTIFICATION_SETTINGS.map((setting) => ({
+          tier: setting.prefix,
+          label: setting.label,
+          presetId: setting.presetId,
+          soundId: setting.soundId,
+          sanId: setting.sanPresetId,
+          testId: setting.testButtonId,
+          positionId: setting.positionId,
+          emulatorPlatform: setting.platform,
+        })),
         ...["silver", "gold", "sapphire", "platinum"].map((tier) => {
           const label = tier.charAt(0).toUpperCase() + tier.slice(1);
           return {
@@ -19838,7 +19857,10 @@
         const options = {
           preset: read(ids.preset, "default"),
           position: read(
-            cfg.tier === "bronze" ? "settings-positionDropdown" : `settings-${cfg.tier}PositionDropdown`,
+            cfg.positionId ||
+              (cfg.tier === "bronze"
+                ? "settings-positionDropdown"
+                : `settings-${cfg.tier}PositionDropdown`),
             "center-bottom",
           ),
           sound: read(ids.sound, "mute"),
@@ -19851,6 +19873,9 @@
         stopUiAudioPlayback();
         if (cfg.tier === "bronze") window.api.showTestNotification(options);
         else if (cfg.tier === "platinum") window.api.showTestPlatinumNotification(options);
+        else if (cfg.tier === "psnPlatinum") window.api.showTestPsnPlatinumNotification(options);
+        else if (cfg.emulatorPlatform)
+          window.api.showTestEmulatorNotification({ platform: cfg.emulatorPlatform, ...options });
         else window.api.showTestRareNotification({ tier: cfg.tier, ...options });
       }
 
