@@ -1281,7 +1281,7 @@
                       type="range"
                       id="settings-durationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
@@ -1289,6 +1289,12 @@
                       >Auto</span
                     >
                   </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-bronzeStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-bronzeStackCheckbox" />
                 </div>
 
                 <div class="settings-control">
@@ -1352,12 +1358,18 @@
                       type="range"
                       id="settings-silverDurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
                     <span class="value" id="settings-silverDurationValueDisplay">Auto</span>
                   </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-silverStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-silverStackCheckbox" />
                 </div>
 
                 <div class="settings-control">
@@ -1456,12 +1468,18 @@
                       type="range"
                       id="settings-goldDurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
                     <span class="value" id="settings-goldDurationValueDisplay">Auto</span>
                   </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-goldStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-goldStackCheckbox" />
                 </div>
 
                 <div class="settings-control">
@@ -1560,12 +1578,18 @@
                       type="range"
                       id="settings-sapphireDurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
                     <span class="value" id="settings-sapphireDurationValueDisplay">Auto</span>
                   </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-sapphireStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-sapphireStackCheckbox" />
                 </div>
 
                 <div class="settings-control">
@@ -1665,7 +1689,7 @@
                       type="range"
                       id="settings-xeniaDurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
@@ -1781,7 +1805,7 @@
                       type="range"
                       id="settings-rpcs3DurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
@@ -1897,7 +1921,7 @@
                       type="range"
                       id="settings-shadps4DurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
@@ -2009,12 +2033,18 @@
                       type="range"
                       id="settings-platinumDurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
                     <span class="value" id="settings-platinumDurationValueDisplay">Auto</span>
                   </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-platinumStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-platinumStackCheckbox" />
                 </div>
 
                 <div class="settings-control">
@@ -2068,8 +2098,10 @@
                   Stacked Notifications
                 </h4>
                 <p style="margin: 4px 0 10px; opacity: 0.75; font-size: 0.9em">
-                  Bronze and Silver notifications can be shown together, newest on
-                  top. Gold, Sapphire, Platinum and PSN Platinum always show alone.
+                  Notifications from presets that allow stacking are shown together,
+                  newest on top (turn this on or off in each preset's settings;
+                  Bronze and Silver are on by default). This sets how many can
+                  show at once.
                 </p>
                 <div class="settings-control">
                   <label for="settings-notificationStackMaxDropdown"
@@ -2113,12 +2145,18 @@
                       type="range"
                       id="settings-psnPlatinumDurationSlider"
                       min="0"
-                      max="10"
+                      max="15"
                       step="0.5"
                       value="0"
                     />
                     <span class="value" id="settings-psnPlatinumDurationValueDisplay">Auto</span>
                   </div>
+                </div>
+                <div class="settings-control">
+                  <label for="settings-psnPlatinumStackCheckbox"
+                    >Allow stacking with other notifications:</label
+                  >
+                  <input type="checkbox" id="settings-psnPlatinumStackCheckbox" />
                 </div>
 
                 <div class="settings-control">
@@ -19156,7 +19194,7 @@
         const seconds = Math.max(0.5, value);
         settingsDurationValue.textContent = `${seconds.toFixed(1)}s`;
         settingsDurationValueDisplay.textContent = `${seconds.toFixed(1)}s`;
-        const percentage = Math.round((seconds / 10) * 100);
+        const percentage = Math.round((seconds / 15) * 100);
         settingsDurationSlider.style.background = `linear-gradient(to right, var(--app-accent-2) 0%, var(--app-accent-2) ${percentage}%, var(--app-border-subtle) ${percentage}%, var(--app-border-subtle) 100%)`;
       }
 
@@ -19185,6 +19223,16 @@
         "shadps4",
       ];
 
+      // Stacking opt-in per profile; the defaults match what stacked before this setting existed.
+      const PROFILE_STACK_DEFAULTS = {
+        bronze: true,
+        silver: true,
+        gold: false,
+        sapphire: false,
+        platinum: false,
+        psnPlatinum: false,
+      };
+
       function getProfileDurationEls(profile) {
         return {
           slider: document.getElementById(`settings-${profile}DurationSlider`),
@@ -19204,7 +19252,7 @@
         if (Number.isFinite(seconds) && seconds > 0) {
           const safe = Math.max(0.5, seconds);
           text = `${safe.toFixed(1)}s`;
-          percentage = Math.round((safe / 10) * 100);
+          percentage = Math.round((safe / 15) * 100);
         }
         if (value) value.textContent = text;
         if (display) display.textContent = text;
@@ -19218,6 +19266,12 @@
           slider.value = prefs?.[`${profile}Duration`] ?? 0;
           updateProfileDurationLabel(profile);
         }
+        for (const [profile, fallback] of Object.entries(PROFILE_STACK_DEFAULTS)) {
+          const box = document.getElementById(`settings-${profile}StackCheckbox`);
+          if (!box) continue;
+          const saved = prefs?.[`${profile}Stack`];
+          box.checked = typeof saved === "boolean" ? saved : fallback;
+        }
       };
 
       window.__collectProfileDurations = (base = {}) => {
@@ -19229,6 +19283,14 @@
             ? parsed
             : base[`${profile}Duration`] || 0;
         }
+        for (const [profile, fallback] of Object.entries(PROFILE_STACK_DEFAULTS)) {
+          const box = document.getElementById(`settings-${profile}StackCheckbox`);
+          out[`${profile}Stack`] = box
+            ? box.checked
+            : typeof base[`${profile}Stack`] === "boolean"
+              ? base[`${profile}Stack`]
+              : fallback;
+        }
         return out;
       };
 
@@ -19239,6 +19301,13 @@
             [`${profile}Duration`]: Number(e.target.value),
           });
         });
+      }
+      for (const profile of Object.keys(PROFILE_STACK_DEFAULTS)) {
+        document
+          .getElementById(`settings-${profile}StackCheckbox`)
+          ?.addEventListener("change", (e) => {
+            window.api.savePreferences({ [`${profile}Stack`]: e.target.checked });
+          });
       }
       window.__applyProfileDurationSliders(getCachedPreferences?.() || {});
 

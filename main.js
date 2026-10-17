@@ -2171,6 +2171,15 @@ const DEFAULT_PREFERENCES = {
   xeniaDuration: 0,
   rpcs3Duration: 0,
   shadps4Duration: 0,
+  // Per-profile opt-in for stacked notifications. Bronze and Silver stack by default (as before);
+  // Gold, Sapphire, Platinum and PSN Platinum show alone unless turned on. The global
+  // notificationStackMax below still caps how many show at once (1 = stacking off).
+  bronzeStack: true,
+  silverStack: true,
+  goldStack: false,
+  sapphireStack: false,
+  platinumStack: false,
+  psnPlatinumStack: false,
   position: "center-bottom",
   language: "english",
   uiLanguage: "english",
@@ -15612,10 +15621,10 @@ ipcMain.handle("load-presets", async () => {
 });
 
 const earnedNotificationQueue = [];
-// Notifications run one at a time unless they may stack. Only Bronze-tier and Silver-tier
-// notifications (and ones with no rarity tier) stack, up to the "max at once" setting. Gold,
-// Sapphire, Platinum and PSN Platinum always show alone: they wait for everything on screen to
-// finish, and nothing starts while one of them is showing.
+// Notifications run one at a time unless their profile allows stacking (per-profile setting;
+// Bronze and Silver on by default), up to the "max at once" setting. A profile that does not
+// stack shows alone: it waits for everything on screen to finish, and nothing starts while it
+// is showing.
 let activeNotificationCount = 0;
 let activeExclusiveCount = 0;
 const {
@@ -15633,15 +15642,34 @@ function getNotificationStackMax() {
   return clampStackMax(cachedPreferences?.notificationStackMax);
 }
 
+// Stacking default for each settings profile ("" durationProfile = the regular Bronze profile).
+const PROFILE_STACK_DEFAULTS = Object.freeze({
+  bronze: true,
+  silver: true,
+  gold: false,
+  sapphire: false,
+  platinum: false,
+  psnPlatinum: false,
+});
+
 function isStackableNotification(achievement = {}) {
   const preset = achievement.preset || "default";
+  // The system toast and Game Bar presets are drawn by Windows, which does its own stacking.
+  const drawnBySystem =
+    isNativeWindowsNotificationPreset(preset) || isGameBarNotificationPreset(preset);
+  if (drawnBySystem) return false;
+  // Each profile can opt in or out of stacking. Emulator profiles keep the tier rule below.
+  const profile =
+    achievement.durationProfile === "" ? "bronze" : achievement.durationProfile;
+  if (typeof profile === "string" && profile in PROFILE_STACK_DEFAULTS) {
+    const pref = cachedPreferences?.[`${profile}Stack`];
+    return typeof pref === "boolean" ? pref : PROFILE_STACK_DEFAULTS[profile];
+  }
   return isStackableTier({
     rarityTier: achievement.rarityTier,
     isPlatinum: achievement.isPlatinum === true || achievement.__isPlatinum === true,
     isPsnPlatinum: achievement.isPsnPlatinum === true,
-    // The system toast and Game Bar presets are drawn by Windows, which does its own stacking.
-    drawnBySystem:
-      isNativeWindowsNotificationPreset(preset) || isGameBarNotificationPreset(preset),
+    drawnBySystem,
   });
 }
 
