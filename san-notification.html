@@ -31,7 +31,6 @@
         margin-inline: calc(2px * var(--scale)) calc(5px * var(--scale));
         border-radius: 50%;
         overflow: hidden;
-        background: var(--secondarycolor);
         opacity: 0;
         animation:
           rightachicon-in calc(var(--transition) * 2) calc(var(--transition) * 8.5) forwards,
@@ -43,10 +42,11 @@
           rightachicon-out calc(var(--transition) * 2) calc(var(--displaytime) - (var(--transition) * 2)) forwards;
       }
       body[rightachicon] #rightachicon img {
-        place-self: center;
-        width: var(--righticonfit, 80%);
-        height: var(--righticonfit, 80%);
-        object-fit: contain;
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
       }
       @keyframes rightachicon-in { to { opacity: 1; } }
       @keyframes rightachicon-out { to { opacity: 0; } }
@@ -675,8 +675,6 @@
             rightWrap.appendChild(rightImg);
             rightHost.appendChild(rightWrap);
             document.body.setAttribute("rightachicon", "");
-            // Size of the icon inside the circle: 80% crops under 3% of a square icon.
-            setVar("--righticonfit", `${safeNumber(customisation.righticonfit, 80)}%`);
           }
           const fallbackIconUrl = fileUrl(defaultAchIcon);
           achicon.onerror = () => {
