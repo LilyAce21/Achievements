@@ -184,6 +184,75 @@ async function createContext(options, launchOptions) {
   } catch (error) { await close(); throw error; }
 }
 
+// Every browser context is a full Electron process tree, so never run many at once, and stop
+// retrying for a while when the host keeps failing to start.
+const MAX_BROWSER_HOSTS = Math.max(
+  1,
+  Math.min(4, Number(process.env.ACHIEVEMENTS_MAX_BROWSER_HOSTS) || 2),
+);
+const HOST_FAILURE_LIMIT = 3;
+const HOST_FAILURE_PAUSE_MS = 60000;
+let activeHosts = 0;
+let consecutiveHostFailures = 0;
+let hostsPausedUntil = 0;
+const hostWaiters = [];
+
+function acquireHostSlot() {
+  if (Date.now() < hostsPausedUntil) {
+    return Promise.reject(
+      new Error("Electron browser paused after repeated startup failures"),
+    );
+  }
+  return new Promise((resolve) => {
+    const grant = () => {
+      activeHosts += 1;
+      let released = false;
+      resolve(() => {
+        if (released) return;
+        released = true;
+        activeHosts -= 1;
+        const next = hostWaiters.shift();
+        if (next) next();
+      });
+    };
+    if (activeHosts < MAX_BROWSER_HOSTS) grant();
+    else hostWaiters.push(grant);
+  });
+}
+
+async function createLimitedContext(options, launchOptions) {
+  const release = await acquireHostSlot();
+  let context;
+  try {
+    if (Date.now() < hostsPausedUntil) {
+      throw new Error("Electron browser paused after repeated startup failures");
+    }
+    context = await createContext(options, launchOptions);
+    consecutiveHostFailures = 0;
+  } catch (error) {
+    release();
+    if (!/paused after repeated/.test(String(error?.message || ""))) {
+      consecutiveHostFailures += 1;
+      if (consecutiveHostFailures >= HOST_FAILURE_LIMIT) {
+        hostsPausedUntil = Date.now() + HOST_FAILURE_PAUSE_MS;
+        consecutiveHostFailures = 0;
+      }
+    }
+    throw error;
+  }
+  return new Proxy(context, {
+    get(target, key) {
+      if (key === "close") {
+        return async () => {
+          try { return await target.close(); } finally { release(); }
+        };
+      }
+      const value = target[key];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 async function launchBrowserSafe(_packageName, launchOptions = {}) {
   let connected = true, closing;
   const contexts = new Set();
@@ -191,7 +260,7 @@ async function launchBrowserSafe(_packageName, launchOptions = {}) {
     isConnected: () => connected,
     async newContext(options = {}) {
       if (!connected) throw new Error("Electron browser is closed");
-      const context = await createContext(options, launchOptions);
+      const context = await createLimitedContext(options, launchOptions);
       if (!connected) { await context.close(); throw new Error("Electron browser is closed"); }
       contexts.add(context);
       return context;

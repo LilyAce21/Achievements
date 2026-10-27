@@ -1028,17 +1028,24 @@ async function generateConfigFromAppcacheBin(
       }
       // The second install never gets a process name, so playtime/process
       // matching keeps pointing at the main entry only.
+      // SteamDB is only asked once per game (retried after 30 days): many games legitimately
+      // have no launch arguments, and every lookup starts a browser.
+      const launchCheckedAt = Number(existingData.launch_metadata_checked_at) || 0;
       const needsLaunchMetadata =
         !isSecondaryInstall &&
         (!hasProcessNameValue(existingData.process_name) ||
-          !String(existingData.arguments || "").trim());
-      if (
-        needsLaunchMetadata &&
-        applyLaunchMetadataToConfig(
-          existingData,
-          await fetchSteamDbLaunchMetadata(appid)
-        )
-      ) {
+          !String(existingData.arguments || "").trim()) &&
+        Date.now() - launchCheckedAt > 30 * 24 * 60 * 60 * 1000;
+      if (needsLaunchMetadata) {
+        if (
+          applyLaunchMetadataToConfig(
+            existingData,
+            await fetchSteamDbLaunchMetadata(appid)
+          )
+        ) {
+          dirty = true;
+        }
+        existingData.launch_metadata_checked_at = Date.now();
         dirty = true;
       }
       if (dirty) {
@@ -1056,6 +1063,7 @@ async function generateConfigFromAppcacheBin(
         payload,
         await fetchSteamDbLaunchMetadata(appid)
       );
+      payload.launch_metadata_checked_at = Date.now();
     }
     emitProgress({
       phase: "writingConfig",

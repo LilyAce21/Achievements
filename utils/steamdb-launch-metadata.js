@@ -146,7 +146,7 @@ async function extractLaunchOptionsFromPage(page) {
   });
 }
 
-async function fetchSteamDbLaunchMetadata(appid, sharedSession = null) {
+async function fetchSteamDbLaunchMetadataUncached(appid, sharedSession = null) {
   const id = String(appid || "").trim();
   if (!/^\d+$/.test(id)) return null;
 
@@ -209,6 +209,26 @@ async function fetchSteamDbLaunchMetadata(appid, sharedSession = null) {
       await browser.close().catch(() => {});
     }
   }
+}
+
+// Each lookup without a shared page starts its own browser, so look every app up only once per
+// run (including failed lookups) and share the result with concurrent callers.
+const launchMetadataLookups = new Map();
+
+function fetchSteamDbLaunchMetadata(appid, sharedSession = null) {
+  const id = String(appid || "").trim();
+  const hasSharedPage =
+    sharedSession && typeof sharedSession === "object" && sharedSession.page;
+  if (hasSharedPage || !/^\d+$/.test(id)) {
+    return fetchSteamDbLaunchMetadataUncached(appid, sharedSession);
+  }
+  if (!launchMetadataLookups.has(id)) {
+    launchMetadataLookups.set(
+      id,
+      fetchSteamDbLaunchMetadataUncached(id, sharedSession),
+    );
+  }
+  return launchMetadataLookups.get(id);
 }
 
 module.exports = {
