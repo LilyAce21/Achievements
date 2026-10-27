@@ -1,6 +1,6 @@
 "use strict";
 
-const ACHIEVEMENT_RECORD_FPS_VALUES = Object.freeze([30, 60]);
+const ACHIEVEMENT_RECORD_FPS_VALUES = Object.freeze([30, 60, "unlocked"]);
 // "native" records at the screen size; "1080p" scales the clips down to 1080 lines high
 // (only when the screen is taller than that).
 const ACHIEVEMENT_RECORD_RESOLUTION_VALUES = Object.freeze(["native", "1080p"]);
@@ -26,6 +26,7 @@ const DEFAULT_ACHIEVEMENT_RECORD_PREFERENCES = Object.freeze({
 });
 
 function normalizeAchievementRecordFps(value, fallback = 30) {
+  if (value === "unlocked") return "unlocked";
   const parsed = Number.parseInt(value, 10);
   return ACHIEVEMENT_RECORD_FPS_OPTIONS.has(parsed) ? parsed : fallback;
 }
@@ -87,7 +88,7 @@ function getAchievementRecorderTimings(prefs = {}) {
     fps,
     preMs: halfDurationMs,
     postMs: halfDurationMs,
-    segmentMs: 2_000,
+    segmentMs: 5_000,
     hdrToneMapping: prefs?.enableHdrRecords === true,
     maxHeight:
       ACHIEVEMENT_RECORD_RESOLUTION_HEIGHTS[

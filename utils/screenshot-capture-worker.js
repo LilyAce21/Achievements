@@ -1,7 +1,36 @@
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
+let requireFrameValidation = false;
+let captureMonitor = null;
+
+function validateCaptureFrame() {
+  if (!requireFrameValidation) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const finish = (error) => {
+      clearTimeout(timer);
+      process.removeListener("message", handler);
+      process.channel?.unref();
+      if (error) reject(error); else resolve();
+    };
+    const handler = (message) => {
+      if (message?.type !== "capture:frame-valid") return;
+      if (message.valid === true) finish();
+      else {
+        const error = new Error(message.error || "Notification frame is no longer available");
+        error.code = "capture-frame-unavailable";
+        finish(error);
+      }
+    };
+    const timer = setTimeout(() => {
+      const error = new Error("Notification frame validation timed out");
+      error.code = "capture-frame-unavailable";
+      finish(error);
+    }, 1500);
+    process.on("message", handler);
+    send({ type: "capture:validate-frame" });
+  });
+}
 
 function send(message) {
   try {
@@ -17,64 +46,11 @@ function fail(error, code = "capture-failed") {
   process.exitCode = 1;
 }
 
-function copyWindowsCaptureFiles() {
-  const pkgDir = path.dirname(require.resolve("screenshot-desktop/package.json"));
-  const sourceDir = path.join(pkgDir, "lib", "win32");
-  const tempDir = path.join(os.tmpdir(), "screenCapture");
-  const targetBat = path.join(tempDir, "screenCapture_1.3.2.bat");
-  const targetManifest = path.join(tempDir, "app.manifest");
-
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-  if (!fs.existsSync(targetBat)) {
-    fs.copyFileSync(path.join(sourceDir, "screenCapture_1.3.2.bat"), targetBat);
-  }
-  if (!fs.existsSync(targetManifest)) {
-    fs.copyFileSync(path.join(sourceDir, "app.manifest"), targetManifest);
-  }
-  return { tempDir, targetBat };
-}
-
 function captureWindows(outputPath, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const { tempDir, targetBat } = copyWindowsCaptureFiles();
-    const tempFile = path.join(
-      os.tmpdir(),
-      `achievements-screenshot-${process.pid}-${Date.now()}.png`,
-    );
-    const args = ["/c", targetBat, tempFile];
-
-    execFile(
-      "cmd.exe",
-      args,
-      {
-        cwd: tempDir,
-        windowsHide: true,
-        timeout: timeoutMs,
-        killSignal: "SIGKILL",
-      },
-      (err) => {
-        try {
-          if (err) {
-            const timedOut = err.killed || /timed out/i.test(err.message || "");
-            err.code = timedOut ? "capture-timeout" : err.code;
-            reject(err);
-            return;
-          }
-          fs.copyFileSync(tempFile, outputPath);
-          resolve(outputPath);
-        } finally {
-          try {
-            fs.rmSync(tempFile, { force: true });
-          } catch {}
-        }
-      },
-    );
-  });
+  return captureNativeWindows(outputPath, timeoutMs, false);
 }
 
-function resolveHdrCaptureHelper() {
+function resolveCaptureHelper() {
   const executableName = "achievements-hdr-screenshot.exe";
   const candidates = [
     path.join(__dirname, "native", executableName),
@@ -99,18 +75,30 @@ function resolveHdrCaptureHelper() {
 }
 
 function captureHdrWindows(outputPath, timeoutMs) {
+  return captureNativeWindows(outputPath, timeoutMs, true);
+}
+
+async function captureNativeWindows(outputPath, timeoutMs, hdr) {
+  await validateCaptureFrame();
   return new Promise((resolve, reject) => {
-    const helper = resolveHdrCaptureHelper();
+    const helper = resolveCaptureHelper();
+    const prefix = hdr ? "hdr-capture" : "capture";
     if (!helper) {
-      const err = new Error("Bundled HDR screenshot helper was not found");
-      err.code = "hdr-capture-unavailable";
+      const err = new Error("Bundled Windows screenshot helper was not found");
+      err.code = `${prefix}-unavailable`;
       reject(err);
       return;
     }
 
+    let monitorId = captureMonitor?.captureId || captureMonitor?.id;
+    if (monitorId?.startsWith("electron:")) {
+      const b = captureMonitor?.bounds;
+      if (!b) { reject(new Error("Selected screenshot monitor has no physical placement")); return; }
+      monitorId = `bounds:${b.x},${b.y},${b.width},${b.height}`;
+    }
     execFile(
       helper,
-      [outputPath],
+      [...(hdr ? [] : ["--sdr"]), ...(monitorId && !monitorId.startsWith("electron:") ? ["--monitor-id", monitorId] : []), outputPath],
       {
         windowsHide: true,
         timeout: timeoutMs,
@@ -118,9 +106,13 @@ function captureHdrWindows(outputPath, timeoutMs) {
         maxBuffer: 64 * 1024,
       },
       (err, _stdout, stderr) => {
+        // A killed/failed encoder may leave its atomic PNG staging file behind.
+        try {
+          fs.rmSync(`${outputPath}.tmp`, { force: true });
+        } catch {}
         if (err) {
           const timedOut = err.killed || /timed out/i.test(err.message || "");
-          err.code = timedOut ? "hdr-capture-timeout" : "hdr-capture-failed";
+          err.code = `${prefix}-${timedOut ? "timeout" : "failed"}`;
           const detail = String(stderr || "").trim();
           if (detail) err.message = detail.slice(0, 1000);
           reject(err);
@@ -128,9 +120,9 @@ function captureHdrWindows(outputPath, timeoutMs) {
         }
         if (!fs.existsSync(outputPath)) {
           const missing = new Error(
-            "HDR screenshot helper exited without creating the output file",
+            "Windows screenshot helper exited without creating the output file",
           );
-          missing.code = "hdr-capture-missing-output";
+          missing.code = `${prefix}-missing-output`;
           reject(missing);
           return;
         }
@@ -141,8 +133,17 @@ function captureHdrWindows(outputPath, timeoutMs) {
 }
 
 async function captureGeneric(outputPath) {
+  await validateCaptureFrame();
   const screenshot = require("screenshot-desktop");
-  const buf = await screenshot({ format: "png" });
+  let screenId;
+  if (captureMonitor?.bounds) {
+    const displays = await screenshot.listDisplays();
+    const b = captureMonitor.bounds;
+    const match = displays.find(d => d.width === b.width && d.height === b.height && d.offsetX === b.x && d.offsetY === b.y);
+    if (!match) throw new Error("Selected screenshot monitor is unavailable");
+    screenId = match.id;
+  }
+  const buf = await screenshot({ format: "png", ...(screenId == null ? {} : { screen: screenId }) });
   fs.writeFileSync(outputPath, buf);
   return outputPath;
 }
@@ -150,9 +151,11 @@ async function captureGeneric(outputPath) {
 (async () => {
   try {
     const payload = JSON.parse(process.argv[2] || "{}");
+    captureMonitor = payload.monitor || null;
     const outputPath = String(payload.outputPath || "").trim();
     const timeoutMs = Math.max(1000, Number(payload.timeoutMs) || 8000);
     const hdrRequested = payload.enableHdrScreenshots === true;
+    requireFrameValidation = payload.validateFrame === true;
     if (!outputPath) {
       throw new Error("Missing outputPath");
     }
@@ -170,6 +173,7 @@ async function captureGeneric(outputPath) {
         await captureHdrWindows(outputPath, hdrTimeoutMs);
         captureMode = "windows-graphics-capture-fp16";
       } catch (err) {
+        if (err?.code === "capture-frame-unavailable") throw err;
         fallbackError = err?.message || String(err);
         const remainingMs = Math.max(1000, timeoutMs - (Date.now() - startedAt));
         await captureWindows(outputPath, remainingMs);
@@ -181,7 +185,7 @@ async function captureGeneric(outputPath) {
     } else {
       await captureGeneric(outputPath);
     }
-    send({ ok: true, outputPath, captureMode, hdrRequested, fallbackError });
+    send({ ok: true, outputPath, captureMode, hdrRequested, fallbackError, monitor: captureMonitor });
   } catch (err) {
     fail(err, err?.code || "capture-failed");
   }

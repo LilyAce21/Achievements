@@ -103,29 +103,32 @@ function decodeNativeWindowsNotificationLaunchArguments(rawArguments) {
 
 function buildNativeWindowsAchievementToastXml(options = {}) {
   const launchArguments = String(options?.launchArguments || "").trim();
-  if (!launchArguments) {
-    throw new Error("Native notification launch arguments are required");
-  }
+  const progress = options?.progress;
   const groupId = String(options?.groupId || "").trim();
   const groupTitle = String(options?.groupTitle || "").trim();
   const title = String(options?.title || "Achievement");
   const body = String(options?.body || "");
   const iconUrl = String(options?.iconUrl || "").trim();
   const headerXml =
-    groupId && groupTitle
+    groupId && groupTitle && (launchArguments || options.includeHeader === true)
       ? `<header id="${escapeToastXml(groupId)}" title="${escapeToastXml(groupTitle)}" arguments="${escapeToastXml(launchArguments)}"/>`
       : "";
   const imageXml = iconUrl
-    ? `<image placement="appLogoOverride" src="${escapeToastXml(iconUrl)}"/>`
+    ? `<image id="1" placement="appLogoOverride" src="${escapeToastXml(iconUrl)}"/>`
     : "";
   const bodyXml = body ? `<text>${escapeToastXml(body)}</text>` : "";
+  const progressValue = progress?.value;
+  const progressXml = progressValue !== null && progressValue !== undefined && progressValue !== "" && Number.isFinite(Number(progressValue))
+    ? `<progress value="${Math.max(0, Math.min(1, Number(progressValue)))}" status="${escapeToastXml(progress.status || "")}" valueStringOverride="${escapeToastXml(progress.valueStringOverride || "")}"/>`
+    : "";
   return [
-    `<toast launch="${escapeToastXml(launchArguments)}">`,
+    launchArguments ? `<toast launch="${escapeToastXml(launchArguments)}">` : "<toast>",
     headerXml,
     '<visual><binding template="ToastGeneric">',
     imageXml,
     `<text>${escapeToastXml(title)}</text>`,
     bodyXml,
+    progressXml,
     "</binding></visual>",
     '<audio silent="true"/>',
     "</toast>",

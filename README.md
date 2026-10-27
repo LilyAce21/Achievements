@@ -1,5 +1,48 @@
 # 🎮 Achievements
 
+Achievement notifications, an in-game overlay and playtime tracking for Windows, across supported launchers, emulators and native ports.
+
+<p align="center">
+  <strong>Windows</strong> ·
+  <a href="https://github.com/PSerban93/Achievements/releases/latest">Download the latest release</a> ·
+  <a href="#install--quick-start">Quick start</a> ·
+  <a href="#supported-platforms">Supported platforms</a>
+</p>
+
+<p align="center">
+  <a href=".github/media/achievements-demo.webp">
+    <img src=".github/media/achievements-demo.webp" width="1200" alt="Achievements application tour: onboarding, folder discovery and manual configuration, landscape and portrait Dashboard, collections, live unlocks, manual achievement locking and backup restoration, live theme editing, animated notification customisation and click indicators, expanded notification settings, 20 Achievements and SAN styles, a dedicated animated Platinum notification, achievement progress, playtime, capture preferences and an actual God of War III Remastered recording, interactive overlay actions, languages and controller navigation with animated PlayStation and Xbox layouts, controller overlay opening, scrolling and positioning, accounts, application backup and diagnostics. Captured with demonstration data and anonymised paths, on the application wallpaper.">
+  </a>
+</p>
+
+<a id="contents"></a>
+
+<p align="center">
+  <a href="#highlights">Highlights</a> ·
+  <a href="#install--quick-start">Install &amp; Quick Start</a> ·
+  <a href="#supported-platforms">Supported Platforms</a> ·
+  <a href="#usage--configuration">Usage &amp; Configuration</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#support--credits">Support &amp; Credits</a>
+</p>
+
+## Highlights
+
+- **One game library:** Dashboard search, platform filters, progress and custom collections.
+- **Achievement tracking:** live unlocks from compatible launchers, local saves, emulators and native ports.
+- **Your notification style:** animated presets, Native Windows notifications and optional Xbox Game Bar delivery.
+- **In-game overlay:** browse achievements and rarity with keyboard or controller navigation.
+- **Playtime tracking:** start/stop notifications and saved totals for each config.
+- **Screenshots & video clips:** capture unlocks on your selected monitor, with supported HDR handling.
+- **Customization:** themes, Achievements/SAN presets, sounds, positions, scale and timing.
+- **Backup & restore:** move configs, collections, preferences, artwork and progress to another profile or PC.
+
+<a id="-features"></a>
+
+<details>
+<summary><strong>Full feature list and supported sources</strong></summary>
+
 A desktop application built with Electron that monitors running games and displays achievement notifications for:
 
 - ✅ Achievement unlocks
@@ -8,16 +51,9 @@ A desktop application built with Electron that monitors running games and displa
 - 🖼️ Game image overlays
 - 📊 Real-time achievement dashboard
 - Steam/Uplay/GOG/Epic emulators, Xbox PC, RetroAchievements, XLiveLessNess, MarkerPatch, MadnessPatch, FINAL FANTASY VII `achievement.dat` and official launcher schema support (auto-detected where possible)
+- PS4 Recomp trophy tracking for compatible Bloodborne, Uncharted: The Nathan Drake Collection, God of War III Remastered, MediEvil and CTR Nitro-Fueled ports ([setup and requirements](#ps4-recomp-support))
 
 **Platform:** Windows (uses Task Scheduler + Windows paths).
-
-## ☕ Support
-
-If you’d like to support the project further, you can buy me a coffee on Ko-fi:
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V81U42NF)
-
-## ✨ Features
 
 - **Achievement Tracking**
   - Detects running games using their process names
@@ -25,6 +61,7 @@ If you’d like to support the project further, you can buy me a coffee on Ko-fi
   - Real-time progress monitoring and updates
   - Supports progress stats from Online-Fix `Stats.ini` and Tenoke `user_stats.ini`
   - Screenshots achievements when unlocked (optional)
+  - Choose the monitor for animated notifications, screenshots and recordings in **Settings → Notifications → Notification Toggles**. If disconnected, the first available monitor is used until the selected monitor reconnects.
   - Records optional achievement clips with selectable 10–30 second duration, 30/60 FPS, and system audio
   - Optional GPU HDR-to-SDR conversion keeps recorded H.264/MP4 clips compatible with standard SDR players
 - **Smart Dashboard**
@@ -36,6 +73,7 @@ If you’d like to support the project further, you can buy me a coffee on Ko-fi
     - Last Updated (Recent-Old / Old-Recent)
   - Quick game search and filtering
   - Platform filtering and multi-select actions for ignore/delete
+  - Custom game collections shown as Dashboard cards, with Configs Only, Collections Only, or combined views; open a collection to view its games, add members with multi-select, and choose a color, icon, or custom image
   - Click-to-load configs
   - Play game launch button (requires executable and optional arguments)
   - Automatically refreshes when config or save files change
@@ -47,6 +85,9 @@ If you’d like to support the project further, you can buy me a coffee on Ko-fi
   - Animated presets, a native Windows preset, and native Xbox Game Bar notifications through the optional Game Bar Widget [Achievements Overlay by JokerVerse]
   - Game Bar delivery supports achievement unlock, rarity/platinum metadata, click navigation, and textual progress (`current / maximum • percentage`)
   - The Game Bar companion is optional; when it is not installed or connected, the Electron application remains independent and uses the configured fallback
+  - Optional Trophy Mode classifies unlocks as Gold below 20% rarity, Silver from 20% to below 50%, and Bronze from 50% upward; completing every achievement keeps the dedicated Platinum notification profile
+  - RPCS3, ShadPS4, KytyPS5 and PS4 Recomp notifications keep their platform preset, sound, position and timing regardless of Trophy Mode, retaining native trophy grades alongside available rarity percentages. Platinum keeps its dedicated notification profile. Xenia and other platforms follow the Trophy Mode preference. Emulator notification tests use demonstration percentages.
+  - Trophy Mode shows the tier color around achievement icons in notifications, the main achievement table, and the overlay; Bronze/Silver/Gold notifications use the Rare profile
   - Customizable sounds and visual presets
   - Adjustable position, duration, and scaling (presets support up to 200%)
   - Non-intrusive overlay system
@@ -72,223 +113,42 @@ If you’d like to support the project further, you can buy me a coffee on Ko-fi
   - Select which achievement schema languages are generated when the source supports localization
   - Optional controller support for the overlay (`Settings -> Advanced -> Rendering`)
   - Multi-language support for achievements
+- **Profile Backup & Restore**
+  - Export the complete portable profile from **Settings -> Backup & Restore**
+  - Stream backups through a TAR container compressed with Zstandard, without loading the full profile into memory
+  - Restore configs, custom collections and their images, achievement cache, covers, images, presets, sounds, themes, playtime, preferences, account import metadata, and dashboard summary in one operation
+  - Preview backup version and contents before replacing the current profile
+  - Apply restore before watchers start, suppressing achievement notifications during migration
+  - Rebase internal profile paths and refresh dashboard fingerprints when moving the profile to another Windows account or PC
+  - Authentication token files are intentionally excluded; connected services can require sign-in again
+  - Backup archives are not encrypted and may contain sensitive settings such as the Steam Web API key
 
-## 📁 Project Structure
+</details>
 
-| File/Folder                                       | Description                                                     |
-| ------------------------------------------------- | --------------------------------------------------------------- |
-| `main.js`                                         | Main Electron process: window handling, core logic              |
-| `preload.js`                                      | IPC bridge and renderer APIs                                    |
-| `utils/playtime-log-watcher.js`                   | Tracks game start/stop and calculates total playtime            |
-| `index.html`                                      | Main UI with dashboard and config management                    |
-| `overlay.html`                                    | Achievement notification overlay                                |
-| `san-notification.html`                           | Animated achievement notification renderer                      |
-| `playtime.html`                                   | Playtime notification template                                  |
-| `progress.html`                                   | Progress notification template                                  |
-| `tray-menu.html/js/css`                           | Tray menu UI and logic                                          |
-| `playtime-totals.json`                            | Runtime-generated totals (`%APPDATA%/Achievements/`)            |
-| `preferences.json`                                | Runtime settings (`%APPDATA%/Achievements/`)                    |
-| `LICENSE`                                         | Project license file                                            |
-| `package.json`                                    | Node.js dependencies and scripts                                |
-| `README.md`                                       | This documentation                                              |
-| `style.css`                                       | Global styling for all UI components                            |
-| `assets/`                                         | Static assets:                                                  |
-| `assets/steamdb.json`                             | Steam database cache                                            |
-| `assets/uplay-steam.json`                         | Uplay to Steam mapping                                          |
-| `assets/locales/`                                 | UI translations                                                 |
-| `assets/san-runtime/`                             | Bundled runtime assets for animated notifications               |
-| `assets/vendor/fontawesome/`                      | Font Awesome icons                                              |
-| `build/`                                          | Build scripts and manifests                                     |
-| `build/prepare-playwright-browsers.js`            | Installs and verifies the full Playwright Chromium runtime      |
-| `fonts/`                                          | Font files and licenses                                         |
-| `presets/`                                        | `Default Presets` and `Users Presets` themes                    |
-| `sounds/`                                         | Notification sound assets                                       |
-| `utils/`                                          | Helper modules and utilities:                                   |
-| `utils/auto-config-generator.js`                  | Auto-generates game configs from save directories               |
-| `utils/generate_achievements_schema.js`           | Generates multi-platform achievement schemas                    |
-| `utils/watched-folders.js`                        | Watcher + auto-select + auto-config                             |
-| `utils/steam-appcache*.js`                        | Steam official appcache parsing + schema build                  |
-| `utils/exophase-scraper.js`                       | Multi-language scraping from Exophase                           |
-| `utils/xenia-*`                                   | Xenia parsing + schema generation                               |
-| `utils/rpcs3-*`                                   | RPCS3 parsing + schema generation                               |
-| `utils/shadps4-*`                                 | PS4 trophy parsing + schema generation                          |
-| `utils/achievement-data.js`                       | Achievement data processing                                     |
-| `utils/achievement-rarity.js`                     | Achievement rarity calculations                                 |
-| `utils/app-navigation.js`                         | App launch argument and navigation routing                      |
-| `utils/atomic-json-store.js`                      | Atomic JSON writes and backup recovery                          |
-| `utils/blacklist-identity.js`                     | Global/platform blacklist identity handling                     |
-| `utils/config-deletion-guard.js`                  | Prevents config recreation during deletion                      |
-| `utils/config-deletion-paths.js`                  | Validates optional save/schema deletion targets                 |
-| `utils/config-name.js`                            | Safe config names and JSON path resolution                      |
-| `utils/config-platform-migrator.js`               | Config migration between platforms                              |
-| `utils/content-version.js`                        | Content versioning utilities                                    |
-| `utils/controller-input-manager.js`               | Controller input handling                                       |
-| `utils/ea-desktop-local.js`                       | EA Desktop local integration                                    |
-| `utils/epic-api.js`                               | Epic Games API integration                                      |
-| `utils/epic-auth.js`                              | Epic authentication                                             |
-| `utils/epic-identity.js`                          | Epic artifact/AppID identity fallback                           |
-| `utils/epic-local-installations.js`               | Epic local installations detection                              |
-| `utils/epic-official.js`                          | Epic official achievements                                      |
-| `utils/xbox-pc.js`                                | Xbox App PC discovery and direct Xbox Network sync              |
-| `utils/fileCopy.js`                               | File copying utilities                                          |
-| `utils/game-cover.js`                             | Game cover image handling                                       |
-| `utils/gog-auth.js`                               | GOG authentication                                              |
-| `utils/gog-galaxy-local.js`                       | GOG Galaxy local integration                                    |
-| `utils/i18n-ui.js`                                | UI internationalization                                         |
-| `utils/local-game-name-cache.js`                  | Local game name caching                                         |
-| `utils/logger.js`                                 | Logging utilities                                               |
-| `utils/log-viewer-service.js`                     | Bounded live log tailing, rotation handling and subscriptions   |
-| `utils/github-changelog-service.js`               | GitHub release retrieval with atomic cache and offline fallback |
-| `utils/lumaplay-event-watcher.js`                 | Native LumaPlay registry change watcher                         |
-| `utils/lumaplay-registry.js`                      | LumaPlay registry handling                                      |
-| `utils/markerpatch.js`                            | Dead Space 2 MarkerPatch detection and bitflag parser           |
-| `utils/madnesspatch.js`                           | Alice MadnessPatch detection, schema and profile bitflag parser |
-| `utils/ff7-achievement-dat.js`                    | FINAL FANTASY VII legacy achievement.dat detection and parser   |
-| `utils/xlivelessness.js`                          | XLiveLessNess discovery, config generation and DAT state parser |
-| `utils/xlivelessness-spa.js`                      | XLiveLessNess PE SPAFILE/XDBF metadata and image parser         |
-| `utils/xlivelessness-worker.js`                   | Async XLiveLessNess executable discovery worker                 |
-| `utils/retroachievements.js`                      | RetroAchievements Web API authentication, import and polling    |
-| `utils/adaptive-path-watcher.js`                  | Late-created local achievement path monitoring                  |
-| `utils/match-uplay-steam.js`                      | Uplay to Steam matching                                         |
-| `utils/native-windows-notification-navigation.js` | Native toast activation routing                                 |
-| `utils/overlay-controller-service.js`             | Overlay controller service                                      |
-| `utils/overlay-shortcut-manager.js`               | Overlay shortcut management                                     |
-| `utils/parseStatsBin.js`                          | Stats binary parsing                                            |
-| `utils/paths.js`                                  | Path utilities                                                  |
-| `utils/playtime-store.js`                         | Playtime data storage                                           |
-| `utils/playwright-runtime.js`                     | Playwright runtime resolver                                     |
-| `utils/process-event-watcher.js`                  | Process event watching                                          |
-| `utils/process-config-match.js`                   | Process-to-config matching                                      |
-| `utils/process-native-host.js`                    | Isolated native process watcher host                            |
-| `utils/process-name-utils.js`                     | Process name utilities                                          |
-| `utils/process-poller.js`                         | Process polling                                                 |
-| `utils/pslist-wrapper.mjs`                        | PS list wrapper                                                 |
-| `utils/raw-hid-controller-hub.js`                 | Raw HID controller hub                                          |
-| `utils/raw-hid-controller-worker.js`              | Raw HID controller worker                                       |
-| `utils/raw-hid-profiles.js`                       | Raw HID profiles                                                |
-| `utils/rpcs3-config-generator.js`                 | RPCS3 config generation                                         |
-| `utils/rpcs3-trophy.js`                           | RPCS3 trophy handling                                           |
-| `utils/shadps4-config-generator.js`               | ShadPS4 config generation                                       |
-| `utils/shadps4-trophy.js`                         | ShadPS4 trophy handling                                         |
-| `utils/startup-task.js`                           | Startup task management                                         |
-| `utils/steam-appcache-generator.js`               | Steam appcache generation                                       |
-| `utils/steam-appcache.js`                         | Steam appcache handling                                         |
-| `utils/steam-local-users.js`                      | Steam local users                                               |
-| `utils/steam-schema-parse.js`                     | Bundled Steam schema tool runtime and generation                |
-| `utils/steamdb-launch-metadata.js`                | SteamDB launch metadata                                         |
-| `utils/ubisoft-connect-local.js`                  | Ubisoft Connect local integration                               |
-| `utils/windows-process-native-provider.js`        | Native Windows process snapshot provider                        |
-| `utils/xenia-config-generator.js`                 | Xenia config generation                                         |
-| `utils/xenia-gpd.js`                              | Xenia GPD handling                                              |
+<a id="-setup--configuration"></a>
 
-## 🛠️ Installation
+<a id="getting-started"></a>
 
-1. Install [Node.js](https://nodejs.org) and [Git](https://git-scm.com).
-2. Clone this repository:
-   ```bash
-   git clone https://github.com/PSerban93/achievements.git
-   cd achievements
-   ```
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-4. Install the full Playwright Chromium runtime used for schema scraping and local runs:
+## Install & Quick Start
 
-   ```bash
-   npm run dl-browsers
-   ```
-
-   This command installs and validates the current full Chromium revision before removing obsolete Chromium revisions and Headless Shell variants. Scraping uses Chromium's new headless mode, while the manual schema-generator `--headed` mode remains available.
-
-## 🚀 Running the App
-
-```bash
-npm start
-
-```
-
-### Application Launch Arguments
-
-An existing config can be opened directly by passing both its AppID and platform to the installed or unpacked executable:
-
-```powershell
-Achievements.exe --appid=239140/steam
-Achievements.exe --appid=239140 --platform=steam
-```
-
-- Both formats are supported and are equivalent.
-- If Achievements is already running, the existing instance is opened and navigates to the matching config.
-- The AppID and platform must match one existing config exactly. These arguments do not generate a config or launch the game.
-- Supported platform values: `steam`, `steam-official`, `uplay`, `ubisoft-official`, `ea-official`, `epic`, `epic-official`, `gog`, `gog-official`, `xbox-pc`, `retroachievements`, `xenia`, `rpcs3`, `shadps4`, `markerpatch`, `madnesspatch`, `xlivelessness`.
-
-## 🧱 Building a Windows Executable
-
-Create an unpacked Windows build:
-
-```bash
-npm run pack
-```
-
-Create the Windows installer:
-
-```bash
-npm run dist
-
-```
-
-Build output is created in the `dist/` folder. The build scripts verify the native process watcher and SAN notification runtime. Both `npm run pack` and `npm run dist` install and validate full Playwright Chromium automatically before packaging. Chromium Headless Shell is not bundled.
-
-## 📦 Dependencies
-
-### Core
-
-- [Electron](https://electronjs.org) - Cross-platform desktop application framework
-- [@vscode/windows-process-tree](https://www.npmjs.com/package/@vscode/windows-process-tree) - Native Windows process monitoring
-- [Koffi](https://www.npmjs.com/package/koffi) - Native Windows API bindings used by local detection services
-- [ps-list](https://www.npmjs.com/package/ps-list) - Limited process-monitoring fallback
-- [crc-32](https://www.npmjs.com/package/crc-32) - Checksum calculation
-
-### Achievement Processing
-
-- [Playwright](https://playwright.dev) - Browser automation for achievement scraping, packaged with full Chromium and using its new headless mode by default
-- [axios](https://www.npmjs.com/package/axios) - HTTP client for platform APIs and metadata services
-- [cheerio](https://www.npmjs.com/package/cheerio) - HTML parsing
-- [jsdom](https://www.npmjs.com/package/jsdom) - DOM environment
-
-### Features
-
-- [screenshot-desktop](https://www.npmjs.com/package/screenshot-desktop) - Optional achievement screenshot capture
-- [windows-capture](https://github.com/NiiightmareXD/windows-capture) - Windows Graphics Capture and hardware-accelerated H.264 encoding for optional achievement video clips and HDR screenshots. The bundled recorder uses a locally patched MIT-licensed 2.0.1 source snapshot to pass GPU tone-mapped surfaces directly to the encoder.
-- [@xboxreplay/xboxlive-auth](https://www.npmjs.com/package/@xboxreplay/xboxlive-auth) - Microsoft/Xbox Network authentication
-- [ws](https://www.npmjs.com/package/ws) - WebSocket support
-- [ini](https://www.npmjs.com/package/ini) - Config file parsing
-
-### Background Services
-
-- `chokidar` keeps config/save directories under watch to trigger UI refreshes
-- `@vscode/windows-process-tree` runs in an isolated Electron utility process and provides process events plus command-line data when required
-- `ps-list` (via `utils/pslist-wrapper.mjs`) reconciles native snapshots and remains active as the limited fallback
-- `achievements-recorder.exe` runs only while achievement records are enabled, retains bounded rolling video/audio segments on disk, and captures the default Windows output mix through WASAPI loopback (microphone input is not captured; unavailable audio safely falls back to video-only)
-- Native snapshots run at ~1s; fallback detection runs at ~2s and hybrid reconciliation at ~12s
-- Disabling the native process watcher in **Settings -> Advanced** keeps executable-name detection active through the limited `ps-list` fallback; command-line arguments are not available in that mode
-- A config selected automatically from a running executable is cleared when its last matching process closes; configs selected manually or by save-folder watchers remain selected
-- The Settings log viewer uses a filesystem watcher with a lightweight polling fallback only while the **Logs** tab is active; both are released when the tab or Settings is closed
-- GitHub release notes are fetched on demand from the public repository API and cached atomically for offline reuse
-
-## 🎮 Setup & Configuration
+1. Download the Windows installer from [GitHub Releases](https://github.com/PSerban93/Achievements/releases/latest) and install Achievements.
+2. Open the application, then follow the first-run steps below. Node.js and Git are only needed when [running from source](#development).
 
 ### Quick Start (Tutorial)
 
 1. Open **Settings** and set Preset, and Scale.
-2. Add your **Watched Folders** (recommended) so the app can detect saves/emulators.
+2. Add your [**Watched Folders**](#auto-configuration) (recommended) so the app can detect saves/emulators.
 3. Start a game once so its save folder appears; the watcher will auto-create a config when possible.
 4. Let the game identify and auto-select the config, or Select the config manually, set your Language to view achievements, progress, and playtime.
 5. Optional: mute progress notifications for that config using the checkbox under the config dropdown.
 
-### First-Run Onboarding (Auto-Config Gate)
+<a id="first-run-onboarding-auto-config-gate"></a>
 
-- On first run (or after onboarding version changes), startup pauses and shows a folder selection modal before full auto-scan starts.
+<details>
+<summary><strong>First-run folder selection and startup options</strong></summary>
+
+- On first run (or after onboarding version changes), choose **Restore from Backup** or **Set Up as New Device** in the welcome dialog. Setting up a new device continues to folder selection before full auto-scan starts.
+- In folder selection, **Back** returns to the welcome dialog.
 - The app searches for known achievement/save signals (for example `achievements.json`, `achievements.ini`, `stats.bin`, emulator trophy/gpd files) and lists candidate folders.
 - **Start Auto-Config** keeps selected folders active and mutes unchecked discovered folders, then continues startup and background config generation.
 - **Skip and mute all** continues startup immediately and mutes discovered/default auto-config roots.
@@ -296,32 +156,14 @@ Build output is created in the `dist/` folder. The build scripts verify the nati
 - Onboarding completion state is saved in `%APPDATA%/Achievements/preferences.json` (`autoConfigOnboardingCompleted`, `autoConfigOnboardingVersion`, `autoConfigOnboardingCompletedAt`).
 - If the modal is not visible but startup is gated, use tray action **Resume Startup (Mute all)**.
 
-### Basic Setup
+</details>
 
-#### Manual Configuration
+<a id="basic-setup"></a>
 
-1. Create a new config with:
-   - **Name**: Your preferred identifier
-   - **AppID**: Steam AppID or folder name for achievements
-   - **Config Path**: Location of achievements.json and images / Leave empty to generate
-   - **Save Path**: Where achievement progress is stored
-   - **Executable** (optional): Direct path to game executable
-   - **Arguments** (optional): Launch parameters
-   - **Process Name** (optional): Specific .exe name to monitor
-   - _Note_: Names are sanitized (illegal filename characters removed, condensed spacing) before saving; the sanitized name is used on disk and for playtime totals.
+<details>
+<summary><strong>Automatic configuration and default watched folders</strong></summary>
 
-**Config JSON fields (reference):**
-
-- `appid` (string) – game id
-- `platform` (string) – steam/uplay/gog/gog-official/epic/epic-official/xbox-pc/retroachievements/xenia/rpcs3/shadps4/markerpatch/madnesspatch/xlivelessness/steam-official/ubisoft-official/ea-official
-- `config_path` (string) – folder containing `achievements.json` and `img/`
-- `save_path` (string) – location of save/achievement progress
-- `process_name` (string) – executable name for process tracking
-- `executable` / `arguments` (optional) – used for Launch
-
-_Note_: If `config_path` points to a custom location, schema regeneration/cleanup will not overwrite that folder.
-
-#### Auto Configuration
+<a id="auto-configuration"></a>
 
 1. Use **Watched Folders** (recommended) to scan your emulator/save directories.
 2. The app will:
@@ -338,17 +180,27 @@ _Note_: If `config_path` points to a custom location, schema regeneration/cleanu
    - %APPDATA%\Goldberg UplayEmu Saves
    - %APPDATA%\R1 UplayEmu Saves
    - %APPDATA%\GSE Saves
+   - %APPDATA%\NemirtingasEpicEmu
    - %APPDATA%\EMPRESS
    - %LOCALAPPDATA%\anadius\LSX emu\achievement_watcher
    - %APPDATA%\Steam\CODEX
    - %APPDATA%\SmartSteamEmu
    - %LOCALAPPDATA%\SKIDROW
+   - %LOCALAPPDATA%\UniverseLAN
 
 **Note**: Auto-configuration uses the Steam Web API when a key is provided in Settings. Without a key, it falls back to SteamDB/SteamHunters + Languages from Exophase.
 Sources used when available: Steam Web API, SteamDB, SteamHunters, Exophase, GOG, Epic.
 `Goldberg UplayEmu Saves` and `R1 UplayEmu Saves` are explicitly routed through the Uplay-to-Steam mapping while keeping the original Uplay AppID and Uplay schema storage.
+`%LOCALAPPDATA%\UniverseLAN` is treated as a strict GOG root. Each immediate `<ProductID>` directory is mapped to a GOG config, and runtime progress is monitored from `<ProductID>\UniverseLANData\Achievements.ini`. Legacy game-local UniverseLAN installations continue to use `UniverseLAN.ini` discovery.
 
-#### Folder Rescan & Blacklist
+RUNE Ubisoft Connect saves are supported as an opt-in watched folder. Add `%USERPROFILE%\Documents\RUNE\Ubisoft Connect` (or its `achievements` subfolder) manually in **Settings -> Folders**. The app reads `<root>\achievements\<UserID>\<Uplay AppID>\achievements.cfg`, routes it through the existing Uplay schema/mapping flow, and ignores the sibling `savegames` tree. This path is intentionally not added to the default watched-folder list.
+
+</details>
+
+<a id="folder-rescan--blacklist"></a>
+
+<details>
+<summary><strong>Rescan folders and manage the blacklist</strong></summary>
 
 - **Folders -> Rescan** opens a selection modal containing active watched folders. Use **Select All** or **Deselect All**, then scan only the selected roots.
 - Ignored folders and ignored nested folders remain excluded even when their parent watched folder is selected.
@@ -356,15 +208,140 @@ Sources used when available: Steam Web API, SteamDB, SteamHunters, Exophase, GOG
 - Ignoring a configured game from the config/dashboard uses its AppID + platform identity, so another platform with the same AppID can remain active.
 - **Settings -> Advanced -> Add Blacklisted AppIDs** adds one or more AppIDs globally, including incorrectly detected UserIDs. Separate values with commas, spaces or new lines.
 - **Reset Blacklist** removes the saved global and platform-specific blacklist entries. It does not remove watched folders or rescan unrelated configs.
+- Automatic emulator generation records confirmed missing IDs separately for Steam, Uplay, GOG and Epic. Generic discovery skips only the blacklisted provider and continues with the remaining providers; a known source skips its own blacklisted ID directly. An identified game without achievements stops the current discovery and is blacklisted only on its platform. A global blacklist requires negative results from all applicable providers, without technical failures, ambiguity or a previously identified game. Automatic lookup reasons are removed with their blacklist entries; older entries without reasons are never used as proof for a global blacklist.
 
-#### Steam Emulator Progress Files
+</details>
+
+<a id="videos"></a>
+
+<details>
+<summary><strong>Video tutorials</strong></summary>
+
+- [First Run](https://youtu.be/c1jDfynHd-U) + [Controller Support](https://youtu.be/fsqoKiMGLkw)
+- [Manual Config](https://youtu.be/abdVuDB80Ow)
+- [Auto Config](https://youtu.be/nOoiU5lPopM)
+- [Multi-Platform Support](https://youtu.be/KwRUo53VTho)
+- [Multi-Platform Support V2 + Overlay Controller Support](https://youtu.be/vDQ_4cNeIe8)
+
+</details>
+
+<a id="platforms--integrations"></a>
+
+<a id="platforms"></a>
+
+## Supported Platforms
+
+Choose your integration below. Each guide explains which folder or account to add, the required files and how unlocks are monitored.
+
+Open a setup guide below for its complete instructions and requirements.
+
+| Platform / integration     | What to add or connect                                                                                                                   | Instructions                                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Steam emulators            | Local Steam emulator saves, such as Goldberg/GSE, CODEX/RUNE, Online-Fix or Tenoke; detects Steam AppIDs and tracks their saved unlocks. | [Setup](#steam-emulators) · [Folders](#auto-configuration) · [Progress](#steam-emulator-progress-files) |
+| Uplay emulators            | Local Ubisoft achievement saves from Goldberg Uplay, R1 or RUNE; preserves the Uplay ID and matches it to the achievement schema.        | [Setup](#uplay-emulators) · [Folders](#auto-configuration)                                              |
+| GOG emulators              | Local Galaxy emulator saves, such as Nemirtingas Galaxy or UniverseLAN; identifies the GOG product and tracks its achievement state.     | [Setup](#gog-emulators) · [Folders](#auto-configuration)                                                |
+| Epic emulators             | Local Epic emulator saves, such as Nemirtingas Epic; identifies the Epic game ID and monitors its saved achievement state.               | [Setup](#epic-emulators) · [Folders](#auto-configuration)                                               |
+| LumaPlay                   | Enable **Settings → Folders → Enable LumaPlay Watcher**; progress comes from the registry.                                               | [Setup](#lumaplay-support)                                                                              |
+| XLiveLessNess              | Game folder containing `xlive.dll`, the game executable and its matching `.exe.cfg`.                                                     | [Setup](#xlivelessness-support)                                                                         |
+| FINAL FANTASY VII          | Game folder with the required FFVII config files and `steam_appid.txt` set to `39140`.                                                   | [Setup](#final-fantasy-vii-achievementdat-support)                                                      |
+| Dead Space 2 / MarkerPatch | Game folder containing `deadspace2.exe`, `MarkerPatch.ini` and `achievements`.                                                           | [Setup](#dead-space-2-markerpatch-support)                                                              |
+| Alice / MadnessPatch       | Game folder or `Binaries\Win32` with MadnessPatch installed.                                                                             | [Setup](#alice-madness-returns-madnesspatch-support)                                                    |
+| Steam launcher             | `C:\Program Files (x86)\Steam\appcache\stats`.                                                                                           | [Setup](#steam-launcher-support)                                                                        |
+| Epic Games launcher        | Connect your Epic account in Settings, then use **Import Library**.                                                                      | [Setup](#epic-games-launcher-support)                                                                   |
+| GOG Galaxy                 | `%LOCALAPPDATA%\GOG.com\Galaxy\Applications`.                                                                                            | [Setup](#gog-galaxy-launcher-support)                                                                   |
+| Ubisoft Connect            | `%LOCALAPPDATA%\Ubisoft Game Launcher\spool`.                                                                                            | [Setup](#ubisoft-connect-launcher-support)                                                              |
+| EA Desktop                 | `%LOCALAPPDATA%\Electronic Arts\EA Desktop\Logs`.                                                                                        | [Setup](#ea-desktop-launcher-support)                                                                   |
+| PC Ports / LADXHD Updated  | Installed game folder with its executable and `Data` resources.                                                                          | [Setup](#pc-ports-ladxhd-updated)                                                                       |
+| Xbox 360 Recomp            | Installed port folder, including the original game data required by that port.                                                           | [Setup](#xbox-360-recompilations-and-native-ports)                                                      |
+| PS3 Recomp                 | Built port installation folder with its launcher/project configuration and original game data.                                           | [Setup](#ps3-recomp)                                                                                    |
+| PS4 Recomp                 | Port installation folder, after selecting the original game and save locations in its launcher.                                          | [Setup](#ps4-recomp-support)                                                                            |
+| Xenia-Canary               | The profile's achievement content folder under the Xenia installation.                                                                   | [Setup](#xenia-canary-support)                                                                          |
+| RPCS3                      | `<RPCS3>\dev_hdd0\home\<user>\trophy`.                                                                                                   | [Setup](#rpcs3-support)                                                                                 |
+| ShadPS4                    | ShadPS4 root folder, normally `%APPDATA%\shadPS4`.                                                                                       | [Setup](#shadps4-support)                                                                               |
+| KytyPS5                    | Emulator folder containing `kyty_emulator.exe`; register game locations in the KytyPS5 launcher first.                                   | [Setup](#kytyps5-support)                                                                               |
+| Xbox PC                    | Connect Xbox in **Settings → Advanced**, then use **Import Xbox PC**.                                                                    | [Setup](#xbox-pc-microsoft--xbox-network)                                                               |
+| RetroAchievements          | Username and Web API key in **Settings → Advanced**, then **Connect → Import Library**.                                                  | [Setup](#retroachievements)                                                                             |
+
+<details>
+<summary>Browse by integration category</summary>
+
+| Integration                         | Setup guides                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC emulators and local integrations | [Steam emulator progress files](#steam-emulator-progress-files) · [LumaPlay](#lumaplay-support) · [XLiveLessNess](#xlivelessness-support) · [FINAL FANTASY VII](#final-fantasy-vii-achievementdat-support) · [MarkerPatch](#dead-space-2-markerpatch-support) · [MadnessPatch](#alice-madness-returns-madnesspatch-support) |
+| Official PC launchers               | [Steam](#steam-launcher-support) · [Epic Games](#epic-games-launcher-support) · [GOG Galaxy](#gog-galaxy-launcher-support) · [Ubisoft Connect](#ubisoft-connect-launcher-support) · [EA Desktop](#ea-desktop-launcher-support)                                                                                              |
+| Recompilations and native ports     | [PC Ports / LADXHD Updated](#pc-ports-ladxhd-updated) · [Xbox 360 Recomp](#xbox-360-recompilations-and-native-ports) · [PS3 Recomp](#ps3-recomp) · [PS4 Recomp](#ps4-recomp-support)                                                                                                                                        |
+| Console emulators                   | [Xenia-Canary](#xenia-canary-support) · [RPCS3](#rpcs3-support) · [ShadPS4](#shadps4-support) · [KytyPS5](#kytyps5-support)                                                                                                                                                                                                 |
+| Online accounts                     | [Xbox PC](#xbox-pc-microsoft--xbox-network) · [RetroAchievements](#retroachievements)                                                                                                                                                                                                                                       |
+
+</details>
+
+### PC Emulators & Local Integrations
+
+<details>
+<summary><strong>Steam emulators</strong></summary>
+
+<a id="steam-emulators"></a>
+
+Add the emulator's **achievement/save folder** in **Settings → Folders**. Supported layouts include Goldberg/GSE, CODEX/RUNE, Online-Fix and Tenoke. Common roots are listed in [Folders](#auto-configuration); game-local saves can be added directly.
+
+Achievements detects the Steam AppID, downloads the matching schema and images, creates a config and monitors the local unlock file. Supported save formats include `achievements.json`, `achievements.ini`, `stats.bin` and Tenoke `user_stats.ini`, depending on the emulator. [Intermediate progress](#steam-emulator-progress-files) is available when the saved data supplies the required counters.
+
+</details>
+
+<details>
+<summary><strong>Uplay emulators</strong></summary>
+
+<a id="uplay-emulators"></a>
+
+Add `%APPDATA%\Goldberg UplayEmu Saves`, `%APPDATA%\R1 UplayEmu Saves`, or your compatible game-local achievement folder in **Settings → Folders**. For RUNE Ubisoft Connect, add `%USERPROFILE%\Documents\RUNE\Ubisoft Connect` or its `achievements` subfolder.
+
+The app identifies the **Uplay AppID**, generates the corresponding schema and monitors locally saved unlocks. Where needed, Uplay-to-Steam mapping supplies achievement metadata while the config retains its Uplay identity. RUNE's `achievements\<UserID>\<Uplay AppID>\achievements.cfg` is supported; its separate `savegames` folder is excluded.
+
+</details>
+
+<details>
+<summary><strong>GOG emulators</strong></summary>
+
+<a id="gog-emulators"></a>
+
+Add `%APPDATA%\NemirtingasGalaxyEmu`, `%LOCALAPPDATA%\UniverseLAN`, or the compatible game-local emulator folder in **Settings → Folders**.
+
+The app identifies the **GOG product ID**, generates the achievement schema and monitors local unlocks. UniverseLAN uses `<ProductID>\UniverseLANData\Achievements.ini`; game-local installations with `UniverseLAN.ini` are also detected. This does not require importing your GOG Galaxy library.
+
+</details>
+
+<details>
+<summary><strong>Epic emulators</strong></summary>
+
+<a id="epic-emulators"></a>
+
+Add `%APPDATA%\NemirtingasEpicEmu` or the compatible game-local achievement/save folder in **Settings → Folders**.
+
+The app identifies the **Epic game ID**, generates the matching schema and monitors the emulator's local achievement state. This local-save integration is separate from connecting an official Epic account and importing its library.
+
+</details>
+
+<details>
+<summary><strong>Achievement progress and supported save files</strong></summary>
+
+<a id="steam-emulator-progress-files"></a>
+
+Progress notifications show an intermediate value such as **35 / 100** when the save contains a usable counter and the schema defines its target. They are separate from unlock notifications. Support depends on what each emulator writes; enabling progress notifications cannot create counters that the game does not save.
+
+- Compatible JSON saves can provide `progress` / `max_progress` directly; supported binary stats are matched to the achievement schema.
+- Online-Fix and Tenoke also expose counters through the stat files described below. Progress support is not restricted to Online-Fix.
 
 - Online-Fix unlock state is read from `Achievements.ini`; `Stats.ini` supplies only mapped achievement progress and progress notifications.
 - An empty Online-Fix `Stats.ini` is valid and remains monitored. It does not unlock achievements or clear the existing achievement cache; later stat values are applied when written.
 - Tenoke reads unlock state and stats from `user_stats.ini`. Stats are mapped to schema progress rules through the achievement `operand1` value when available.
 - Stats never mark an achievement unlocked by themselves; the emulator's achievement state remains the unlock source of truth.
 
-#### LumaPlay Support
+</details>
+
+<a id="lumaplay-support"></a>
+
+<details>
+<summary><strong>LumaPlay Support</strong></summary>
 
 1. Enable **Settings -> Folders -> Enable LumaPlay Watcher**.
 2. The app scans achievement entries under `HKCU\SOFTWARE\LumaPlay` and generates matching `uplay` configs with `emu=lumaplay` when possible.
@@ -375,93 +352,12 @@ Sources used when available: Steam Web API, SteamDB, SteamHunters, Exophase, GOG
 - The LumaPlay registry watcher is Windows-only and starts only while the option is enabled.
 - Disabling this option stops LumaPlay registry monitoring, but does not disable watched-folder monitoring or normal process detection.
 
-#### Xenia-Canary Support
+</details>
 
-1. Open Xenia and create a User Profile.
-2. Use **Watched Folders** add the 'Xenia Location'\Content/xxxxxx/xxxx/xxxx/xxxxxx' folder which is created after the Account is created in Xenia.
-3. Start and play the game.
-4. The app will:
-   - read the file Xenia created,
-   - fetch game name, schema and images.
-   - generate configs automatically.
-   - when new achievement is unlocked display the notifications.
+<a id="xlivelessness-support"></a>
 
-#### RPCS3 Support
-
-1. Use **Watched Folders** add the 'RPCS3 Location\dev_hdd0\home\xxxxxxx\trophy' folder which is created after the RPCS3 is configured.
-2. Start and play the game.
-3. The app will:
-   - read the file RPCS3 created,
-   - fetch game name, schema and images.
-   - generate configs automatically.
-   - when new achievement is unlocked display the notifications.
-
-#### ShadPS4 Support
-
-1. Use **Watched Folders** and add the ShadPS4 root folder: `%APPDATA%\shadPS4`.
-2. Start and play the game so ShadPS4 creates the trophy schema and user progress files.
-3. The app will:
-   - read the schema from `%APPDATA%\shadPS4\trophy\<NPWR>\Xml`,
-   - copy trophy icons from `%APPDATA%\shadPS4\trophy\<NPWR>\Icons`,
-   - read unlock progress from `%APPDATA%\shadPS4\home\<userId>\trophy\<NPWR>.xml`,
-   - map NPWR trophy IDs to CUSA game IDs when local ShadPS4 logs or legacy data provide the mapping,
-   - generate configs automatically,
-   - keep separate achievement cache files per ShadPS4 user,
-   - detect user switches by monitoring all local user progress XML files for the selected game,
-   - display notifications when new achievements are unlocked.
-
-**Important notes:**
-
-- Modern ShadPS4 storage is based on `%APPDATA%\shadPS4\trophy\<NPWR>` for schema/icons and `%APPDATA%\shadPS4\home\<userId>\trophy\<NPWR>.xml` for progress.
-- Legacy ShadPS4 storage under `%APPDATA%\shadPS4\game_data\<CUSA>\TrophyFiles\trophy00` is still supported, but the modern trophy/progress layout is preferred when both exist.
-- If multiple ShadPS4 users exist, caches are scoped per user so switching users does not overwrite another user's achievement state.
-
-#### FINAL FANTASY VII `achievement.dat` Support
-
-1. In the FINAL FANTASY VII game directory, add `steam_appid.txt` containing only `39140`.
-2. In **Settings -> Folders**, add that game directory.
-3. Detection activates only when `steam_appid.txt`, `ff7input.cfg`, `ff7sound.cfg` and `ff7video.cfg` are present together.
-4. The app generates a separate Steam config and schema for AppID `39140`, then reads unlock bits from the adjacent `achievement.dat`.
-
-**Important notes:**
-
-- `steam_appid.txt` alone is ignored, so ordinary game folders and other platform flows are unaffected.
-- `achievement.dat` is optional during config generation. An adaptive watcher waits for the game to create it.
-- Existing unlocks are imported silently when the file already exists. If the file is first created after monitoring starts, newly set bits generate notifications and receive the local detection time in the cache.
-- The file does not contain historical unlock timestamps; previously unlocked achievements without a cached timestamp therefore display no fabricated historical date.
-- An existing Steam config for AppID `39140` is not modified or merged. This source receives its own config, identified internally by the `ff7-achievement-dat` provider.
-
-#### Dead Space 2 MarkerPatch Support
-
-1. Install MarkerPatch in the Dead Space 2 game directory.
-2. In **Settings -> Folders**, add the game directory containing `deadspace2.exe`, `MarkerPatch.ini` and the `achievements` folder.
-3. The app creates a local `markerpatch` config and schema from the mod's text and image resources.
-4. Achievement unlocks are monitored from `%LOCALAPPDATA%\EA Games\Dead Space 2\settings.txt` by reading `Controls.AcL.X` and `Controls.AcL.Y` as one 64-bit bitflag.
-
-**Important notes:**
-
-- The selected game directory is treated as a MarkerPatch root and is not scanned as a generic AppID container, including when it contains numeric subfolders.
-- Only unlock state is supported. MarkerPatch progress values are not imported or displayed.
-- The app reads the installed mod resources and the external settings file; it does not modify the game, the mod or its settings.
-- If the settings directory or `settings.txt` does not exist yet, an adaptive watcher waits for it and attaches automatically without requiring an app restart.
-
-#### Alice: Madness Returns MadnessPatch Support
-
-1. Install MadnessPatch in the game's `Binaries\Win32` directory.
-2. In **Settings -> Folders**, add either that `Win32` directory or the game directory containing it.
-3. The app creates a local `madnesspatch` config and schema from the mod's `Achievements\txt` and `Achievements\img` resources.
-4. Unlocks are monitored from the active profile files under `Documents\My Games\Alice Madness Returns\AliceGame\CheckPoint\<profile>\Achievements.txt`.
-
-**Important notes:**
-
-- The Documents base is resolved through the Windows/Electron known folder, so a relocated Documents folder is supported without hardcoding `C:\Users\...`.
-- The app does not create the `CheckPoint` tree or `Achievements.txt`. If they do not exist yet, monitoring attaches automatically after MadnessPatch creates them.
-- Each profile keeps an independent in-memory baseline. A newly discovered profile is seeded silently, while later bitflag changes generate notifications.
-- Only the persisted unlock bitflag is imported. Runtime-only progress shown by the mod is not read from `Achievements.txt`.
-- `AchievementSupport` must remain enabled in `MadnessPatch.ini` for the mod to create and update the state file.
-- The selected game directory is treated as a MadnessPatch root and is not scanned as a generic AppID container.
-
-#### XLiveLessNess Support
+<details>
+<summary><strong>XLiveLessNess Support</strong></summary>
 
 1. Install and configure XLiveLessNess for the supported Games for Windows - LIVE title, then start the game once if the emulator needs to create its profile data.
 2. In **Settings -> Folders**, add the installed game directory. It can be the game root or a parent that contains the required files within the supported discovery depth.
@@ -489,9 +385,77 @@ Expected game-side layout:
 - When process command-line detection is available, `-xllnconfig=<path>` is resolved and its containing directory is added as another state root automatically.
 - Multiple executables for the same title ID are kept in one config as process-name alternatives. Profiles keep independent baselines so changing profiles does not create false unlock notifications.
 - Achievement schema languages follow the selection in **Settings -> Advanced -> Achievements Schema Languages** when the embedded SPAFILE contains those localizations.
-- The app only reads the installed executable, XLiveLessNess title config and `achievements.dat`; it does not modify the game or emulator data.
+- Builds that export DLC achievement metadata in `dlc/<TITLEID>/<pack>/Content/spa.bin` are supported. Use **Folders -> Rescan** after installing DLC to add its achievements and images to the existing game config.
+- The app only reads the installed executable, XLiveLessNess title config, DLC metadata and `achievements.dat`; it does not modify the game or emulator data.
 
-#### Steam Launcher Support
+</details>
+
+<a id="final-fantasy-vii-achievementdat-support"></a>
+
+<details>
+<summary><strong>FINAL FANTASY VII `achievement.dat` Support</strong></summary>
+
+1. In the FINAL FANTASY VII game directory, add `steam_appid.txt` containing only `39140`.
+2. In **Settings -> Folders**, add that game directory.
+3. Detection activates only when `steam_appid.txt`, `ff7input.cfg`, `ff7sound.cfg` and `ff7video.cfg` are present together.
+4. The app generates a separate Steam config and schema for AppID `39140`, then reads unlock bits from the adjacent `achievement.dat`.
+
+**Important notes:**
+
+- `steam_appid.txt` alone is ignored, so ordinary game folders and other platform flows are unaffected.
+- `achievement.dat` is optional during config generation. An adaptive watcher waits for the game to create it.
+- Existing unlocks are imported silently when the file already exists. If the file is first created after monitoring starts, newly set bits generate notifications and receive the local detection time in the cache.
+- The file does not contain historical unlock timestamps; previously unlocked achievements without a cached timestamp therefore display no fabricated historical date.
+- An existing Steam config for AppID `39140` is not modified or merged. This source receives its own config, identified internally by the `ff7-achievement-dat` provider.
+
+</details>
+
+<a id="dead-space-2-markerpatch-support"></a>
+
+<details>
+<summary><strong>Dead Space 2 MarkerPatch Support</strong></summary>
+
+1. Install MarkerPatch in the Dead Space 2 game directory.
+2. In **Settings -> Folders**, add the game directory containing `deadspace2.exe`, `MarkerPatch.ini` and the `achievements` folder.
+3. The app creates a local `markerpatch` config and schema from the mod's text and image resources.
+4. Achievement unlocks are monitored from `%LOCALAPPDATA%\EA Games\Dead Space 2\settings.txt` by reading `Controls.AcL.X` and `Controls.AcL.Y` as one 64-bit bitflag.
+
+**Important notes:**
+
+- The selected game directory is treated as a MarkerPatch root and is not scanned as a generic AppID container, including when it contains numeric subfolders.
+- Only unlock state is supported. MarkerPatch progress values are not imported or displayed.
+- The app reads the installed mod resources and the external settings file; it does not modify the game, the mod or its settings.
+- If the settings directory or `settings.txt` does not exist yet, an adaptive watcher waits for it and attaches automatically without requiring an app restart.
+
+</details>
+
+<a id="alice-madness-returns-madnesspatch-support"></a>
+
+<details>
+<summary><strong>Alice: Madness Returns MadnessPatch Support</strong></summary>
+
+1. Install MadnessPatch in the game's `Binaries\Win32` directory.
+2. In **Settings -> Folders**, add either that `Win32` directory or the game directory containing it.
+3. The app creates a local `madnesspatch` config and schema from the mod's `Achievements\txt` and `Achievements\img` resources.
+4. Unlocks are monitored from the active profile files under `Documents\My Games\Alice Madness Returns\AliceGame\CheckPoint\<profile>\Achievements.txt`.
+
+**Important notes:**
+
+- The Documents base is resolved through the Windows/Electron known folder, so a relocated Documents folder is supported without hardcoding `C:\Users\...`.
+- The app does not create the `CheckPoint` tree or `Achievements.txt`. If they do not exist yet, monitoring attaches automatically after MadnessPatch creates them.
+- Each profile keeps an independent in-memory baseline. A newly discovered profile is seeded silently, while later bitflag changes generate notifications.
+- Only the persisted unlock bitflag is imported. Runtime-only progress shown by the mod is not read from `Achievements.txt`.
+- `AchievementSupport` must remain enabled in `MadnessPatch.ini` for the mod to create and update the state file.
+- The selected game directory is treated as a MadnessPatch root and is not scanned as a generic AppID container.
+
+</details>
+
+### Official PC Launchers
+
+<a id="steam-launcher-support"></a>
+
+<details>
+<summary><strong>Steam Launcher Support</strong></summary>
 
 1. Use **Watched Folders** add the 'C:\Program Files (x86)\Steam\appcache\stats' folder.
 2. Start and play the game via Steam.
@@ -501,7 +465,12 @@ Expected game-side layout:
    - generate configs automatically.
    - when new achievement is unlocked display the notifications.
 
-#### Epic Games Launcher Support
+</details>
+
+<a id="epic-games-launcher-support"></a>
+
+<details>
+<summary><strong>Epic Games Launcher Support</strong></summary>
 
 1. Connect an Epic account in **Settings** and use **Import Library** to pull owned games.
 2. The app imports owned titles with achievements as `epic-official` configs automatically.
@@ -516,7 +485,12 @@ Expected game-side layout:
 - Store images are resolved through Epic product metadata first, then fall back to SteamGridDB only when Epic metadata cannot provide a usable image.
 - For Epic emulator folders that use an artifact/AppID instead of a namespace, schema generation can resolve the related catalog item and namespace before continuing through the normal Epic schema flow.
 
-#### GOG Galaxy Launcher Support
+</details>
+
+<a id="gog-galaxy-launcher-support"></a>
+
+<details>
+<summary><strong>GOG Galaxy Launcher Support</strong></summary>
 
 1. Install and sign in to **GOG Galaxy**.
 2. Use **Watched Folders** add the `%LOCALAPPDATA%\GOG.com\Galaxy\Applications` folder.
@@ -535,7 +509,12 @@ Expected game-side layout:
 - If a game only has `Storage\...` data and no `Gameplay\<userId>\gameplay.db` yet, the app will detect the install path but will wait before creating the config.
 - After creation, the config `save_path` points to the concrete `Gameplay\<userId>` folder, while runtime progress is read from `gameplay.db`.
 
-#### Ubisoft Connect Launcher Support
+</details>
+
+<a id="ubisoft-connect-launcher-support"></a>
+
+<details>
+<summary><strong>Ubisoft Connect Launcher Support</strong></summary>
 
 1. Install and sign in to **Ubisoft Connect**.
 2. Use **Watched Folders** add the `%LOCALAPPDATA%\Ubisoft Game Launcher\spool` folder manually.
@@ -554,7 +533,12 @@ Expected game-side layout:
 - The config is created only after both the `.spool` file and the local achievements archive are available, so the schema can be generated first.
 - After creation, the config `save_path` points to the concrete `spool\<userId>` folder, while runtime progress is read from `<productId>.spool`.
 
-#### EA Desktop Launcher Support
+</details>
+
+<a id="ea-desktop-launcher-support"></a>
+
+<details>
+<summary><strong>EA Desktop Launcher Support</strong></summary>
 
 1. Install and sign in to **EA Desktop**.
 2. Use **Watched Folders** add the `%LOCALAPPDATA%\Electronic Arts\EA Desktop\Logs` folder manually.
@@ -574,7 +558,195 @@ Expected game-side layout:
 - After creation, the config `save_path` points to the EA Desktop `Logs` folder, while runtime progress is read from `EADesktopVerbose.log`.
 - EA Desktop can rotate `EADesktopVerbose.log` into `EADesktopVerbose.bak`; the app reads both so achievement events are not lost across log rotation.
 
-### Xbox PC (Microsoft / Xbox Network)
+</details>
+
+### Recompilations & Native Ports
+
+<a id="pc-ports-ladxhd-updated"></a>
+
+<details>
+<summary><strong>PC Ports: LADXHD Updated</strong></summary>
+
+1. Install **Link's Awakening DX HD Updated** using the game's own instructions.
+2. In **Settings → Folders**, add the installed game folder containing `Link's Awakening DX HD.exe`, `Data/Languages` and `Data/Achievements`. The patcher or launcher folder alone is insufficient.
+3. Use **Rescan** if generation does not start. A **PC Ports** config appears in the config selector and Dashboard, with the game's achievement list and icons.
+4. Configure its notifications under **Main Achievements** in the Notifications tab.
+5. Start the game and unlock an achievement. Achievements monitors the save location automatically; you do not need to add another folder.
+
+**Important notes:**
+
+- Normal Windows installations save progress in `%LOCALAPPDATA%/Zelda_LA/achievements`. Portable installations use the `achievements` file in the game folder. After switching portable mode, rescan the game folder.
+- Progress is shared across the game's save slots. Previously unlocked achievements are imported without displaying old notifications.
+- Rarity is filled when a matching Exophase page is available and can be updated with **Refresh Rarity**. These percentages describe the GBC/Retro player population, rather than players of the PC port. Missing rarity does not prevent unlock notifications.
+
+</details>
+
+<a id="xbox-360-recompilations-and-native-ports"></a>
+
+<details>
+<summary><strong>Xbox 360 Recompilations and Native Ports</strong></summary>
+
+1. Install the recompilation or native port, including its required game data, using that project's instructions.
+2. In **Settings → Folders**, add the installed game's folder. Use the examples below to choose the correct location.
+3. Use **Rescan** if generation does not start. An **Xbox 360 Recomp** config appears in the config selector and Dashboard, with the available achievement list and icons.
+4. Configure **Xbox 360 Recomp Notification** in the Notifications tab.
+5. If **Game Profile** is shown below the configuration controls, select the same profile used by the game.
+6. Start the game and unlock an achievement. Supported save locations are monitored automatically, including those outside the game folder. You do not need to add the entire Documents or AppData folder.
+
+| Game / port                                   | Folder to add in Settings → Folders                                                                                                                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dante's Inferno                               | The installed game folder containing `dantes_inferno.exe`, `dantes_inferno_native.exe` or `dantesinferno.exe` and its game data.                                                                               |
+| LEGO Dimensions                               | The installed game folder containing `legodimensions.exe` and its game data.                                                                                                                                   |
+| Midnight Club: Los Angeles                    | The installed game folder containing `midnightclubla.exe`, `mcla.exe` or `larecomp.exe`. If the executable is under `out/build`, add the installation folder containing both that directory and the game data. |
+| Spider-Man: Edge of Time                      | The installed game folder containing `SpiderManEOT.exe` and its game data.                                                                                                                                     |
+| Blue Dragon (re:Blue)                         | The final installation containing `reblue.exe`, the installed game data and `profiles`. This may differ from the folder where you first extracted the installer.                                               |
+| Gears of War 2 Hollow                         | The installed game folder containing the `GearGame/SaveData` directory.                                                                                                                                        |
+| Unleashed Recompiled                          | The installed game folder containing `UnleashedRecomp.exe` and its game data.                                                                                                                                  |
+| Castlevania: Symphony of the Night (Nocturne) | The installed game folder containing `nocturnerecomp.exe` and the game's XEX. The XEX identifies the US or Japanese version.                                                                                   |
+| Silent Hill: Downpour                         | The installed game folder containing `downpour.exe` and its game data. Unlocks are monitored in the game's `user` folder.                                                                                      |
+| Deadly Premonition                            | The installed game folder containing `deadlyprem.exe` / `deadlyprem_usa.exe` and its game data. The XEX selects the matching regional executable; unlocks are monitored in `userdata`.                         |
+| Fable II (himdo)                              | The installed game folder containing `fable_2.exe` and its game data. Unlocks are monitored in `saves`.                                                                                                        |
+| Naughty Bear (ReStuff)                        | The installed game folder containing `restuff.exe` and its game data. Its Documents save location is selected automatically.                                                                                   |
+| Condemned 2: Bloodshot                        | The installed game folder containing `condemned2recomp.exe` and its game data. Unlocks are monitored in `UserData`.                                                                                            |
+| Project Gotham Racing 4                       | The installed game folder containing `pgr4_recomp.exe` or `pgr4_recompiled.exe` and its game data. The Documents save location follows the executable's application name.                                      |
+| Crackdown 2                                   | The installed game folder containing `crackdown2.exe` and its game data, built with achievement persistence support. Its Documents save location is selected automatically.                                    |
+| Banjo-Kazooie: Nuts & Bolts (reNut)           | The installed game folder containing `renut.exe`. Complete the game's path setup wizard first; Achievements reads the game and save locations from `renut.cfg`.                                                |
+| Lost Odyssey (freefrank)                      | The installed port folder containing `LostOdysseyRecomp.exe`. Imported game data is located through `game-path.txt` or `game/disc1`; unlocks are monitored in `profile/achievements.ini`.                      |
+
+**Important notes:**
+
+- Use a build that saves achievement unlocks. **Skate3Recomp v2.0.2** can import the achievement list, but its unlocks are not saved and cannot produce live notifications in Achievements.
+- Other compatible ReXGlue builds and portable ports using `game-path.txt` with local profile storage can also be detected without a listed executable name. Add the installed port folder after configuring its original game data. Supported progress formats include ReXGlue TOML, `EOTACH1` TSV, compatible achievement JSON and earned-only INI.
+- Supported games can generate a config before the first achievement is unlocked. If the config reports that its unlock source is pending, start the game and unlock an achievement, then rescan if necessary. Live notifications require a recognized save location.
+- The first import generates the achievement schema and retrieves its metadata and achievement icons. After a successful import, changes to game settings, save paths, or player profiles do not rebuild the schema automatically. Use **Folders -> Rescan** for a later rebuild or to retry metadata and icons that failed during the initial import.
+- If the unlock location is not yet confirmed, Achievements watches for compatible progress files in the game folder, Documents and any explicitly configured save location. Once a valid source is found, its path is saved and only its progress directory is monitored. Documents does not need to be added to Folders; adding it separately does not create another X360 Recomp config for the same installation.
+- For the newly listed ReXGlue ports, the monitored file is `achievements/<TitleID>.toml` inside the game's save location. Its folder and file may appear only after an unlock; monitoring is prepared beforehand. A literal save-path override in a supported batch or PowerShell launcher is also recognized, except for Fable II, which forces its local `saves` folder, and reNut, which uses its path wizard.
+- For reNut, an absent or invalid `renut.cfg` leaves the unlock source pending on a new import. Complete the game's path wizard, then use **Rescan** if needed. Existing confirmed monitoring paths are retained while the file is temporarily unavailable.
+- Generated configs include the game/save path arguments recognized in a supported launcher. Manually edited launch arguments are preserved. After changing these arguments, use **Rescan** before starting the game so monitoring follows the same save location as **Play**.
+- Changing the unlock location keeps progress from the previous location separate. Achievements already present in the new save are imported silently; subsequent unlocks produce notifications.
+- Previously unlocked achievements are imported without displaying old notifications. Each available profile keeps its own progress.
+- re:Blue's eight additional achievements are included automatically for supported builds.
+- Keep the port's game data installed. A copied Xbox `default.xex` alone is insufficient to identify a recompilation. Renamed executables, custom builds and unsupported save locations may require additional configuration.
+
+</details>
+
+<a id="ps3-recomp"></a>
+
+<details>
+<summary><strong>PS3 Recomp</strong></summary>
+
+Add the built port installation folder in **Settings → Folders**. Ports using the PS3Recomp trophy JSON format are supported when their launcher/project configuration locates the original game data. Trophy names and icons are extracted locally from `TROPHY.TRP`; RPCS3 is not required. Keep the original game data available for the first import. Use **Folders → Rescan** to rebuild a schema. Notification settings are under **PS3 Recomp Notification**.
+
+</details>
+
+<a id="ps4-recomp-support"></a>
+
+<details>
+<summary><strong>PS4 Recomp Support</strong></summary>
+
+1. Install the port and the game data required by that port.
+2. Select the original game folder in the port's launcher. If you use a custom save folder, configure it there too; Achievements follows the launcher's saved location.
+3. Add the port's installation folder in **Settings → Folders**. Its launcher settings or runner must identify the original game and save locations; adding only the original game dump is insufficient. Compatible packaged PyInstaller launchers are also detected without separate Python source files or a Python installation.
+4. Use **Folders → Rescan** if import does not start. Once the required trophy data is available, the config selector and Dashboard show the imported game under **PS4 Recomp**, with its trophy list and trophy icons.
+5. Configure **PS4 Recomp Notification** in the Notifications tab: preset or SAN preset, sound, position, scale and duration. Native Bronze/Silver/Gold grades are preserved. Games with a native Platinum use the dedicated Platinum notification settings; trophy lists without Platinum use the generic completion notification at 100%.
+6. Start the game through its port launcher and unlock a trophy. Achievements reads the port's saved unlocks or unlock log to update progress and show notifications. Keep logging enabled for ports that only record unlocks in logs.
+
+**Important notes:**
+
+- Trophy lists can be read from the port's `trophies.tsv` export or the original game's trophy files and `npbind.dat`, using the built-in public retail trophy key. Original trophy icons come from the game files. A local `trophy.key` beside the launcher is optional and overrides that key; decrypted trophy data is also supported. Use **Folders → Rescan** to update an existing import's icons.
+- Uncharted: The Nathan Drake Collection and PROTOTYPE Biohazard Bundle create one config per game when their original trophy lists are available. Start them through their launchers; progress is kept separate for each game.
+- Single-game ports with one trophy set use shared detection rules for compatible Python/shell runners and native launcher layouts. Supported progress sources include `trophies.log`, `last_run.log`, a log explicitly declared by the launcher, dated session logs, `user/trophies/<TITLE_ID>/unlocked.txt`, `<TITLE_ID>-user<ID>.bin` trophy flags, `trophies.dat` (16-byte trophy flags in the configured saves folder) and `user/trophy/<NPWR>/progress_user*.txt`, including files created after import. Keep users separate when several profiles exist. Other collections require separate support.
+- For compatible PORTHEON packages, add the package folder containing `games` and `src`, or an individual port folder. Configure each game's original folder in its launcher first; Achievements follows the package's declared data locations, including locations outside the installation folder.
+- JSON/INI launcher settings identify the game and save locations. If multiple games or users could match, monitoring pauses instead of combining their progress. No executable is required for import or unlock monitoring; Play requires a valid launcher path and process-based playtime requires a runtime name. A local `settings.json` in the port folder can specify `game_dir` and `user_dir` when launcher settings cannot be resolved automatically.
+
+</details>
+
+### Console Emulators
+
+<a id="xenia-canary-support"></a>
+
+<details>
+<summary><strong>Xenia-Canary Support</strong></summary>
+
+1. Open Xenia and create a User Profile.
+2. Use **Watched Folders** add the 'Xenia Location'\Content/xxxxxx/xxxx/xxxx/xxxxxx' folder which is created after the Account is created in Xenia.
+3. Start and play the game.
+4. The app will:
+   - read the file Xenia created,
+   - fetch game name, schema and images.
+   - generate configs automatically.
+   - when new achievement is unlocked display the notifications.
+
+</details>
+
+<a id="rpcs3-support"></a>
+
+<details>
+<summary><strong>RPCS3 Support</strong></summary>
+
+1. Use **Watched Folders** add the 'RPCS3 Location\dev_hdd0\home\xxxxxxx\trophy' folder which is created after the RPCS3 is configured.
+2. Start and play the game.
+3. The app will:
+   - read the file RPCS3 created,
+   - fetch game name, schema and images.
+   - generate configs automatically.
+   - when new achievement is unlocked display the notifications.
+
+</details>
+
+<a id="shadps4-support"></a>
+
+<details>
+<summary><strong>ShadPS4 Support</strong></summary>
+
+1. Use **Watched Folders** and add the ShadPS4 root folder: `%APPDATA%\shadPS4`.
+2. Start and play the game so ShadPS4 creates the trophy schema and user progress files.
+3. The app will:
+   - read the schema from `%APPDATA%\shadPS4\trophy\<NPWR>\Xml`,
+   - copy trophy icons from `%APPDATA%\shadPS4\trophy\<NPWR>\Icons`,
+   - read unlock progress from `%APPDATA%\shadPS4\home\<userId>\trophy\<NPWR>.xml`,
+   - map NPWR trophy IDs to CUSA game IDs when local ShadPS4 logs or legacy data provide the mapping,
+   - generate configs automatically,
+   - keep separate achievement cache files per ShadPS4 user,
+   - detect user switches by monitoring all local user progress XML files for the selected game,
+   - display notifications when new achievements are unlocked.
+
+**Important notes:**
+
+- Modern ShadPS4 storage is based on `%APPDATA%\shadPS4\trophy\<NPWR>` for schema/icons and `%APPDATA%\shadPS4\home\<userId>\trophy\<NPWR>.xml` for progress.
+- Legacy ShadPS4 storage under `%APPDATA%\shadPS4\game_data\<CUSA>\TrophyFiles\trophy00` is still supported, but the modern trophy/progress layout is preferred when both exist.
+- If multiple ShadPS4 users exist, caches are scoped per user so switching users does not overwrite another user's achievement state.
+
+</details>
+
+<a id="kytyps5-support"></a>
+
+<details>
+<summary><strong>KytyPS5 Support</strong></summary>
+
+1. Use the upstream KytyPS5 runtime that saves progress in `_Trophies`. The U59 fork and SharpEmu are not supported by this integration.
+2. Register the directory containing the extracted game or its `.zar` archive in the KytyPS5 launcher.
+3. In **Settings -> Folders**, add the emulator directory containing `kyty_emulator.exe`, then rescan.
+4. A **KytyPS5** config appears in the config selector and Dashboard, with the game's trophy list and icons. Games in registered launcher locations can be discovered before the first unlock.
+5. Configure **KytyPS5 Notification** in the Notifications tab.
+6. Start the game through KytyPS5 and unlock a trophy. Achievements automatically monitors the emulator's `_Trophies` folder, even if the folder is created only at the first unlock.
+
+**Important notes:**
+
+- Add new game locations in the KytyPS5 launcher. Achievements follows those locations and detects new game folders and `.zar` archives. Use **Rescan** if a game does not appear.
+- Extracted games and `.zar` archives are supported. Retail `.pkg` files are not supported directly.
+- Each game has one config per emulator installation, including its additional trophy sets. Each KytyPS5 user keeps separate progress; the active user follows the game's settings in the emulator, or the emulator's global user setting.
+- Previously unlocked trophies are imported without displaying old notifications. Notifications are generated for the active user's new unlocks.
+- **Refresh Rarity** can add percentages when a matching Exophase PS5 page is available. Missing percentages do not prevent local trophy monitoring.
+
+</details>
+
+### Online Accounts
+
+<a id="xbox-pc-microsoft--xbox-network"></a>
+
+<details>
+<summary><strong>Xbox PC (Microsoft / Xbox Network)</strong></summary>
 
 1. Open **Settings -> Advanced** and select **Connect Xbox** under **Xbox PC (Microsoft / Xbox Network)**.
 2. Sign in through Microsoft OAuth with the account used by the Windows Xbox
@@ -603,7 +775,12 @@ Notes:
   requests.
 - `xbox-pc` configs are auto-generated and are not meant to be created manually.
 
-### RetroAchievements
+</details>
+
+<a id="retroachievements"></a>
+
+<details>
+<summary><strong>RetroAchievements</strong></summary>
 
 1. Open **Settings -> Advanced** and enter the RetroAchievements username and
    Web API key from the RetroAchievements control panel.
@@ -624,9 +801,22 @@ Notes:
 - The initial import seeds existing unlocks silently, so historical unlocks do
   not produce a notification burst.
 
-### Dashboard
+</details>
+
+<a id="using-achievements"></a>
+
+## Usage & Configuration
+
+Open the group you need to configure the library, notifications or controls.
+
+<a id="dashboard"></a>
+
+<details>
+<summary><strong>Dashboard, search and game management</strong></summary>
 
 - Press the "Show Dashboard" button to access the game grid
+- Switch between **portrait and landscape cards**, and choose Configs Only, Collections Only or a combined view.
+- Organize games into collections with their own name, color, icon or image. Right-click a game for its available actions.
 - Use search to filter games quickly
 - Filter by platform and sort by name, progress, or last update time
 - Click any game to load its config
@@ -636,8 +826,44 @@ Notes:
 - Automatic background polling selects the active game when its process starts
 - `Esc` or the close button restores the dashboard overlay and re-enables input for the rest of the window
 
-### Customization
+</details>
 
+<a id="manual-achievement-state"></a>
+
+<details>
+<summary><strong>Manual achievement changes and backups</strong></summary>
+
+Select one or more achievement rows and right-click to open their available actions. The menu also supports keyboard and controller navigation.
+
+These actions are also available by right-clicking an achievement in the overlay **while interaction mode is enabled**. Use Ctrl-click to select multiple achievements or Shift-click to select a range. Confirmation stays inside the overlay and does not activate its window. Leaving interaction mode, hiding the overlay or switching configs cancels an open confirmation. The same source restrictions and backup rules apply; close the game before locking or restoring its local achievements.
+
+- **Mark as Manually Unlocked** adds a local manual unlock. **Clear Manual Unlock** removes that override.
+- **Mark as Manually Locked** resets only the selected achievement records in a supported local unlock file and updates the app's cache. Close the game before confirming. The dialog lists the achievements and files involved, and a backup is saved before editing.
+- **Restore Last Achievement Backup** is available when a backup matches the selected config, source and profile. Restoration replaces the affected achievement files and cache with their backed-up state, including changes made since that backup; review the confirmation before proceeding.
+
+| Local source | Supported state formats |
+|---|---|
+| Steam / Uplay / GOG / Epic emulators | Recognized achievement JSON and INI layouts, Tenoke `user_stats.ini`, RUNE Uplay `achievements.cfg`, and Steam `stats.bin` |
+| RPCS3 | Selected trophy records in `TROPUSR.DAT` |
+| shadPS4 | Trophy state in the selected user's XML, or the legacy `TROP*.XML` files |
+| Xenia | Selected achievement flags and timestamps in GPD files |
+| KytyPS5 | The selected user's trophy JSON and service label |
+| Xbox 360 Recomp | ReXGlue TOML, `EOTACH1` TSV, earned-only INI, achievement-state JSON, GPD and validated `ACH-DATA` records |
+
+Availability depends on the actual state format. Unsupported or ambiguous sources are not edited. Official account unlocks and log-based ports are outside this feature.
+
+Unselected achievement records, definitions, images, game saves and shared stat counters are preserved. Locking does not reset the game's own progress: the game may unlock an achievement again when an existing save already meets its condition. Manual locking and backup restoration do not produce unlock notifications, screenshots or recordings; a later real unlock follows the normal notification flow.
+
+Backups are stored under `%APPDATA%/Achievements/achievement_backups`, separately for each config and source/profile identity. If an edit fails, the app attempts to roll it back. Recovery details and the backup location are recorded in the application logs; a file changed externally during the operation is preserved.
+
+</details>
+
+<a id="customization"></a>
+
+<details>
+<summary><strong>Notifications, captures and customization</strong></summary>
+
+- In **Settings → Customisation**, choose an application theme or build your own with **Theme Customisation**. Use **Notification Customisation** to edit an existing Achievements/SAN preset, preview its animation and save a new variant.
 - Choose notification preset and screen position
 - Choose **Native Windows** as the achievement preset to use Windows toast notifications instead of an animated preset
 - Select notification sounds and language
@@ -649,56 +875,30 @@ Notes:
 - Enable Close to Tray (X button hides to tray)
 - Configure overlay shortcut or disable the overlay entirely
 - Configure Overlay Interaction Key (toggle click-through ↔ drag/scroll)
-- Optionally open the matching achievement when an animated or Native Windows notification is clicked from **Settings -> Advanced -> Notification Click Action**
+- Optionally open the matching achievement when an animated or Native Windows notification is clicked from **Settings → Notifications → Notification Click Action**
 - Choose whether notification clicks open the non-focusable, click-through overlay or the main application; opening the main application moves focus away from the game
 - Native Windows notifications retain separate navigation routes when stored in Action Center, so each available notification can open its own achievement
 - Enable/disable controller support for the overlay from **Settings -> Advanced -> Rendering**
 - Enable/disable features:
   - Achievement screenshots
   - Achievement records
-    - Choose 30 or 60 FPS
+    - Choose 30 FPS, 60 FPS or Unlocked
     - Choose a total clip duration from 10 to 30 seconds, divided equally before and after the unlock
   - Progress Notification
   - Playtime Notification
   - Startup behavior
 - Per-game progress notifications can be muted when a config is active
+- In **Settings → Notifications → Progress Notification**, choose the default progress style or an existing Achievements/SAN preset. Windows native and Game Bar notifications remain available through **Progress Notification Method**.
 - Toggle "Start with Windows" to create/remove a Task Scheduler entry using the current executable path
 - Disable the native process watcher to use executable-name fallback detection only; matching does not require command-line arguments when the config's process name is known
 - All preferences persist to `%APPDATA%/Achievements/preferences.json` and are restored on startup
 
-### Changelogs & Live Logs
+</details>
 
-- **Settings -> Changelogs** lists the project releases published on GitHub, including version, release type, publication date and release notes.
-- Release data is cached for 30 minutes. **Refresh** requests current GitHub data, while the last valid cache remains available when GitHub or the network is unavailable.
-- Release links open the corresponding GitHub release in the default browser. Remote release text is rendered as text and is not executed as HTML.
-- **Settings -> Logs** lists known application log sources with friendly names and also discovers additional `.log` files already present in the logs directory.
-- The selected file is followed in real time and remains synchronized across file replacement, truncation and normal logger rotation.
-- Search and level filters (`DEBUG`, `INFO`, `WARN`, `ERROR`) affect only the displayed lines; they do not change or delete the underlying log file.
-- **Pause** pauses UI updates without stopping application logging. **Clear View** clears only the current in-memory view. **Open Logs Folder** opens the original files in the system file manager.
-- The initial view is limited to the latest 1,000 lines and the renderer retains at most 2,000 lines, preventing an open Logs tab from growing without bounds.
-- Live file monitoring starts only while the Logs tab is active and is released when another tab is selected or Settings is closed.
-- Logs can contain local paths or account identifiers. Review their contents before sharing them publicly.
+<a id="keyboard--controller-navigation"></a>
 
-### Runtime Data Locations
-
-- `%APPDATA%/Achievements/configs` – configs
-- `%APPDATA%/Achievements/configs/schema` – generated achievement schemas + local achievement images
-- `%APPDATA%/Achievements/images` – cached covers
-- `%USERPROFILE%/Pictures/Achievements Screenshots` – default achievement screenshot output
-- `%USERPROFILE%/Videos/Achievements Records` – default achievement video output
-- `%APPDATA%/Achievements/ach_cache` – cached achievements
-- `%APPDATA%/Achievements/ach_cache/github-releases.json` – cached GitHub release notes used by the Changelogs tab
-- `%APPDATA%/Achievements/ach_cache_meta.json` – cache metadata used to avoid unnecessary cache rewrites
-- `%APPDATA%/Achievements/logs` – application logs
-- `%APPDATA%/Achievements/playtime-totals.json` – playtime totals
-- `%APPDATA%/Achievements/preferences.json` – application settings, watched folders and blacklist state
-- `%APPDATA%/Achievements/preferences.json.bak` – last valid preferences backup used for recovery after an interrupted/corrupt write
-- `%APPDATA%/Achievements/xbox-pc-microsoft-auth.enc` – encrypted Microsoft/Xbox authentication state
-- `%APPDATA%/Achievements/xbox-pc/titles` – per-title Xbox PC synchronization data
-- `%APPDATA%/Achievements/retroachievements-auth.enc` – encrypted RetroAchievements Web API credentials
-- `%APPDATA%/Achievements/retroachievements/titles` – per-game RetroAchievements synchronization data
-
-### Keyboard & Controller Navigation
+<details>
+<summary><strong>Keyboard, controller and overlay navigation</strong></summary>
 
 - **Global**
   - Settings: `F1` / `Ctrl+O`; Controller: Xbox View, PlayStation Share.
@@ -753,7 +953,95 @@ Notes:
   - Right Stick scrolling uses smooth scrolling on the active scrollable area.
   - Back is contextual: Settings Section -> Tabs; Settings Tabs -> Close; Dashboard -> Close; Config modal -> Close; Main with a selected config -> Clear selection/back.
 
-### Game Compatibility
+</details>
+
+<a id="manual-configuration"></a>
+
+<details>
+<summary><strong>Create a config manually</strong></summary>
+
+1. Create a new config with:
+   - **Name**: Your preferred identifier
+   - **AppID**: Steam AppID or folder name for achievements
+   - **Config Path**: Location of achievements.json and images / Leave empty to generate
+   - **Save Path**: Where achievement progress is stored
+   - **Executable** (optional): Direct path to game executable
+   - **Arguments** (optional): Launch parameters
+   - **Process Name** (optional): Specific .exe name to monitor
+   - _Note_: Names are sanitized (illegal filename characters removed, condensed spacing) before saving; the sanitized name is used on disk and for playtime totals.
+
+See [Config JSON fields](#config-json-fields) for the file format.
+
+</details>
+
+<a id="reference"></a>
+
+<details>
+<summary><strong>Technical reference: data locations, config JSON and launch arguments</strong></summary>
+
+### Runtime Data Locations
+
+- `%APPDATA%/Achievements/configs` – configs
+- `%APPDATA%/Achievements/configs/schema` – generated achievement schemas + local achievement images
+- `%APPDATA%/Achievements/images` – cached covers
+- `%USERPROFILE%/Pictures/Achievements Screenshots` – default achievement screenshot output
+- `%USERPROFILE%/Videos/Achievements Records` – default achievement video output
+- `%APPDATA%/Achievements/ach_cache` – cached achievements
+- `%APPDATA%/Achievements/achievement_backups` – backups created before manual achievement locking or restoration
+- `%APPDATA%/Achievements/ach_cache/github-releases.json` – cached GitHub release notes used by the Changelogs tab
+- `%APPDATA%/Achievements/ach_cache_meta.json` – cache metadata used to avoid unnecessary cache rewrites
+- `%APPDATA%/Achievements/logs` – application logs
+- `%APPDATA%/Achievements/playtime-totals.json` – playtime totals
+- `%APPDATA%/Achievements/preferences.json` – application settings, watched folders and blacklist state
+- `%APPDATA%/Achievements/preferences.json.bak` – last valid preferences backup used for recovery after an interrupted/corrupt write
+- `%APPDATA%/Achievements/xbox-pc-microsoft-auth.enc` – encrypted Microsoft/Xbox authentication state
+- `%APPDATA%/Achievements/xbox-pc/titles` – per-title Xbox PC synchronization data
+- `%APPDATA%/Achievements/retroachievements-auth.enc` – encrypted RetroAchievements Web API credentials
+- `%APPDATA%/Achievements/retroachievements/titles` – per-game RetroAchievements synchronization data
+
+### Config JSON Fields
+
+**Config JSON fields (reference):**
+
+- `appid` (string) – game id
+- `platform` (string) – `steam`, `steam-official`, `uplay`, `ubisoft-official`, `ea-official`, `epic`, `epic-official`, `gog`, `gog-official`, `xbox-pc`, `retroachievements`, `x360recomp`, `ps3recomp`, `ps4recomp`, `pcports`, `xenia`, `rpcs3`, `shadps4`, `kytyps5`, `markerpatch`, `madnesspatch`, `xlivelessness`.
+- `config_path` (string) – folder containing `achievements.json` and `img/`
+- `save_path` (string) – location of save/achievement progress
+- `process_name` (string) – executable name for process tracking
+- `executable` / `arguments` (optional) – used for Launch
+
+_Note_: If `config_path` points to a custom location, schema regeneration/cleanup will not overwrite that folder.
+
+### Application Launch Arguments
+
+An existing config can be opened directly by passing both its AppID and platform to the installed or unpacked executable:
+
+```powershell
+Achievements.exe --appid=239140/steam
+Achievements.exe --appid=239140 --platform=steam
+```
+
+- Both formats are supported and are equivalent.
+- If Achievements is already running, the existing instance is opened and navigates to the matching config.
+- The AppID and platform must match one existing config exactly. These arguments do not generate a config or launch the game.
+- Supported platform values: `steam`, `steam-official`, `uplay`, `ubisoft-official`, `ea-official`, `epic`, `epic-official`, `gog`, `gog-official`, `xbox-pc`, `retroachievements`, `x360recomp`, `ps3recomp`, `ps4recomp`, `pcports`, `xenia`, `rpcs3`, `shadps4`, `kytyps5`, `markerpatch`, `madnesspatch`, `xlivelessness`.
+
+</details>
+
+<a id="help--troubleshooting"></a>
+
+<a id="help"></a>
+
+## Troubleshooting
+
+- **A game is missing:** check its [platform setup guide](#supported-platforms), then use **Folders → Rescan** when the required files are available.
+- **Animated notifications are not visible:** try Borderless Windowed mode and check the compatibility notes below.
+- **Need diagnostic information:** open **Settings → Logs**; review local paths and account identifiers before sharing logs.
+
+<a id="game-compatibility"></a>
+
+<details>
+<summary><strong>Game display modes and compatibility</strong></summary>
 
 - Works best with games in Borderless window mode
   [Note: Games using DirectX 9/10/11 require Borderless/Borderless Windowed mode to be enabled via in-game display settings in order for notifications to show above the game window]
@@ -762,7 +1050,12 @@ Notes:
 - Automatically detects and imports existing achievements
 - Supports multiple achievement languages if available in Config
 
-## ⚠️ Known Limitations & Workarounds
+</details>
+
+<a id="️-known-limitations--workarounds"></a>
+
+<details>
+<summary><strong>Notification, overlay and controller workarounds</strong></summary>
 
 - Match privilege level between app and game (`non-admin/non-admin` or `admin/admin`) for more reliable overlay and shortcut behavior.
 - Native Windows notification click activation can be limited when Achievements runs as administrator. If redirect does not work, run Achievements without elevation when the game permits it.
@@ -777,15 +1070,246 @@ Notes:
 - Presets with expensive effects (blur/backdrop + layered animation) can micro-stutter on some GPUs; use lighter presets if needed.
 - Avoid running multiple overlay/injector tools at the same time when troubleshooting display/focus issues.
 
-### Videos
+</details>
 
-- [First Run](https://youtu.be/c1jDfynHd-U) + [Controller Support](https://youtu.be/fsqoKiMGLkw)
-- [Manual Config](https://youtu.be/abdVuDB80Ow)
-- [Auto Config](https://youtu.be/nOoiU5lPopM)
-- [Multi-Platform Support](https://youtu.be/KwRUo53VTho)
-- [Multi-Platform Support V2 + Overlay Controller Support](https://youtu.be/vDQ_4cNeIe8)
+<a id="changelogs--live-logs"></a>
 
-## 👤 Author
+<details>
+<summary><strong>View release notes and collect application logs</strong></summary>
+
+- **Settings -> Changelogs** lists the project releases published on GitHub, including version, release type, publication date and release notes.
+- Release data is cached for 30 minutes. **Refresh** requests current GitHub data, while the last valid cache remains available when GitHub or the network is unavailable.
+- Release links open the corresponding GitHub release in the default browser. Remote release text is rendered as text and is not executed as HTML.
+- **Settings -> Logs** lists known application log sources with friendly names and also discovers additional `.log` files already present in the logs directory.
+- The selected file is followed in real time and remains synchronized across file replacement, truncation and normal logger rotation.
+- Search and level filters (`DEBUG`, `INFO`, `WARN`, `ERROR`) affect only the displayed lines; they do not change or delete the underlying log file.
+- **Pause** pauses UI updates without stopping application logging. **Clear View** clears only the current in-memory view. **Open Logs Folder** opens the original files in the system file manager.
+- The initial view is limited to the latest 1,000 lines and the renderer retains at most 2,000 lines, preventing an open Logs tab from growing without bounds.
+- Live file monitoring starts only while the Logs tab is active and is released when another tab is selected or Settings is closed.
+- Logs can contain local paths or account identifiers. Review their contents before sharing them publicly.
+
+</details>
+
+## Development
+
+For contributors and users running Achievements from source.
+
+<details>
+<summary><strong>Source installation, build instructions and project reference</strong></summary>
+
+### 🛠️ Installation
+
+1. Install [Node.js](https://nodejs.org) and [Git](https://git-scm.com).
+2. Clone this repository:
+   ```bash
+   git clone https://github.com/PSerban93/achievements.git
+   cd achievements
+   ```
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+   Schema scraping uses Electron's built-in browser in isolated hidden windows. No separate browser installation is required. The manual schema-generator `--headed` option opens these windows visibly for troubleshooting.
+
+### 🚀 Running the App
+
+```bash
+npm start
+
+```
+
+### 🧱 Building a Windows Executable
+
+Create an unpacked Windows build:
+
+```bash
+npm run pack
+```
+
+Create the Windows installer:
+
+```bash
+npm run dist
+
+```
+
+Build output is created in the `dist/` folder. The build scripts verify the native process watcher and SAN notification runtime. Both `npm run pack` and `npm run dist` install and validate full Playwright Chromium automatically before packaging. Chromium Headless Shell is not bundled.
+
+### 📦 Dependencies
+
+#### Core
+
+- [Electron](https://electronjs.org) - Cross-platform desktop application framework
+- [@vscode/windows-process-tree](https://www.npmjs.com/package/@vscode/windows-process-tree) - Native Windows process monitoring
+- [Koffi](https://www.npmjs.com/package/koffi) - Native Windows API bindings used by local detection services
+- [ps-list](https://www.npmjs.com/package/ps-list) - Limited process-monitoring fallback
+- [crc-32](https://www.npmjs.com/package/crc-32) - Checksum calculation
+
+#### Achievement Processing
+
+- [Playwright](https://playwright.dev) - Browser automation for achievement scraping using isolated Electron windows; no separate Chromium download is required
+- [axios](https://www.npmjs.com/package/axios) - HTTP client for platform APIs and metadata services
+- [cheerio](https://www.npmjs.com/package/cheerio) - HTML parsing
+
+<a id="features"></a>
+
+#### Feature Dependencies
+
+- [screenshot-desktop](https://www.npmjs.com/package/screenshot-desktop) - Optional achievement screenshot capture
+- [windows-capture](https://github.com/NiiightmareXD/windows-capture) - Windows Graphics Capture and hardware-accelerated H.264 encoding for optional achievement video clips and HDR screenshots. The bundled recorder uses a locally patched MIT-licensed 2.0.1 source snapshot to pass GPU tone-mapped surfaces directly to the encoder.
+- [@xboxreplay/xboxlive-auth](https://www.npmjs.com/package/@xboxreplay/xboxlive-auth) - Microsoft/Xbox Network authentication
+- [ini](https://www.npmjs.com/package/ini) - Config file parsing
+
+#### Notification customisation inspiration
+
+The SAN-style template and theme workflow in Notification Customisation is independently implemented for Achievements, with credit to [Steam Achievement Notifier](https://github.com/SteamAchievementNotifier/SteamAchievementNotifier) for the design inspiration. Existing Achievements presets remain supported separately.
+
+#### Background Services
+
+- `chokidar` keeps config/save directories under watch to trigger UI refreshes
+- `@vscode/windows-process-tree` runs in an isolated Electron utility process and provides process events plus command-line data when required
+- `ps-list` (via `utils/pslist-wrapper.mjs`) reconciles native snapshots and remains active as the limited fallback
+- `achievements-recorder.exe` runs only while achievement records are enabled, retains bounded rolling video/audio segments on disk, and captures the default Windows output mix through WASAPI loopback (microphone input is not captured; unavailable audio safely falls back to video-only)
+- Recording frame rate supports **30 FPS**, **60 FPS**, and **Unlocked**. Unlocked captures without an application FPS limit, adapts to monitor refresh changes between segments, and may increase resource usage and file sizes, subject to Windows and hardware capacity.
+- Native snapshots run at ~1s; fallback detection runs at ~2s and hybrid reconciliation at ~12s
+- Disabling the native process watcher in **Settings -> Advanced** keeps executable-name detection active through the limited `ps-list` fallback; command-line arguments are not available in that mode
+- A config selected automatically from a running executable is cleared when its last matching process closes; configs selected manually or by save-folder watchers remain selected
+- The Settings log viewer uses a filesystem watcher with a lightweight polling fallback only while the **Logs** tab is active; both are released when the tab or Settings is closed
+- GitHub release notes are fetched on demand from the public repository API and cached atomically for offline reuse
+
+### 📁 Project Structure
+
+<details>
+<summary>View the complete file and folder reference</summary>
+
+| File/Folder                                       | Description                                                      |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| `main.js`                                         | Main Electron process: window handling, core logic               |
+| `preload.js`                                      | IPC bridge and renderer APIs                                     |
+| `utils/playtime-log-watcher.js`                   | Tracks game start/stop and calculates total playtime             |
+| `index.html`                                      | Main UI with dashboard and config management                     |
+| `overlay.html`                                    | Achievement notification overlay                                 |
+| `san-notification.html`                           | Animated achievement notification renderer                       |
+| `playtime.html`                                   | Playtime notification template                                   |
+| `progress.html`                                   | Progress notification template                                   |
+| `tray-menu.html/js/css`                           | Tray menu UI and logic                                           |
+| `playtime-totals.json`                            | Runtime-generated totals (`%APPDATA%/Achievements/`)             |
+| `preferences.json`                                | Runtime settings (`%APPDATA%/Achievements/`)                     |
+| `LICENSE`                                         | Project license file                                             |
+| `package.json`                                    | Node.js dependencies and scripts                                 |
+| `README.md`                                       | This documentation                                               |
+| `style.css`                                       | Global styling for all UI components                             |
+| `assets/`                                         | Static assets:                                                   |
+| `assets/steamdb.json`                             | Steam database cache                                             |
+| `assets/uplay-steam.json`                         | Uplay to Steam mapping                                           |
+| `assets/locales/`                                 | UI translations                                                  |
+| `assets/san-runtime/`                             | Bundled runtime assets for animated notifications                |
+| `assets/vendor/fontawesome/`                      | Font Awesome icons                                               |
+| `build/`                                          | Build scripts and manifests                                      |
+| `fonts/`                                          | Font files and licenses                                          |
+| `presets/`                                        | `Default Presets` and `Users Presets` themes                     |
+| `sounds/`                                         | Notification sound assets                                        |
+| `utils/`                                          | Helper modules and utilities:                                    |
+| `utils/auto-config-generator.js`                  | Auto-generates game configs from save directories                |
+| `utils/generate_achievements_schema.js`           | Generates multi-platform achievement schemas                     |
+| `utils/watched-folders.js`                        | Watcher + auto-select + auto-config                              |
+| `utils/steam-appcache*.js`                        | Steam official appcache parsing + schema build                   |
+| `utils/exophase-scraper.js`                       | Multi-language scraping from Exophase                            |
+| `utils/xenia-*`                                   | Xenia parsing + schema generation                                |
+| `utils/rpcs3-*`                                   | RPCS3 parsing + schema generation                                |
+| `utils/shadps4-*`                                 | PS4 trophy parsing + schema generation                           |
+| `utils/achievement-data.js`                       | Achievement data processing                                      |
+| `utils/achievement-rarity.js`                     | Achievement rarity calculations                                  |
+| `utils/trophy-mode.js`                            | Trophy Mode tier resolution for achievement notifications        |
+| `utils/app-navigation.js`                         | App launch argument and navigation routing                       |
+| `utils/atomic-json-store.js`                      | Atomic JSON writes and backup recovery                           |
+| `utils/blacklist-identity.js`                     | Global/platform blacklist identity handling                      |
+| `utils/config-deletion-guard.js`                  | Prevents config recreation during deletion                       |
+| `utils/config-deletion-paths.js`                  | Validates optional save/schema deletion targets                  |
+| `utils/config-name.js`                            | Safe config names and JSON path resolution                       |
+| `utils/config-platform-migrator.js`               | Config migration between platforms                               |
+| `utils/content-version.js`                        | Content versioning utilities                                     |
+| `utils/game-collections.js`                       | Atomic custom collection storage and game membership handling    |
+| `utils/game-collection-images.js`                 | Validation and local storage for custom collection images        |
+| `utils/controller-input-manager.js`               | Controller input handling                                        |
+| `utils/ea-desktop-local.js`                       | EA Desktop local integration                                     |
+| `utils/epic-api.js`                               | Epic Games API integration                                       |
+| `utils/epic-auth.js`                              | Epic authentication                                              |
+| `utils/epic-identity.js`                          | Epic artifact/AppID identity fallback                            |
+| `utils/epic-local-installations.js`               | Epic local installations detection                               |
+| `utils/epic-official.js`                          | Epic official achievements                                       |
+| `utils/xbox-pc.js`                                | Xbox App PC discovery and direct Xbox Network sync               |
+| `utils/fileCopy.js`                               | File copying utilities                                           |
+| `utils/game-cover.js`                             | Game cover image handling                                        |
+| `utils/gog-auth.js`                               | GOG authentication                                               |
+| `utils/gog-galaxy-local.js`                       | GOG Galaxy local integration                                     |
+| `utils/i18n-ui.js`                                | UI internationalization                                          |
+| `utils/local-game-name-cache.js`                  | Local game name caching                                          |
+| `utils/logger.js`                                 | Logging utilities                                                |
+| `utils/log-viewer-service.js`                     | Bounded live log tailing, rotation handling and subscriptions    |
+| `utils/github-changelog-service.js`               | GitHub release retrieval with atomic cache and offline fallback  |
+| `utils/lumaplay-event-watcher.js`                 | Native LumaPlay registry change watcher                          |
+| `utils/lumaplay-registry.js`                      | LumaPlay registry handling                                       |
+| `utils/markerpatch.js`                            | Dead Space 2 MarkerPatch detection and bitflag parser            |
+| `utils/madnesspatch.js`                           | Alice MadnessPatch detection, schema and profile bitflag parser  |
+| `utils/ff7-achievement-dat.js`                    | FINAL FANTASY VII legacy achievement.dat detection and parser    |
+| `utils/xlivelessness.js`                          | XLiveLessNess discovery, config generation and DAT state parser  |
+| `utils/xlivelessness-spa.js`                      | XLiveLessNess PE SPAFILE/XDBF metadata and image parser          |
+| `utils/xlivelessness-worker.js`                   | Async XLiveLessNess executable discovery worker                  |
+| `utils/retroachievements.js`                      | RetroAchievements Web API authentication, import and polling     |
+| `utils/adaptive-path-watcher.js`                  | Late-created local achievement path monitoring                   |
+| `utils/match-uplay-steam.js`                      | Uplay to Steam matching                                          |
+| `utils/native-windows-notification-navigation.js` | Native toast activation routing                                  |
+| `utils/overlay-controller-service.js`             | Overlay controller service                                       |
+| `utils/overlay-shortcut-manager.js`               | Overlay shortcut management                                      |
+| `utils/parseStatsBin.js`                          | Stats binary parsing                                             |
+| `utils/paths.js`                                  | Path utilities                                                   |
+| `utils/playtime-store.js`                         | Playtime data storage                                            |
+| `utils/profile-backup.js`                         | Validated streaming profile backup, staging and restore          |
+| `utils/profile-backup-worker.js`                  | Off-main-thread TAR + Zstandard backup creation and verification |
+| `utils/playwright-runtime.js`                     | Hidden Electron browser runtime                                  |
+| `utils/process-event-watcher.js`                  | Process event watching                                           |
+| `utils/process-config-match.js`                   | Process-to-config matching                                       |
+| `utils/process-native-host.js`                    | Isolated native process watcher host                             |
+| `utils/process-name-utils.js`                     | Process name utilities                                           |
+| `utils/process-poller.js`                         | Process polling                                                  |
+| `utils/pslist-wrapper.mjs`                        | PS list wrapper                                                  |
+| `utils/raw-hid-controller-hub.js`                 | Raw HID controller hub                                           |
+| `utils/raw-hid-controller-worker.js`              | Raw HID controller worker                                        |
+| `utils/raw-hid-profiles.js`                       | Raw HID profiles                                                 |
+| `utils/rpcs3-config-generator.js`                 | RPCS3 config generation                                          |
+| `utils/rpcs3-trophy.js`                           | RPCS3 trophy handling                                            |
+| `utils/shadps4-config-generator.js`               | ShadPS4 config generation                                        |
+| `utils/shadps4-trophy.js`                         | ShadPS4 trophy handling                                          |
+| `utils/kytyps5-rarity.js`                         | Exophase PS5 trophy rarity matching and refresh                  |
+| `utils/startup-task.js`                           | Startup task management                                          |
+| `utils/steam-appcache-generator.js`               | Steam appcache generation                                        |
+| `utils/steam-appcache.js`                         | Steam appcache handling                                          |
+| `utils/steam-local-users.js`                      | Steam local users                                                |
+| `utils/steam-schema-parse.js`                     | Bundled Steam schema tool runtime and generation                 |
+| `utils/steamdb-launch-metadata.js`                | SteamDB launch metadata                                          |
+| `utils/ubisoft-connect-local.js`                  | Ubisoft Connect local integration                                |
+| `utils/windows-process-native-provider.js`        | Native Windows process snapshot provider                         |
+| `utils/xenia-config-generator.js`                 | Xenia config generation                                          |
+| `utils/xenia-gpd.js`                              | Xenia GPD handling                                               |
+
+</details>
+
+</details>
+
+<a id="support"></a>
+
+## Support & Credits
+
+### ☕ Support
+
+If you’d like to support the project further, you can buy me a coffee on Ko-fi:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V7V81U42NF)
+
+<a id="author"></a>
+
+### 👤 Author
 
 **JokerVerse**  
 Copyright © 2025
@@ -793,3 +1317,5 @@ Copyright © 2025
 ---
 
 Feel free to contribute, fork or suggest improvements!
+
+Licensed under the [MIT License](LICENSE).

@@ -3,7 +3,10 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
+const { watchGenerationProcess } = require("./generation-process-timeout");
+const { coordinateSchemaParse } = require("./schema-parse-coordinator");
 const { createLogger } = require("./logger");
+const { schemaConnectionFailure } = require("./schema-download-warning");
 const { updateTopOwnersIds } = require("./update-top-owners");
 const {
   readSchemaParseLaunchMetadata,
@@ -14,13 +17,13 @@ const logger = createLogger("schema-parse");
 const TOP_OWNERS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const SCHEMA_PARSE_DIRNAME = "schema_parse";
 const SCHEMA_PARSE_ARCHIVE_NAME = "schema_parse.zip";
-const SCHEMA_PARSE_STATE_FILENAME = ".seed-state.json";
 const SCHEMA_PARSE_DEFAULT_USERNAME = "goldie_0003";
 const SCHEMA_PARSE_DEFAULT_PASSWORD = "BabaYaga0003";
 const SCHEMA_PARSE_BATCH_CHUNK_SIZE = 20;
 const SCHEMA_PARSE_AUTH_RETRY_DELAY_MS = 30000;
 const SCHEMA_PARSE_CHUNK_DELAY_MS = 7000;
 const SCHEMA_PARSE_OUTPUT_DIR_NAMES = ["output", "_OUTPUT"];
+const SCHEMA_PARSE_GAME_TIMEOUT_MS = 180000;
 const SCHEMA_PARSE_MUTABLE_NAMES = [
   "my_login.txt",
   "refresh_tokens.json",
@@ -39,6 +42,7 @@ function normalizeUserDataDir(userDataDir = "") {
 
 function applySchemaParseEnvironment(baseEnv = process.env) {
   const nextEnv = { ...(baseEnv || {}) };
+  nextEnv.PYTHONUNBUFFERED = "1";
   const username = String(nextEnv.GSE_CFG_USERNAME || "").trim();
   const password = String(nextEnv.GSE_CFG_PASSWORD || "").trim();
   if (!username) {
@@ -123,10 +127,6 @@ function resolveSchemaParseExecutable(runtimeDir = "") {
   return realExecutablePath;
 }
 
-function resolveSchemaParseStatePath(runtimeDir = "") {
-  return path.join(path.resolve(String(runtimeDir || "").trim()), SCHEMA_PARSE_STATE_FILENAME);
-}
-
 function isValidSchemaParseSeedArchive(candidate = "") {
   const filePath = path.resolve(String(candidate || "").trim());
   return !!filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile();
@@ -153,25 +153,11 @@ function resolveSchemaParseSeedArchive(options = {}) {
   return "";
 }
 
-function computeFileHash(filePath = "") {
+async function computeFileHash(filePath = "") {
   const fullPath = path.resolve(String(filePath || "").trim());
   const hash = crypto.createHash("sha256");
-  const buffer = fs.readFileSync(fullPath);
-  hash.update(buffer);
+  for await (const chunk of fs.createReadStream(fullPath)) hash.update(chunk);
   return hash.digest("hex");
-}
-
-function readJsonFile(filePath = "") {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function writeJsonFile(filePath = "", value = {}) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf8");
 }
 
 function copyRecursive(sourceDir, destDir, options = {}) {
@@ -193,40 +179,11 @@ function copyRecursive(sourceDir, destDir, options = {}) {
   }
 }
 
-function copyPathRecursive(sourcePath, destPath) {
-  if (!fs.existsSync(sourcePath)) return;
-  const stat = fs.statSync(sourcePath);
-  if (stat.isDirectory()) {
-    copyRecursive(sourcePath, destPath);
-    return;
-  }
-  fs.mkdirSync(path.dirname(destPath), { recursive: true });
-  fs.copyFileSync(sourcePath, destPath);
-}
-
-function preserveRuntimeMutableEntries(runtimeDir, preserveRoot) {
-  fs.rmSync(preserveRoot, { recursive: true, force: true });
-  fs.mkdirSync(preserveRoot, { recursive: true });
-  for (const name of SCHEMA_PARSE_MUTABLE_NAMES) {
-    const sourcePath = path.join(runtimeDir, name);
-    if (!fs.existsSync(sourcePath)) continue;
-    copyPathRecursive(sourcePath, path.join(preserveRoot, name));
-  }
-}
-
-function restoreRuntimeMutableEntries(preserveRoot, runtimeDir) {
-  if (!fs.existsSync(preserveRoot)) return;
-  for (const name of SCHEMA_PARSE_MUTABLE_NAMES) {
-    const sourcePath = path.join(preserveRoot, name);
-    if (!fs.existsSync(sourcePath)) continue;
-    copyPathRecursive(sourcePath, path.join(runtimeDir, name));
-  }
-}
-
-async function extractSchemaParseArchive(archivePath, runtimeDir) {
+async function extractSchemaParseArchive(archivePath, runtimeDir, options = {}) {
   const archiveLiteral = String(path.resolve(archivePath)).replace(/'/g, "''");
   const runtimeLiteral = String(path.resolve(runtimeDir)).replace(/'/g, "''");
   const command =
+    "$ErrorActionPreference = 'Stop'; " +
     `$archive = '${archiveLiteral}'; ` +
     `$dest = '${runtimeLiteral}'; ` +
     "New-Item -ItemType Directory -Path $dest -Force | Out-Null; " +
@@ -244,16 +201,10 @@ async function extractSchemaParseArchive(archivePath, runtimeDir) {
     {
       windowsHide: true,
       maxBuffer: 8 * 1024 * 1024,
+      timeout: options.extractionTimeoutMs || 120000,
+      signal: options.signal,
     },
   );
-}
-
-function statMtimeMs(filePath = "") {
-  try {
-    return fs.statSync(filePath).mtimeMs || 0;
-  } catch {
-    return 0;
-  }
 }
 
 function normalizeAchievementTextObject(value) {
@@ -264,9 +215,14 @@ function normalizeAchievementTextObject(value) {
   return text ? { english: text } : {};
 }
 
-function delay(ms = 0) {
+function delay(ms = 0, signal = null) {
   const timeout = Math.max(0, Number(ms) || 0);
-  return new Promise((resolve) => setTimeout(resolve, timeout));
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const abort = () => { clearTimeout(timer); reject(signal.reason); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", abort); resolve(); }, timeout);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 function buildSchemaParseErrorText(err = null) {
@@ -383,101 +339,21 @@ function readSchemaParseGeneratedDisplayName(appOutputDir = "", appid = "") {
   return "";
 }
 
+const { createRuntimePreparer } = require("./schema-parse-runtime-preparation");
+const runtimePreparer = createRuntimePreparer({
+  logger,
+  coordinate: coordinateSchemaParse,
+  resolveDir: resolveSchemaParseRuntimeDir,
+  resolveArchive: resolveSchemaParseSeedArchive,
+  hash: computeFileHash,
+  ensureEnv: ensureSchemaParseProcessEnv,
+  extract: extractSchemaParseArchive,
+  validate: resolveSchemaParseExecutable,
+  refreshOwners: updateTopOwnersIds,
+  mutableNames: SCHEMA_PARSE_MUTABLE_NAMES,
+});
 async function ensureSchemaParseRuntimeReady(options = {}) {
-  const userDataDir = normalizeUserDataDir(options.userDataDir);
-  const runtimeDir = resolveSchemaParseRuntimeDir(userDataDir);
-  const seedArchive = resolveSchemaParseSeedArchive(options);
-  if (!seedArchive) {
-    throw new Error("schema_parse seed archive not found");
-  }
-
-  ensureSchemaParseProcessEnv();
-
-  const runtimeExe = path.join(runtimeDir, "generate_emu_config.exe");
-  const runtimeStatePath = resolveSchemaParseStatePath(runtimeDir);
-  const bundledHash = computeFileHash(seedArchive);
-  const previousState = readJsonFile(runtimeStatePath) || {};
-  const requiresExtract =
-    !fs.existsSync(runtimeExe) ||
-    String(previousState.archiveHash || "").trim() !== bundledHash;
-  const bootstrapped = !fs.existsSync(runtimeExe);
-  const updated = requiresExtract && !bootstrapped;
-
-  if (requiresExtract) {
-    const preserveRoot = path.join(path.dirname(runtimeDir), `${SCHEMA_PARSE_DIRNAME}.preserve`);
-    logger.info("schema-parse:bootstrap:start", {
-      runtimeDir,
-      seedArchive,
-      reason: String(options.reason || "runtime"),
-      updated,
-    });
-    if (fs.existsSync(runtimeDir)) {
-      preserveRuntimeMutableEntries(runtimeDir, preserveRoot);
-      fs.rmSync(runtimeDir, { recursive: true, force: true });
-    } else {
-      fs.rmSync(preserveRoot, { recursive: true, force: true });
-    }
-    await extractSchemaParseArchive(seedArchive, runtimeDir);
-    restoreRuntimeMutableEntries(preserveRoot, runtimeDir);
-    fs.rmSync(preserveRoot, { recursive: true, force: true });
-    writeJsonFile(runtimeStatePath, {
-      archivePath: seedArchive,
-      archiveHash: bundledHash,
-      extractedAt: new Date().toISOString(),
-    });
-    logger.info("schema-parse:bootstrap:success", {
-      runtimeDir,
-      seedArchive,
-      updated,
-    });
-  } else if (
-    String(previousState.archivePath || "").trim() !== seedArchive ||
-    String(previousState.archiveHash || "").trim() !== bundledHash
-  ) {
-    writeJsonFile(runtimeStatePath, {
-      archivePath: seedArchive,
-      archiveHash: bundledHash,
-      extractedAt:
-        previousState?.extractedAt || new Date().toISOString(),
-    });
-  }
-
-  const topOwnersPath = path.join(runtimeDir, "top_owners_ids.txt");
-  let topOwnersRefreshed = false;
-  if (options.refreshTopOwners === true) {
-    await updateTopOwnersIds({
-      outputPath: topOwnersPath,
-      limit: options.topOwnersLimit || 250,
-      timeoutMs: options.topOwnersTimeoutMs || 30000,
-      headless: true,
-    });
-    topOwnersRefreshed = true;
-  } else if (!fs.existsSync(topOwnersPath)) {
-    await updateTopOwnersIds({
-      outputPath: topOwnersPath,
-      limit: options.topOwnersLimit || 250,
-      timeoutMs: options.topOwnersTimeoutMs || 30000,
-      headless: true,
-    });
-    topOwnersRefreshed = true;
-  } else {
-    const ageMs = Date.now() - statMtimeMs(topOwnersPath);
-    if (ageMs > TOP_OWNERS_TTL_MS) {
-      logger.info("schema-parse:top-owners:stale", {
-        outputPath: topOwnersPath,
-        ageMs,
-      });
-    }
-  }
-
-  return {
-    runtimeDir,
-    seedArchive,
-    bootstrapped,
-    updated,
-    topOwnersPath,
-    topOwnersRefreshed,
-  };
+  return runtimePreparer.prepare(options);
 }
 
 function startSchemaParseBootPreparation(options = {}) {
@@ -487,62 +363,37 @@ function startSchemaParseBootPreparation(options = {}) {
   logger.info("schema-parse:boot-preparation:start", {
     reason: String(options.reason || "boot"),
   });
-  // Let Electron create/present its first frame before any archive hashing or
-  // runtime migration work begins in the main process.
+  // Yield before archive preparation so Electron can present its first frame.
   bootPreparationPromise = new Promise((resolve) => setImmediate(resolve))
-    .then(() =>
-      ensureSchemaParseRuntimeReady({
-        ...options,
-        refreshTopOwners: true,
-        reason: options.reason || "boot",
-      }),
-    )
+    .then(() => ensureSchemaParseRuntimeReady({
+      ...options,
+      generationId: options.generationId || `boot-${crypto.randomUUID()}`,
+      refreshTopOwners: true,
+      reason: options.reason || "boot",
+    }))
     .then((runtime) => {
-      bootPreparationResult = {
-        ...runtime,
-        status: "ready",
-        fallback: false,
-      };
-      bootPreparationStatus = "ready";
-      logger.info("schema-parse:boot-preparation:ready", {
-        durationMs: Date.now() - startedAt,
-        fallback: false,
-        topOwnersRefreshed: runtime?.topOwnersRefreshed === true,
-      });
-      return bootPreparationResult;
+      // The preparer already falls back to a local owners list and records
+      // deferred cleanup. Preserve that state instead of claiming full success.
+      bootPreparationResult = runtime;
+      bootPreparationStatus = runtime.status;
+      logger[runtime.fallback ? "warn" : "info"](
+        runtime.fallback ? "schema-parse:boot-preparation:fallback" : "schema-parse:boot-preparation:ready",
+        { durationMs: Date.now() - startedAt, fallback: runtime.fallback,
+          topOwnersRefreshed: runtime.topOwnersRefreshed },
+      );
+      return runtime;
     })
-    .catch(async (error) => {
-      // Network refresh failure must not discard a previously valid runtime.
-      // Revalidate the local copy without requesting another forced refresh.
-      try {
-        const runtime = await ensureSchemaParseRuntimeReady({
-          ...options,
-          refreshTopOwners: false,
-          reason: "boot-fallback",
-        });
-        bootPreparationResult = {
-          ...runtime,
-          status: "ready-with-fallback",
-          fallback: true,
-          refreshError: error,
-        };
-        bootPreparationStatus = "ready-with-fallback";
-        logger.warn("schema-parse:boot-preparation:fallback", {
-          durationMs: Date.now() - startedAt,
-          error: error?.message || String(error),
-          topOwnersPath: runtime?.topOwnersPath || null,
-        });
-        return bootPreparationResult;
-      } catch (fallbackError) {
-        bootPreparationStatus = "failed";
-        logger.error("schema-parse:boot-preparation:failed", {
-          durationMs: Date.now() - startedAt,
-          error: error?.message || String(error),
-          fallbackError: fallbackError?.message || String(fallbackError),
-        });
-        bootPreparationPromise = null;
-        throw error;
-      }
+    .catch((error) => {
+      bootPreparationStatus = "failed";
+      bootPreparationResult = null;
+      logger.error("schema-parse:boot-preparation:failed", {
+        durationMs: Date.now() - startedAt,
+        error: error?.message || String(error), code: error?.code,
+        nativeCode: error?.nativeCode, stage: error?.stage,
+        syscall: error?.syscall, path: error?.path,
+      });
+      bootPreparationPromise = null;
+      throw error;
     });
   return bootPreparationPromise;
 }
@@ -560,22 +411,45 @@ function getSchemaParseBootPreparationStatus() {
   };
 }
 
-async function runGenerateEmuConfig(runtimeDir, appid) {
+async function runGenerateEmuConfig(runtimeDir, appid, options = {}) {
+  options.signal?.throwIfAborted();
   const exePath = resolveSchemaParseExecutable(runtimeDir);
   cleanupGeneratedAppArtifacts(runtimeDir, appid, { log: false });
   logger.info("schema-parse:run:start", { appid, runtimeDir });
   let result;
+  let streamedStdout = "";
+  let streamedStderr = "";
   try {
-    result = await execFileAsync(exePath, [String(appid)], {
+    // Inventory is unrelated to achievements and can stall after a complete
+    // achievements result. Keep the executable and its runtime unchanged.
+    const pending = execFileAsync(exePath, ["-skip_inv", String(appid)], {
       cwd: runtimeDir,
       windowsHide: true,
       shell: false,
       maxBuffer: 8 * 1024 * 1024,
       env: applySchemaParseEnvironment(process.env),
     });
+    pending.child.stdout?.setEncoding("utf8");
+    pending.child.stderr?.setEncoding("utf8");
+    pending.child.stdout?.on("data", (chunk) => { streamedStdout += chunk; });
+    pending.child.stderr?.on("data", (chunk) => { streamedStderr += chunk; });
+    const deadline = watchGenerationProcess(pending.child, SCHEMA_PARSE_GAME_TIMEOUT_MS, { signal: options.signal });
+    try {
+      result = await pending;
+      if (deadline.error) throw deadline.error;
+    } catch (error) {
+      if (deadline.error) {
+        deadline.error.stdout = error.stdout || streamedStdout;
+        deadline.error.stderr = error.stderr || streamedStderr;
+        throw deadline.error;
+      }
+      throw error;
+    } finally {
+      deadline.clear();
+    }
   } catch (err) {
-    const stdout = String(err?.stdout || "");
-    const stderr = String(err?.stderr || "");
+    const stdout = String(err?.stdout || streamedStdout);
+    const stderr = String(err?.stderr || streamedStderr);
     logger.warn("schema-parse:run:command-failed", {
       appid,
       code:
@@ -603,35 +477,98 @@ async function runGenerateEmuConfig(runtimeDir, appid) {
   };
 }
 
-async function executeSchemaParseSingle(runtimeDir, appid, outDir) {
+function schemaRequestWarnings(appid, stdout = "", stderr = "", single = false) {
+  const id = String(appid).replace(/^0+(?=\d)/, "");
+  const text = String(stdout);
+  const starts = [...text.matchAll(/(?:\*+\s*generating info for app id|\*+\s*STARTED config for app id)\s+(\d+)/gi)];
+  const blocks = starts.flatMap((match, index) =>
+    match[1].replace(/^0+(?=\d)/, "") === id
+      ? [text.slice(match.index, starts[index + 1]?.index ?? text.length)] : []);
+  // Without a game boundary, batch stderr cannot be assigned to an AppID.
+  if (single && !starts.length) blocks.push(text);
+  // Images, inventory and playtime are downloaded by the same executable.
+  // Their failures must not become schema-download notifications.
+  const candidates = blocks.flatMap((block) => block.split(/^(?:downloading|saving|finding)\s+(?:achievement\s+)?(?:images|icons|inventory)\b|^inventory definitions\b|^(?:downloading|finding)\s+playtime\b/imu)[0].split(/\r?\n/));
+  const assetOrRarity = /\b(?:images?|icons?|inventory|playtime|rarity|percentages?)\b|(?:download|save|fetch|get)_[a-z_]*(?:image|icon|inventory|playtime|percentage)|\.(?:png|jpe?g|webp|gif)(?:[?\s'"]|$)/i;
+  const stderrBlocks = String(stderr).split(/(?=Traceback \(most recent call last\):)/);
+  for (const block of stderrBlocks) {
+    if ((single || new RegExp(`\\b${id}\\b`).test(block)) &&
+        !assetOrRarity.test(block)) {
+      candidates.push(...block.split(/\r?\n/));
+    }
+  }
+  return candidates.filter((line) => !assetOrRarity.test(line) && schemaConnectionFailure(line))
+    .slice(0, 8).map((line) => line.trim().slice(0, 512));
+}
+
+function classifySchemaParseResult(appid, result, stdout = "", stderr = "") {
+  result = { ...result, downloadWarnings: schemaRequestWarnings(appid, stdout, stderr) };
+  if (result.ok) return result;
+  const steamId = String(appid).replace(/^0+(?=\d)/, "");
+  const text = String(stdout);
+  const starts = [...text.matchAll(/(?:\*+\s*generating info for app id|\*+\s*STARTED config for app id)\s+(\d+)/gi)];
+  const hasExplicitEmpty = (block) => [...block.matchAll(/\[X\]\s*app id\s+(\d+)\s+has not achievements/gi)]
+    .some((match) => match[1].replace(/^0+(?=\d)/, "") === steamId);
+  // A batch's game name must come from the same game's output block.
+  const blocks = starts.flatMap((match, index) =>
+    match[1].replace(/^0+(?=\d)/, "") === steamId
+      ? [text.slice(match.index, starts[index + 1]?.index ?? text.length)] : []);
+  // An unrelated later authentication retry must not discard an already
+  // confirmed empty result for this AppID.
+  const appText = [...blocks].reverse().find(hasExplicitEmpty) || blocks[blocks.length - 1] ||
+    (starts.length ? "" : text);
+  const nameMatch = appText.match(/App name on store:\s*(['"])(.+)\1/);
+  const displayName = result.displayName || nameMatch?.[2]?.trim() || "";
+  const explicitEmpty = hasExplicitEmpty(appText);
+  if (result.status === "identified-no-achievements" || (displayName && explicitEmpty)) {
+    logger.info("schema-parse:run:confirmed-no-achievements", {
+      appid, displayName, source: explicitEmpty ? "stdout" : "empty-generated-schema",
+    });
+    return { ...result, displayName, status: "identified-no-achievements", identified: true, count: 0 };
+  }
+  const missingMetadata = [...appText.matchAll(/KeyError:\s*(\d+)\b/g)]
+    .some((match) => match[1].replace(/^0+(?=\d)/, "") === steamId);
+  if (missingMetadata && !displayName) {
+    return { ...result, status: "not-found", reason: "application-metadata-missing" };
+  }
+  return { ...result, displayName };
+}
+
+async function executeSchemaParseSingle(runtimeDir, appid, outDir, options = {}) {
   let runResult = null;
   let runError = null;
   const maxAttempts = 2;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      runResult = await runGenerateEmuConfig(runtimeDir, appid);
-      runError = null;
-      break;
-    } catch (err) {
-      runError = err;
-      runResult = {
-        appOutputDir: resolveSchemaParseAppOutputDir(runtimeDir, appid),
-        stdout: String(err?.stdout || ""),
-        stderr: String(err?.stderr || ""),
-      };
-      if (attempt >= maxAttempts || !isSchemaParseAuthError(err)) {
-        break;
-      }
-      logger.warn("schema-parse:run:auth-retry", {
-        appid,
-        attempt,
-        delayMs: SCHEMA_PARSE_AUTH_RETRY_DELAY_MS,
-      });
-      await delay(SCHEMA_PARSE_AUTH_RETRY_DELAY_MS);
-    }
-  }
+  const downloadWarnings = [];
   try {
-    const result = readSchemaParseGeneratedResult(appid, runResult.appOutputDir, outDir);
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        runResult = await runGenerateEmuConfig(runtimeDir, appid, options);
+        downloadWarnings.push(...schemaRequestWarnings(appid, runResult.stdout, runResult.stderr, true));
+        runError = null;
+        break;
+      } catch (err) {
+        runError = err;
+        downloadWarnings.push(...schemaRequestWarnings(appid, err.stdout, err.stderr, true));
+        runResult = {
+          appOutputDir: resolveSchemaParseAppOutputDir(runtimeDir, appid),
+          stdout: String(err?.stdout || ""),
+          stderr: String(err?.stderr || ""),
+        };
+        if (attempt >= maxAttempts || !isSchemaParseAuthError(err)) {
+          break;
+        }
+        logger.warn("schema-parse:run:auth-retry", {
+          appid,
+          attempt,
+          delayMs: SCHEMA_PARSE_AUTH_RETRY_DELAY_MS,
+        });
+        await delay(SCHEMA_PARSE_AUTH_RETRY_DELAY_MS, options.signal);
+      }
+    }
+    options.signal?.throwIfAborted();
+    const result = classifySchemaParseResult(appid,
+      readSchemaParseGeneratedResult(appid, runResult.appOutputDir, outDir), runResult.stdout);
+    result.downloadWarnings = [...new Set([...downloadWarnings, ...result.downloadWarnings])];
     if (result?.ok) {
       if (runError) {
         logger.warn("schema-parse:run:partial-success", {
@@ -646,7 +583,10 @@ async function executeSchemaParseSingle(runtimeDir, appid, outDir) {
       }
       return result;
     }
+    // Inventory/download failures must not erase an explicit achievements result.
+    if (["identified-no-achievements", "not-found"].includes(result.status)) return result;
     if (runError) {
+      runError.downloadWarnings = result.downloadWarnings;
       throw runError;
     }
     return result;
@@ -656,6 +596,7 @@ async function executeSchemaParseSingle(runtimeDir, appid, outDir) {
 }
 
 async function runGenerateEmuConfigBatch(runtimeDir, appids = [], options = {}) {
+  options.signal?.throwIfAborted();
   const exePath = resolveSchemaParseExecutable(runtimeDir);
   const normalizedAppIds = Array.from(
     new Set(
@@ -676,7 +617,7 @@ async function runGenerateEmuConfigBatch(runtimeDir, appids = [], options = {}) 
     // are digits-only, and no command string or shell is used.
     const cp = spawn( // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
       exePath,
-      normalizedAppIds,
+      ["-skip_inv", ...normalizedAppIds],
       {
         cwd: runtimeDir,
         windowsHide: true,
@@ -685,6 +626,8 @@ async function runGenerateEmuConfigBatch(runtimeDir, appids = [], options = {}) 
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    const deadline = watchGenerationProcess(cp, SCHEMA_PARSE_GAME_TIMEOUT_MS, { signal: options.signal });
+    let deadlineProgress = -1;
     let stdout = "";
     let stdoutLineBuffer = "";
     let stderr = "";
@@ -695,6 +638,10 @@ async function runGenerateEmuConfigBatch(runtimeDir, appids = [], options = {}) 
     let lastProgressCount = 0;
     let sawStartedStdout = false;
     const emitBatchProgress = (appid, current, detail, percent) => {
+      if (current > deadlineProgress) {
+        deadlineProgress = current;
+        deadline.touch();
+      }
       try {
         if (typeof options.onProgress !== "function") return;
         const itemName = readSchemaParseGeneratedDisplayName(
@@ -783,10 +730,18 @@ async function runGenerateEmuConfigBatch(runtimeDir, appids = [], options = {}) 
     });
     cp.on("error", (err) => {
       clearInterval(pollTimer);
+      deadline.clear();
       reject(err);
     });
     cp.on("close", (code) => {
       clearInterval(pollTimer);
+      deadline.clear();
+      if (deadline.error) {
+        deadline.error.stdout = stdout;
+        deadline.error.stderr = stderr;
+        reject(deadline.error);
+        return;
+      }
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
@@ -920,7 +875,7 @@ function readSchemaParseGeneratedResult(appid, appOutputDir, outDir) {
     : null;
   const displayName = readSchemaParseGeneratedDisplayName(appOutputDir, appid);
   if (!fs.existsSync(schemaJsonPath)) {
-    logger.info("schema-parse:run:no-achievements", { appid });
+    logger.info("schema-parse:run:missing-achievements-json", { appid });
     return {
       ok: false,
       reason: "no-achievements-json",
@@ -931,6 +886,11 @@ function readSchemaParseGeneratedResult(appid, appOutputDir, outDir) {
 
   const rawSchema = JSON.parse(fs.readFileSync(schemaJsonPath, "utf8"));
   const achievements = normalizeGeneratedAchievementsSchema(rawSchema);
+  if (!achievements.length) {
+    return { ok: false, status: displayName && Array.isArray(rawSchema) && rawSchema.length === 0
+      ? "identified-no-achievements" : "ambiguous", count: 0, displayName,
+      identified: !!displayName, launchMetadata, reason: "empty-generated-schema" };
+  }
   fs.mkdirSync(outDir, { recursive: true });
   const outJsonPath = path.join(outDir, "achievements.json");
   fs.writeFileSync(outJsonPath, JSON.stringify(achievements, null, 2), "utf8");
@@ -958,8 +918,8 @@ function readSchemaParseGeneratedResult(appid, appOutputDir, outDir) {
   };
 }
 
-async function generateSteamSchemaWithSchemaParse(options = {}) {
-  const appid = String(options.appid || "").trim();
+async function generateSteamSchemaWithSchemaParseUncoordinated(options = {}) {
+  const appid = String(options.appid || "").trim().replace(/^0+(?=\d)/, "");
   const outDir = path.resolve(String(options.outDir || "").trim());
   const userDataDir = normalizeUserDataDir(options.userDataDir);
   if (!/^\d+$/.test(appid)) {
@@ -969,19 +929,19 @@ async function generateSteamSchemaWithSchemaParse(options = {}) {
     return { ok: false, reason: "invalid-output-dir" };
   }
 
-  const preparedRuntime = await waitForSchemaParseBootPreparation();
+  const preparedRuntime = options.__preparedRuntime || await waitForSchemaParseBootPreparation();
   const runtime = preparedRuntime || (await ensureSchemaParseRuntimeReady({
     userDataDir,
     reason: options.reason || "generate",
   }));
-  return executeSchemaParseSingle(runtime.runtimeDir, appid, outDir);
+  return executeSchemaParseSingle(runtime.runtimeDir, appid, outDir, options);
 }
 
-async function generateSteamSchemasWithSchemaParseBatch(options = {}) {
+async function generateSteamSchemasWithSchemaParseBatchUncoordinated(options = {}) {
   const items = Array.isArray(options.items) ? options.items : [];
   const normalizedItems = items
     .map((item) => ({
-      appid: String(item?.appid || "").trim(),
+      appid: String(item?.appid || "").trim().replace(/^0+(?=\d)/, ""),
       outDir: path.resolve(String(item?.outDir || "").trim()),
       resultKey: String(item?.resultKey || item?.appid || "").trim(),
     }))
@@ -996,159 +956,209 @@ async function generateSteamSchemasWithSchemaParseBatch(options = {}) {
     return { ok: true, results };
   }
 
-  const preparedRuntime = await waitForSchemaParseBootPreparation();
+  const preparedRuntime = options.__preparedRuntime || await waitForSchemaParseBootPreparation();
   const runtime = preparedRuntime || (await ensureSchemaParseRuntimeReady({
     userDataDir: normalizeUserDataDir(options.userDataDir),
     reason: options.reason || "generate-batch",
   }));
-  const chunkedItems = chunkArray(
-    normalizedItems,
-    options.chunkSize || SCHEMA_PARSE_BATCH_CHUNK_SIZE,
-  );
-  const batchErrors = [];
-  let completedBeforeChunk = 0;
-  for (let chunkIndex = 0; chunkIndex < chunkedItems.length; chunkIndex += 1) {
-    const chunk = chunkedItems[chunkIndex];
-    const chunkAppIds = chunk.map((item) => item.appid);
-    const runChunk = async (attemptAppIds = chunkAppIds, attemptStartIndex = 0) =>
-      runGenerateEmuConfigBatch(runtime.runtimeDir, attemptAppIds, {
-        ...options,
-        onProgress:
-          typeof options.onProgress === "function"
-            ? (progress = {}) => {
-                const current =
-                  Number.isFinite(Number(progress.current)) &&
-                  Number(progress.current) >= 0
-                    ? Number(progress.current)
-                    : 0;
-                options.onProgress({
-                  ...progress,
-                  current: completedBeforeChunk + attemptStartIndex + current,
-                  total: normalizedItems.length,
-                  percent:
-                    Number.isFinite(Number(progress.percent)) &&
-                    Number(progress.percent) >= 0
-                      ? Math.max(
-                          0,
-                          Math.min(
-                            78,
-                            Math.round(
-                              ((completedBeforeChunk + attemptStartIndex + current) /
-                                Math.max(normalizedItems.length, 1)) *
+  try {
+    const chunkedItems = chunkArray(
+      normalizedItems,
+      options.chunkSize || SCHEMA_PARSE_BATCH_CHUNK_SIZE,
+    );
+    const batchErrors = [];
+    let batchStdout = "";
+    let batchStderr = "";
+    let completedBeforeChunk = 0;
+    for (let chunkIndex = 0; chunkIndex < chunkedItems.length; chunkIndex += 1) {
+      options.signal?.throwIfAborted();
+      const chunk = chunkedItems[chunkIndex];
+      const chunkAppIds = chunk.map((item) => item.appid);
+      const runChunk = async (attemptAppIds = chunkAppIds, attemptStartIndex = 0) => {
+        try {
+          const result = await runGenerateEmuConfigBatch(runtime.runtimeDir, attemptAppIds, {
+            ...options,
+            onProgress:
+              typeof options.onProgress === "function"
+                ? (progress = {}) => {
+                    const current =
+                      Number.isFinite(Number(progress.current)) &&
+                      Number(progress.current) >= 0
+                        ? Number(progress.current)
+                        : 0;
+                    options.onProgress({
+                      ...progress,
+                      current: completedBeforeChunk + attemptStartIndex + current,
+                      total: normalizedItems.length,
+                      percent:
+                        Number.isFinite(Number(progress.percent)) &&
+                        Number(progress.percent) >= 0
+                          ? Math.max(
+                              0,
+                              Math.min(
                                 78,
-                            ),
-                          ),
-                        )
-                      : 0,
-                });
-              }
-            : null,
-      });
-    let chunkError = null;
-    try {
-      await runChunk();
-    } catch (err) {
-      chunkError = err;
-      batchErrors.push(err);
-      if (isSchemaParseAuthError(err)) {
-        const retryStartIndex = findFirstMissingSchemaParseOutputIndex(
-          runtime.runtimeDir,
-          chunkAppIds,
-        );
-        const retryAppIds = chunkAppIds.slice(retryStartIndex);
-        logger.warn("schema-parse:batch:auth-retry", {
-          chunkIndex: chunkIndex + 1,
-          chunkCount: chunkedItems.length,
-          count: chunkAppIds.length,
-          retryStartIndex,
-          retryCount: retryAppIds.length,
-          retryFromAppId: retryAppIds[0] || null,
-          delayMs: SCHEMA_PARSE_AUTH_RETRY_DELAY_MS,
-        });
-        if (retryAppIds.length > 0) {
-          await delay(SCHEMA_PARSE_AUTH_RETRY_DELAY_MS);
-          try {
-            await runChunk(retryAppIds, retryStartIndex);
+                                Math.round(
+                                  ((completedBeforeChunk + attemptStartIndex + current) /
+                                    Math.max(normalizedItems.length, 1)) *
+                                    78,
+                                ),
+                              ),
+                            )
+                          : 0,
+                    });
+                  }
+                : null,
+          });
+          batchStdout += result.stdout || "";
+          batchStderr += result.stderr || "";
+          return result;
+        } catch (error) {
+          batchStdout += error.stdout || "";
+          batchStderr += error.stderr || "";
+          throw error;
+        }
+      };
+      let chunkError = null;
+      try {
+        await runChunk();
+      } catch (err) {
+        chunkError = err;
+        batchErrors.push(err);
+        if (isSchemaParseAuthError(err)) {
+          const retryStartIndex = findFirstMissingSchemaParseOutputIndex(
+            runtime.runtimeDir,
+            chunkAppIds,
+          );
+          const retryAppIds = chunkAppIds.slice(retryStartIndex);
+          logger.warn("schema-parse:batch:auth-retry", {
+            chunkIndex: chunkIndex + 1,
+            chunkCount: chunkedItems.length,
+            count: chunkAppIds.length,
+            retryStartIndex,
+            retryCount: retryAppIds.length,
+            retryFromAppId: retryAppIds[0] || null,
+            delayMs: SCHEMA_PARSE_AUTH_RETRY_DELAY_MS,
+          });
+          if (retryAppIds.length > 0) {
+            await delay(SCHEMA_PARSE_AUTH_RETRY_DELAY_MS, options.signal);
+            try {
+              await runChunk(retryAppIds, retryStartIndex);
+              chunkError = null;
+              batchErrors.pop();
+            } catch (retryErr) {
+              chunkError = retryErr;
+              batchErrors[batchErrors.length - 1] = retryErr;
+            }
+          } else {
             chunkError = null;
             batchErrors.pop();
-          } catch (retryErr) {
-            chunkError = retryErr;
-            batchErrors[batchErrors.length - 1] = retryErr;
           }
-        } else {
-          chunkError = null;
-          batchErrors.pop();
         }
       }
+      completedBeforeChunk += chunk.length;
+      if (chunkIndex < chunkedItems.length - 1) {
+        await delay(SCHEMA_PARSE_CHUNK_DELAY_MS, options.signal);
+      }
     }
-    completedBeforeChunk += chunk.length;
-    if (chunkIndex < chunkedItems.length - 1) {
-      await delay(SCHEMA_PARSE_CHUNK_DELAY_MS);
-    }
-  }
 
-  for (const item of normalizedItems) {
-    const appOutputDir = resolveSchemaParseAppOutputDir(
-      runtime.runtimeDir,
-      item.appid,
-    );
-    const shouldRetrySingle =
-      batchErrors.length > 0 &&
-      !hasSchemaParseGeneratedAchievements(runtime.runtimeDir, item.appid);
-    try {
-      if (shouldRetrySingle) {
-        logger.info("schema-parse:batch:retry-single", {
-          appid: item.appid,
-          resultKey: item.resultKey,
-        });
-        try {
-          results.set(
-            item.resultKey,
-            await executeSchemaParseSingle(runtime.runtimeDir, item.appid, item.outDir),
-          );
+    for (const item of normalizedItems) {
+      options.signal?.throwIfAborted();
+      const appOutputDir = resolveSchemaParseAppOutputDir(
+        runtime.runtimeDir,
+        item.appid,
+      );
+      const shouldRetrySingle =
+        batchErrors.length > 0 &&
+        !hasSchemaParseGeneratedAchievements(runtime.runtimeDir, item.appid);
+      try {
+        const generatedResult = classifySchemaParseResult(item.appid,
+          readSchemaParseGeneratedResult(item.appid, appOutputDir, item.outDir), batchStdout, batchStderr);
+        if (generatedResult.ok || ["identified-no-achievements", "not-found"].includes(generatedResult.status)) {
+          results.set(item.resultKey, generatedResult);
           continue;
-        } catch (err) {
-          logger.warn("schema-parse:batch:retry-single-failed", {
+        }
+        if (shouldRetrySingle) {
+          logger.info("schema-parse:batch:retry-single", {
             appid: item.appid,
             resultKey: item.resultKey,
-            error: err?.message || String(err),
-            code:
-              Number.isFinite(Number(err?.code)) || typeof err?.code === "string"
-                ? err.code
-                : null,
-            hasStdout: !!String(err?.stdout || "").trim(),
-            hasStderr: !!String(err?.stderr || "").trim(),
-            stdoutPreview: String(err?.stdout || "").trim().slice(0, 4000) || null,
-            stderrPreview: String(err?.stderr || "").trim().slice(0, 4000) || null,
           });
-          results.set(item.resultKey, {
-            ok: false,
-            reason: "retry-single-failed",
-          });
-          continue;
+          try {
+            const retried = await executeSchemaParseSingle(runtime.runtimeDir, item.appid, item.outDir, options);
+            results.set(item.resultKey, { ...retried,
+              downloadWarnings: [...generatedResult.downloadWarnings, ...(retried.downloadWarnings || [])] });
+            continue;
+          } catch (err) {
+            options.signal?.throwIfAborted();
+            logger.warn("schema-parse:batch:retry-single-failed", {
+              appid: item.appid,
+              resultKey: item.resultKey,
+              error: err?.message || String(err),
+              code:
+                Number.isFinite(Number(err?.code)) || typeof err?.code === "string"
+                  ? err.code
+                  : null,
+              hasStdout: !!String(err?.stdout || "").trim(),
+              hasStderr: !!String(err?.stderr || "").trim(),
+              stdoutPreview: String(err?.stdout || "").trim().slice(0, 4000) || null,
+              stderrPreview: String(err?.stderr || "").trim().slice(0, 4000) || null,
+            });
+            results.set(item.resultKey, {
+              ok: false,
+              reason: "retry-single-failed",
+              status: "technical-error",
+              error: String(err?.message || err),
+              downloadWarnings: [...generatedResult.downloadWarnings, ...(err.downloadWarnings || [])],
+            });
+            continue;
+          }
         }
+        results.set(
+          item.resultKey,
+          generatedResult,
+        );
+      } finally {
+        cleanupGeneratedAppArtifacts(runtime.runtimeDir, item.appid);
       }
-      results.set(
-        item.resultKey,
-        readSchemaParseGeneratedResult(item.appid, appOutputDir, item.outDir),
-      );
-    } finally {
-      cleanupGeneratedAppArtifacts(runtime.runtimeDir, item.appid);
+    }
+    logger.info("schema-parse:batch:results", {
+      count: normalizedItems.length,
+      successCount: Array.from(results.values()).filter((entry) => entry?.ok)
+        .length,
+      partial: batchErrors.length > 0,
+    });
+    return {
+      ok: batchErrors.length === 0,
+      runtimeDir: runtime.runtimeDir,
+      batchError: batchErrors[0] || null,
+      batchErrors,
+      results,
+    };
+  } finally {
+    if (options.signal?.aborted) {
+      for (const item of normalizedItems) cleanupGeneratedAppArtifacts(runtime.runtimeDir, item.appid);
     }
   }
-  logger.info("schema-parse:batch:results", {
-    count: normalizedItems.length,
-    successCount: Array.from(results.values()).filter((entry) => entry?.ok)
-      .length,
-    partial: batchErrors.length > 0,
-  });
-  return {
-    ok: batchErrors.length === 0,
-    runtimeDir: runtime.runtimeDir,
-    batchError: batchErrors[0] || null,
-    batchErrors,
-    results,
-  };
+}
+
+async function generateSteamSchemaWithSchemaParse(options = {}) {
+  if (process.env.ACHIEVEMENTS_SCHEMA_PARSE_COORDINATED === "1") {
+    return coordinateSchemaParse("single", options, () => {});
+  }
+  if (!/^\d+$/.test(String(options.appid || "").trim())) {
+    return { ok: false, reason: "invalid-appid" };
+  }
+  const runtime = await ensureSchemaParseRuntimeReady(options);
+  return coordinateSchemaParse("single", options, () => generateSteamSchemaWithSchemaParseUncoordinated({ ...options, __preparedRuntime: runtime }));
+}
+async function generateSteamSchemasWithSchemaParseBatch(options = {}) {
+  if (process.env.ACHIEVEMENTS_SCHEMA_PARSE_COORDINATED === "1") {
+    return coordinateSchemaParse("batch", options, () => {});
+  }
+  if (!Array.isArray(options.items) || !options.items.some((item) => /^\d+$/.test(String(item?.appid || "").trim()))) {
+    return { ok: true, results: new Map() };
+  }
+  const runtime = await ensureSchemaParseRuntimeReady(options);
+  return coordinateSchemaParse("batch", options, () => generateSteamSchemasWithSchemaParseBatchUncoordinated({ ...options, __preparedRuntime: runtime }));
 }
 
 module.exports = {

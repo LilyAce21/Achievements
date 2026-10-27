@@ -1,16 +1,31 @@
 // playtime-log-watcher.js
-const { ipcMain } = require("electron");
+const { ipcMain, nativeImage } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 const https = require("https");
+const crypto = require("crypto");
 const { preferencesPath } = require("./paths");
 const { pathToFileURL } = require("url");
 const { accumulatePlaytime, sanitizeConfigName } = require("./playtime-store");
-const { fetchSteamGridDbImage } = require("./game-cover");
+const {
+  fetchSteamGridDbImage,
+  STEAMGRID_GRID_LANDSCAPE_DIMENSIONS,
+  STEAMGRID_HERO_DIMENSIONS,
+} = require("./game-cover");
+const {
+  downloadGameCoverHero,
+  GAME_COVER_LANDSCAPE_SOURCE_FILENAME,
+} = require("./game-cover-hero");
 const { normalizePlatform } = require("./config-platform-migrator");
 const { resolveSteamProductAssetUrls } = require("./steam-product-assets");
+const { resolveEpicCatalogImageUrls } = require("./epic-game-identity");
+const { lookupSteamDbAppIdByName } = require("./local-game-name-cache");
+const { createLogger } = require("./logger");
 const uplayMappingStore = require("./uplay-mapping-store");
 const processPoller = require("./process-poller");
+const coverLogger = createLogger("covers");
+const playtimeLogger = createLogger("playtime");
 const {
   getProcessExecutableNames,
   getProcessNameSignature,
@@ -47,6 +62,29 @@ function resolveSteamAppId(appid) {
 
 const playtimeStartMap = new Map();
 const activeWatchers = new Map();
+
+function getActiveLastPlayed() {
+  const entries = new Map();
+  for (const tracker of activeWatchers.values()) {
+    if (!tracker.lastPlayedAt) continue;
+    const key = sanitizeConfigName(tracker.playtimeKey);
+    entries.set(key, Math.max(entries.get(key) || 0, tracker.lastPlayedAt));
+  }
+  return Object.fromEntries(entries);
+}
+
+function rebasePlaytimeSession(configName, timestamp = Date.now()) {
+  const key = sanitizeConfigName(configName);
+  for (const [appid, tracker] of activeWatchers) {
+    if (sanitizeConfigName(tracker.playtimeKey) === key && playtimeStartMap.has(appid)) tracker.persistedSince = timestamp;
+  }
+}
+
+// Synchronous persistence finishes before Electron exits. Keep trackers alive
+// if another quit handler cancels the exit; their next save starts here.
+function flushPlaytimeSessions() {
+  for (const tracker of activeWatchers.values()) tracker.flush?.();
+}
 
 function notifyError(message) {
   try {
@@ -131,7 +169,13 @@ function isPlaytimeDisabled() {
 
 function downloadImage(url, dest) {
   return new Promise((resolve, reject) => {
+    // Validate before opening the temporary file; Xbox's official fallback
+    // includes HTTP as well as HTTPS.
+    const parsedUrl = new URL(url);
+    const transport = parsedUrl.protocol === "https:" ? https : parsedUrl.protocol === "http:" ? http : null;
+    if (!transport) { reject(new Error("Unsupported header image URL protocol")); return; }
     let settled = false;
+    let failing = false;
     let response = null;
     const finalize = (err) => {
       if (settled) return;
@@ -139,28 +183,27 @@ function downloadImage(url, dest) {
       if (err) reject(err);
       else resolve();
     };
-    const cleanupFile = () => {
-      try {
-        fs.unlink(dest, () => {});
-      } catch {}
-    };
     const handleError = (err) => {
+      if (settled || failing) return;
+      failing = true;
       try {
         if (response && typeof response.destroy === "function") {
           response.destroy();
         }
       } catch {}
-      try {
+      // The caller removes the temporary file after rejection. Wait for the
+      // stream to close first so Windows no longer holds an open file handle.
+      if (file.closed) finalize(err);
+      else {
+        file.once("close", () => finalize(err));
         file.destroy();
-      } catch {}
-      cleanupFile();
-      finalize(err);
+      }
     };
 
     const file = fs.createWriteStream(dest);
     file.on("error", handleError);
-    https
-      .get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    transport
+      .get(parsedUrl, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
         response = res;
         if (res.statusCode !== 200) {
           res.resume();
@@ -168,8 +211,16 @@ function downloadImage(url, dest) {
           return;
         }
         res.on("error", handleError);
+        res.on("aborted", () => handleError(new Error("Image download aborted")));
+        let receivedBytes = 0;
+        res.on("data", (chunk) => {
+          receivedBytes += chunk.length;
+          if (receivedBytes > 20 * 1024 * 1024) {
+            handleError(new Error("Header image exceeds size limit"));
+          }
+        });
         res.pipe(file);
-        file.on("finish", () => file.close(() => finalize()));
+        file.on("finish", () => file.close(() => { if (!failing) finalize(); }));
       })
       .on("error", handleError)
       .setTimeout(15000, function () {
@@ -178,7 +229,71 @@ function downloadImage(url, dest) {
   });
 }
 
+async function downloadHeaderImageAtomic(url, headerPath) {
+  const tempPath = path.join(
+    path.dirname(headerPath),
+    `.header-${process.pid}-${crypto.randomBytes(6).toString("hex")}.tmp`,
+  );
+  try {
+    await downloadImage(url, tempPath);
+    const stat = await fs.promises.stat(tempPath);
+    if (stat.size < 12 || stat.size > 20 * 1024 * 1024) {
+      throw new Error("Invalid header image size");
+    }
+    const handle = await fs.promises.open(tempPath, "r");
+    let signature;
+    try {
+      signature = Buffer.alloc(12);
+      await handle.read(signature, 0, signature.length, 0);
+    } finally {
+      await handle.close();
+    }
+    const isJpeg = signature[0] === 0xff && signature[1] === 0xd8;
+    const isPng = signature.subarray(0, 8).equals(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    const isWebp =
+      signature.toString("ascii", 0, 4) === "RIFF" &&
+      signature.toString("ascii", 8, 12) === "WEBP";
+    const isGif = ["GIF87a", "GIF89a"].includes(
+      signature.toString("ascii", 0, 6),
+    );
+    if (!isJpeg && !isPng && !isWebp && !isGif) {
+      throw new Error("Invalid header image format");
+    }
+    // nativeImage guarantees decoding for PNG/JPEG. Preserve Chromium's
+    // WebP/GIF support without treating a native decoder limitation as corruption.
+    if ((isJpeg || isPng) && nativeImage.createFromBuffer(await fs.promises.readFile(tempPath)).isEmpty()) {
+      throw new Error("Unreadable header image");
+    }
+    await fs.promises.rename(tempPath, headerPath);
+  } finally {
+    await fs.promises.unlink(tempPath).catch(() => {});
+  }
+}
+
+async function writeLandscapeSourceAtomic(imageDir, imageKind) {
+  const sourcePath = path.join(
+    imageDir,
+    GAME_COVER_LANDSCAPE_SOURCE_FILENAME,
+  );
+  const tempPath = path.join(
+    imageDir,
+    `.landscape-source-${process.pid}-${crypto.randomBytes(6).toString("hex")}.tmp`,
+  );
+  try {
+    await fs.promises.writeFile(tempPath, imageKind, { flag: "wx" });
+    await fs.promises.rename(tempPath, sourcePath);
+  } finally {
+    await fs.promises.unlink(tempPath).catch(() => {});
+  }
+}
+
 let epicProductMapCache = null;
+let epicProductMapExpiresAt = 0;
+let epicProductMapPromise = null;
+const EPIC_PRODUCT_MAP_SUCCESS_TTL_MS = 6 * 60 * 60 * 1000;
+const EPIC_PRODUCT_MAP_FAILURE_TTL_MS = 5 * 60 * 1000;
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
     const req = https
@@ -211,20 +326,35 @@ function fetchJson(url) {
 }
 
 async function loadEpicProductMap() {
-  if (epicProductMapCache && typeof epicProductMapCache === "object") {
+  if (epicProductMapCache && epicProductMapExpiresAt > Date.now()) {
     return epicProductMapCache;
   }
+  if (epicProductMapPromise) return epicProductMapPromise;
+  epicProductMapPromise = (async () => {
+    try {
+      const data = await fetchJson(
+        "https://store-content.ak.epicgames.com/api/content/productmapping/",
+      );
+      if (
+        data &&
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        Object.keys(data).length > 0
+      ) {
+        epicProductMapCache = data;
+        epicProductMapExpiresAt = Date.now() + EPIC_PRODUCT_MAP_SUCCESS_TTL_MS;
+        return epicProductMapCache;
+      }
+    } catch {}
+    epicProductMapCache = {};
+    epicProductMapExpiresAt = Date.now() + EPIC_PRODUCT_MAP_FAILURE_TTL_MS;
+    return epicProductMapCache;
+  })();
   try {
-    const data = await fetchJson(
-      "https://store-content.ak.epicgames.com/api/content/productmapping/",
-    );
-    if (data && typeof data === "object") {
-      epicProductMapCache = data;
-      return epicProductMapCache;
-    }
-  } catch {}
-  epicProductMapCache = {};
-  return epicProductMapCache;
+    return await epicProductMapPromise;
+  } finally {
+    epicProductMapPromise = null;
+  }
 }
 
 function extractEpicHero(data) {
@@ -281,7 +411,11 @@ async function resolveEpicStoreSlug(appid, configData = null) {
   return "";
 }
 
-async function fetchEpicStoreHeaderUrl(appid, configData = null) {
+async function fetchEpicStoreHeaderUrl(
+  appid,
+  configData = null,
+  options = {},
+) {
   const slug = await resolveEpicStoreSlug(appid, configData);
   if (!slug) return "";
   try {
@@ -292,16 +426,36 @@ async function fetchEpicStoreHeaderUrl(appid, configData = null) {
     );
     const hero = extractEpicHero(data);
     return String(
-      hero?.backgroundImageUrl || hero?.portraitBackgroundImageUrl || "",
+      hero?.backgroundImageUrl ||
+        (options.landscapeOnly ? "" : hero?.portraitBackgroundImageUrl) ||
+        "",
     ).trim();
   } catch {
     return "";
   }
 }
 
+function notifyHeaderImageUpdated(appid, platform) {
+  // Publish only after the image and its source selection have been saved.
+  // Consumers resolve the current local file, including custom image priority.
+  try {
+    ipcMain.emit("game-header:updated", null, {
+      appid: String(appid), platform, variant: "landscape",
+    });
+  } catch (error) {
+    coverLogger.warn("header:image:update-failed", {
+      appid: String(appid), platform, error: error.message,
+    });
+  }
+}
+
 async function cacheHeaderImage(userDataDir, appid, headerUrl, options = {}) {
   const platform = normalizePlatform(options?.platform) || "steam";
+  const supportsHeroFallback = platform === "ps3recomp" || platform === "ps4recomp" || platform === "pcports" || platform === "x360recomp";
   const preferLocalOnly =
+    platform === "ps3recomp" || platform === "ps4recomp" ||
+    platform === "pcports" ||
+    platform === "x360recomp" ||
     platform === "gog" ||
     platform === "gog-official" ||
     platform === "epic" ||
@@ -315,7 +469,7 @@ async function cacheHeaderImage(userDataDir, appid, headerUrl, options = {}) {
   const headerPath = path.join(imageDir, "header.jpg");
   const localUrl = () => pathToFileURL(headerPath).toString();
   try {
-    if (fs.existsSync(headerPath)) {
+    if (!options.forceDownload && fs.existsSync(headerPath)) {
       const stats = fs.statSync(headerPath);
       if (stats.size === 0) {
         fs.unlinkSync(headerPath);
@@ -329,17 +483,48 @@ async function cacheHeaderImage(userDataDir, appid, headerUrl, options = {}) {
     let out = String(name || "").trim();
     if (!out) return "";
     const rx =
-      /\s*\((?:steam|steam[-\s]?official|epic|epic[-\s]?official|ubisoft|ubisoft[-\s]?official|ea|ea[-\s]?official|xenia|rpcs3|ps4|shadps4)\)\s*$/i;
+      /\s*\((?:steam|steam[-\s]?official|epic|epic[-\s]?official|ubisoft|ubisoft[-\s]?official|ea|ea[-\s]?official|ps4 recomp|pc port|pc ports|xbox 360 recomp|xenia|rpcs3|ps4|shadps4|ps5|kytyps5)\)\s*$/i;
     while (rx.test(out)) out = out.replace(rx, "").trim();
     return out;
   };
   const coverName = stripCoverSuffix(fallbackName) || fallbackName;
-  const fallbackSize = options?.gridSize || "460x215,920x430";
+  const fallbackSize = STEAMGRID_GRID_LANDSCAPE_DIMENSIONS;
   const fallbackSizes = [fallbackSize].filter(Boolean);
   const downloadToLocal = async (url) => {
-    await downloadImage(url, headerPath);
+    await downloadHeaderImageAtomic(url, headerPath);
+    if (options.forceDownload || supportsHeroFallback) await writeLandscapeSourceAtomic(imageDir, "header");
+    coverLogger.info("header:source-hit", {
+      appid: String(appid),
+      platform,
+      source: activeHeaderSource || "remote",
+      url,
+    });
+    notifyHeaderImageUpdated(appid, platform);
     return { headerUrl: localUrl() };
   };
+  let activeHeaderSource = "";
+  const tryHeaderUrls = async (source, urls = []) => {
+    const unique = [...new Set(urls.map((url) => String(url || "").trim()).filter(Boolean))];
+    for (const url of unique) {
+      try {
+        activeHeaderSource = source;
+        return await downloadToLocal(url);
+      } catch (error) {
+        coverLogger.warn("header:source-miss", {
+          appid: String(appid),
+          platform,
+          source,
+          url,
+          error: error?.message || String(error),
+        });
+      }
+    }
+    return null;
+  };
+  if (platform === "x360recomp") {
+    const official = await tryHeaderUrls("xbox360-marketplace", require("./x360-recomp-art").artworkUrls(appid, "landscape"));
+    if (official) return official;
+  }
   try {
     const productAssets = resolveSteamProductAssetUrls({
       appid: options?.steamAppId || appid,
@@ -350,20 +535,17 @@ async function cacheHeaderImage(userDataDir, appid, headerUrl, options = {}) {
         "",
       purpose: "header",
     });
-    for (const url of productAssets.urls || []) {
-      try {
-        return await downloadToLocal(url);
-      } catch {}
-    }
+    const productResult = await tryHeaderUrls(
+      "steam-product-assets",
+      productAssets.urls || [],
+    );
+    if (productResult) return productResult;
   } catch {
     // fallthrough to the regular Steam CDN and SteamGridDB fallbacks
   }
-  try {
-    if (!preferLocalOnly && headerUrl) {
-      return await downloadToLocal(headerUrl);
-    }
-  } catch (err) {
-    // fallthrough to steamgrid
+  if (!preferLocalOnly && headerUrl) {
+    const directResult = await tryHeaderUrls("platform-header", [headerUrl]);
+    if (directResult) return directResult;
   }
   if (platform === "epic" || platform === "epic-official") {
     try {
@@ -372,20 +554,63 @@ async function cacheHeaderImage(userDataDir, appid, headerUrl, options = {}) {
         options?.configData || null,
       );
       if (epicHeaderUrl) {
-        return await downloadToLocal(epicHeaderUrl);
+        const epicResult = await tryHeaderUrls("epic-store", [epicHeaderUrl]);
+        if (epicResult) return epicResult;
       }
     } catch {
-      // fallthrough to steamgrid
+      // The catalog remains available when the Store request fails.
     }
+    try {
+      const catalogImages = await resolveEpicCatalogImageUrls(appid, {
+        catalogItemId:
+          options?.configData?.epic_catalog_item_id ||
+          options?.configData?.epicCatalogItemId,
+        namespace:
+          options?.configData?.epic_namespace ||
+          options?.configData?.epicNamespace,
+      });
+      const catalogResult = await tryHeaderUrls(
+        "epic-catalog",
+        catalogImages.headerUrls,
+      );
+      if (catalogResult) return catalogResult;
+    } catch (error) {
+      coverLogger.warn("header:epic-catalog-failed", {
+        appid: String(appid),
+        platform,
+        error: error?.message || String(error),
+      });
+    }
+  }
+  const mappedSteamAppId =
+    String(options?.steamAppId || "").trim() ||
+    lookupSteamDbAppIdByName(coverName, { userDataDir });
+  if (/^\d+$/.test(mappedSteamAppId)) {
+    const steamFallbackResult = await tryHeaderUrls("steam-title-match", [
+      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${mappedSteamAppId}/header.jpg`,
+      `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${mappedSteamAppId}/header.jpg`,
+      `https://cdn.akamai.steamstatic.com/steam/apps/${mappedSteamAppId}/header.jpg`,
+      `https://cdn.steamstatic.com/steam/apps/${mappedSteamAppId}/header.jpg`,
+    ]);
+    if (steamFallbackResult) return steamFallbackResult;
   }
   if (coverName) {
     for (const size of fallbackSizes) {
       try {
-        const gridUrl = await fetchSteamGridDbImage(coverName, { size });
+        const gridUrl = await fetchSteamGridDbImage(coverName, {
+          size,
+          assetType: "grids",
+          ...(supportsHeroFallback ? { appid: `${platform}:${appid}:header-landscape-grid` } : {}),
+        });
         try {
+          activeHeaderSource = "steamgriddb";
           return await downloadToLocal(gridUrl);
-        } catch {
-          return { headerUrl: gridUrl };
+        } catch (error) {
+          if (!supportsHeroFallback) return { headerUrl: gridUrl };
+          coverLogger.warn("header:source-miss", {
+            appid: String(appid), platform, source: "steamgriddb-landscape-grid", url: gridUrl,
+            error: error?.message || String(error),
+          });
         }
       } catch (gridErr) {
         if (size === fallbackSizes[fallbackSizes.length - 1]) {
@@ -397,7 +622,211 @@ async function cacheHeaderImage(userDataDir, appid, headerUrl, options = {}) {
       }
     }
   }
+  if (supportsHeroFallback && coverName) {
+    try {
+      const heroUrl = await fetchSteamGridDbImage(coverName, {
+        size: STEAMGRID_HERO_DIMENSIONS,
+        assetType: "heroes",
+        appid: `${platform}:${appid}:header-hero-fallback`,
+      });
+      const heroPath = await downloadGameCoverHero(heroUrl, imageDir);
+      await writeLandscapeSourceAtomic(imageDir, "hero");
+      coverLogger.info("header:source-hit", {
+        appid: String(appid), platform, source: "steamgriddb-hero", url: heroUrl,
+      });
+      notifyHeaderImageUpdated(appid, platform);
+      return { headerUrl: pathToFileURL(heroPath).toString() };
+    } catch (error) {
+      coverLogger.warn("header:source-miss", {
+        appid: String(appid), platform, source: "steamgriddb-hero", error: error?.message || String(error),
+      });
+    }
+  }
+  coverLogger.warn("header:all-sources-failed", {
+    appid: String(appid),
+    platform,
+    gameName: coverName || null,
+    mappedSteamAppId: mappedSteamAppId || null,
+  });
   return { headerUrl };
+}
+
+async function redownloadHeaderImage(userDataDir, appid, options = {}) {
+  const platform = normalizePlatform(options.platform) || "steam";
+  const configData = options.configData || null;
+  const gameName = String(options.gameName || "")
+    .replace(/\s*\((?:steam|steam-official|epic|epic-official|uplay|ubisoft|ubisoft-official|ea|ea-official|gog|gog-official|xbox-pc|retroachievements|ps4 recomp|pc port|pc ports|xbox 360 recomp|xenia|rpcs3|ps4|shadps4|ps5|kytyps5|markerpatch|madnesspatch|xlivelessness)\)\s*$/i, "")
+    .trim();
+  const imageDir = path.join(userDataDir, "images", platform, String(appid));
+  const headerPath = path.join(imageDir, "header.jpg");
+  const sources = [];
+  const addSource = (id, resolveUrls, imageKind = "header") =>
+    sources.push({ id, resolveUrls, imageKind });
+  const writeLandscapeSource = (imageKind) =>
+    writeLandscapeSourceAtomic(imageDir, imageKind);
+  if (platform === "x360recomp") addSource("xbox360-marketplace", async () =>
+    require("./x360-recomp-art").artworkUrls(appid, "landscape"));
+  const primarySteamPlatform = [
+    "steam",
+    "steam-official",
+    "markerpatch",
+    "madnesspatch",
+  ].includes(platform);
+  const mappedSteamPlatform = ["uplay", "ubisoft-official"].includes(platform);
+  const explicitSteamId = String(options.steamAppId || "").trim();
+  const steamId = primarySteamPlatform
+    ? (/^\d+$/.test(explicitSteamId) ? explicitSteamId : String(appid))
+    : mappedSteamPlatform &&
+        /^\d+$/.test(explicitSteamId) &&
+        explicitSteamId !== String(appid)
+      ? explicitSteamId
+      : "";
+
+  if (/^\d+$/.test(steamId)) {
+    addSource("steam-product-header", async () => {
+      const assets = resolveSteamProductAssetUrls({
+        appid: steamId,
+        configPath: configData?.config_path || configData?.configPath || "",
+        purpose: "header",
+      });
+      return assets.urls || [];
+    });
+    addSource("steam-cdn-header", async () => [
+      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamId}/header.jpg`,
+      `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${steamId}/header.jpg`,
+      `https://cdn.akamai.steamstatic.com/steam/apps/${steamId}/header.jpg`,
+      `https://cdn.steamstatic.com/steam/apps/${steamId}/header.jpg`,
+    ]);
+    addSource("steam-store-header", async () => {
+      const data = await fetchJson(
+        `https://store.steampowered.com/api/appdetails?appids=${steamId}`,
+      );
+      const url = String(data?.[steamId]?.data?.header_image || "").trim();
+      return url ? [url] : [];
+    });
+  }
+
+  if (platform === "epic" || platform === "epic-official") {
+    addSource("epic-store-header", async () => {
+      const url = await fetchEpicStoreHeaderUrl(appid, configData, {
+        landscapeOnly: true,
+      });
+      return url ? [url] : [];
+    });
+    addSource("epic-catalog-header", async () => {
+      const images = await resolveEpicCatalogImageUrls(appid, {
+        catalogItemId:
+          configData?.epic_catalog_item_id || configData?.epicCatalogItemId,
+        namespace: configData?.epic_namespace || configData?.epicNamespace,
+      });
+      return images.headerUrls || [];
+    });
+  }
+
+  if (platform === "xbox-pc") {
+    addSource("xbox-title-header", async () => {
+      try {
+        const saved = JSON.parse(
+          await fs.promises.readFile(path.join(imageDir, "sources.json"), "utf8"),
+        );
+        const url = String(saved?.headerUrl || "").trim();
+        return url ? [url] : [];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  let matchedSteamId = "";
+  if (gameName) {
+    try {
+      matchedSteamId = String(
+        lookupSteamDbAppIdByName(gameName, { userDataDir }) || "",
+      ).trim();
+    } catch {}
+  }
+  if (/^\d+$/.test(matchedSteamId) && matchedSteamId !== steamId) {
+    addSource("steam-title-header", async () => [
+      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${matchedSteamId}/header.jpg`,
+      `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${matchedSteamId}/header.jpg`,
+      `https://cdn.akamai.steamstatic.com/steam/apps/${matchedSteamId}/header.jpg`,
+    ]);
+  }
+  if (gameName) {
+    addSource("steamgriddb-landscape-grid", async () => [
+      await fetchSteamGridDbImage(gameName, {
+        size: STEAMGRID_GRID_LANDSCAPE_DIMENSIONS,
+        assetType: "grids",
+        appid: `${platform}:${appid}:redownload-header`,
+      }),
+    ]);
+    addSource(
+      "steamgriddb-hero",
+      async () => [
+        await fetchSteamGridDbImage(gameName, {
+          size: STEAMGRID_HERO_DIMENSIONS,
+          assetType: "heroes",
+          appid: `${platform}:${appid}:redownload-hero`,
+        }),
+      ],
+      "hero",
+    );
+  }
+
+  const lastSourceId = String(options.lastSourceId || "").trim();
+  const lastIndex = sources.findIndex((source) => source.id === lastSourceId);
+  const startIndex = lastIndex < 0 ? 0 : (lastIndex + 1) % sources.length;
+  await fs.promises.mkdir(imageDir, { recursive: true });
+  for (let offset = 0; offset < sources.length; offset += 1) {
+    const source = sources[(startIndex + offset) % sources.length];
+    try {
+      const urls = [...new Set(await source.resolveUrls())]
+        .map((url) => String(url || "").trim())
+        .filter((url) => /^https:\/\//i.test(url));
+      for (const url of urls) {
+        try {
+          if (source.imageKind === "hero") {
+            const heroPath = await downloadGameCoverHero(url, imageDir);
+            await writeLandscapeSource("hero");
+            coverLogger.info("header:redownload:source-hit", {
+              appid: String(appid),
+              platform,
+              source: source.id,
+              url,
+            });
+            notifyHeaderImageUpdated(appid, platform);
+            return { success: true, sourceId: source.id, path: heroPath };
+          }
+          await downloadHeaderImageAtomic(url, headerPath);
+          await writeLandscapeSource("header");
+          coverLogger.info("header:redownload:source-hit", {
+            appid: String(appid),
+            platform,
+            source: source.id,
+            url,
+          });
+          notifyHeaderImageUpdated(appid, platform);
+          return { success: true, sourceId: source.id, path: headerPath };
+        } catch (error) {
+          coverLogger.warn("header:redownload:source-miss", {
+            appid: String(appid),
+            platform,
+            source: source.id,
+            url,
+            error: error?.message || String(error),
+          });
+        }
+      }
+    } catch (error) {
+      coverLogger.warn("header:redownload:source-miss", {
+        appid: String(appid),
+        platform,
+        source: source.id,
+        error: error?.message || String(error),
+      });
+    }
+  }
+  return { success: false, error: "no-header-source" };
 }
 
 function sendPlaytimeNotification(playData) {
@@ -475,12 +904,13 @@ function formatDuration(ms) {
  * @param {{appid:number|string, name?:string, displayName?:string, process_name?:string|string[]}} configData
  * @returns {() => void}
  */
-function startPlaytimeLogWatcher(configData) {
+function startPlaytimeLogWatcher(configData, options = {}) {
   const appid = String(configData?.appid || "").trim();
   const processNames = normalizeProcessNameList(configData?.process_name);
   const platform = normalizePlatform(configData?.platform) || "steam";
+  const requiresPs4Runtime = platform === "ps4recomp";
   const isSteamGridOnly =
-    platform === "xenia" || platform === "rpcs3" || platform === "shadps4";
+    platform === "ps3recomp" || platform === "ps4recomp" || platform === "pcports" || platform === "x360recomp" || platform === "xenia" || platform === "rpcs3" || platform === "shadps4" || platform === "kytyps5";
   const launchPid =
     Number.isFinite(Number(configData?.__launchPid)) &&
     Number(configData.__launchPid) > 0
@@ -488,7 +918,10 @@ function startPlaytimeLogWatcher(configData) {
       : null;
   const normalizedProcessNames = getProcessExecutableNames(processNames);
   const processNameSignature = getProcessNameSignature(processNames);
-  const existing = activeWatchers.get(appid);
+  const watcherKey = platform === "ps3recomp" ? `ps3recomp:${configData.__playtimeKey || configData.name}:${require("./ps3-recomp").cacheScope(configData)}` : appid;
+  const ps3Pids = new Set();
+  if (launchPid) ps3Pids.add(launchPid);
+  const existing = activeWatchers.get(watcherKey);
   if (existing) {
     if (configData?.__playtimeKey) {
       existing.playtimeKey = configData.__playtimeKey;
@@ -510,8 +943,8 @@ function startPlaytimeLogWatcher(configData) {
     return () => {};
   }
 
-  if (!playtimeStartMap.has(appid)) {
-    playtimeStartMap.set(appid, Date.now());
+  if (!requiresPs4Runtime && !playtimeStartMap.has(watcherKey)) {
+    playtimeStartMap.set(watcherKey, Date.now());
   }
 
   const { preferencesPath } = require("./paths");
@@ -564,6 +997,7 @@ function startPlaytimeLogWatcher(configData) {
   let startNotified = false;
   let lastHeaderUrl = null;
   let seenRunning = false;
+  let stopping = false;
   const startGraceUntil = Date.now() + 15000;
   const tracker = {
     playtimeKey:
@@ -572,26 +1006,36 @@ function startPlaytimeLogWatcher(configData) {
     cleanup: () => {},
     processNameSignature,
   };
-  activeWatchers.set(appid, tracker);
+  activeWatchers.set(watcherKey, tracker);
   const cleanup = () => {
     closed = true;
-    playtimeStartMap.delete(appid);
+    playtimeStartMap.delete(watcherKey);
     if (unsubscribe) {
       try {
         unsubscribe();
       } catch {}
       unsubscribe = null;
     }
-    activeWatchers.delete(appid);
+    activeWatchers.delete(watcherKey);
   };
   tracker.cleanup = cleanup;
+
+  const markSessionStarted = () => {
+    if (tracker.lastPlayedAt) return;
+    tracker.lastPlayedAt = Date.now();
+    ipcMain.emit("playtime:session-started", null, {
+      configName: tracker.playtimeKey,
+      startedAt: tracker.lastPlayedAt,
+    });
+  };
 
   const sendStart = (headerUrl) => {
     if (startNotified) return;
     startNotified = true;
-    if (!playtimeStartMap.has(appid)) {
-      playtimeStartMap.set(appid, Date.now());
+    if (!playtimeStartMap.has(watcherKey)) {
+      playtimeStartMap.set(watcherKey, Date.now());
     }
+    if (requiresPs4Runtime) playtimeLogger.info("ps4recomp:session:start", { configName: tracker.playtimeKey, appid });
     lastHeaderUrl = headerUrl || lastHeaderUrl || null;
     if (!isPlaytimeDisabled()) {
       const desc = tUi("playtime.descStart", {}, "Start Playtime!");
@@ -604,18 +1048,59 @@ function startPlaytimeLogWatcher(configData) {
     }
   };
 
-  const sendStop = async (headerUrlLocal) => {
-    const startedAt = playtimeStartMap.get(appid) || Date.now();
-    const playedMs = Math.max(0, Date.now() - startedAt);
+  const persistSession = (endedAt) => {
+    if (!seenRunning || !playtimeStartMap.has(watcherKey)) return null;
+    const startedAt = playtimeStartMap.get(watcherKey);
+    const unsavedMs = Math.max(0, endedAt - Math.max(startedAt, tracker.persistedSince || startedAt));
     const key = tracker.playtimeKey;
-    const totalMs = accumulatePlaytime(key, playedMs);
-    ipcMain.emit("playtime:session-ended", null, {
-      configName: key,
-      appid: String(appid),
-      totalMs,
-    });
+    try {
+      const savedTotalMs = accumulatePlaytime(key, unsavedMs);
+      tracker.persistedSince = Math.max(startedAt, tracker.persistedSince || startedAt, endedAt);
+      return savedTotalMs;
+    } catch (error) {
+      playtimeLogger.error("playtime:save-failed", {
+        appid: String(appid),
+        configName: key,
+        error: error?.message || String(error),
+      });
+      notifyError(
+        tUi(
+          "playtime.saveFailed",
+          { error: error?.message || String(error) },
+          "Could not save playtime: {error}",
+        ),
+      );
+    }
+    return null;
+  };
+  tracker.flush = () => {
+    if (!closed) persistSession(Date.now());
+  };
 
-    playtimeStartMap.delete(appid);
+  const sendStop = async (headerUrlLocal) => {
+    const startedAt = playtimeStartMap.get(watcherKey) || Date.now();
+    const endedAt = Date.now();
+    const playedMs = Math.max(0, endedAt - startedAt);
+    const key = tracker.playtimeKey;
+    if (requiresPs4Runtime) playtimeLogger.info("ps4recomp:session:stop", { configName: key, appid, playedMs });
+    const savedTotalMs = persistSession(endedAt);
+    if (savedTotalMs !== null) {
+      try {
+        ipcMain.emit("playtime:session-ended", null, {
+          configName: key,
+          appid: String(appid),
+          totalMs: savedTotalMs,
+        });
+      } catch (error) {
+        playtimeLogger.warn("playtime:update-notification-failed", {
+          appid: String(appid),
+          configName: key,
+          error: error?.message || String(error),
+        });
+      }
+    }
+
+    playtimeStartMap.delete(watcherKey);
     const desc = formatDuration(playedMs);
     if (!isPlaytimeDisabled()) {
       sendPlaytimeNotification({
@@ -638,27 +1123,33 @@ function startPlaytimeLogWatcher(configData) {
 
   cacheHeaderImage(userDataDir, appid, remoteHeaderUrl, {
     gameName,
-    gridSize: "460x215,920x430",
     platform,
     configData,
     steamAppId: effectiveAppId,
   })
     .then(({ headerUrl }) => {
       if (closed) return;
-      sendStart(headerUrl || initialHeader || fallbackHeaderUrl);
+      lastHeaderUrl = headerUrl || initialHeader || fallbackHeaderUrl;
+      if (!requiresPs4Runtime || seenRunning && !stopping) sendStart(lastHeaderUrl);
     })
     .catch((err) => {
       notifyError(`Header cache failed: ${err.message}`);
-      if (!closed) {
+      if (!closed && (!requiresPs4Runtime || seenRunning && !stopping)) {
         sendStart(initialHeader || fallbackHeaderUrl);
       }
     });
 
   const handleSnapshot = (processes) => {
-    if (closed) return;
+    if (closed || requiresPs4Runtime && stopping) return;
     const list = Array.isArray(processes) ? processes : [];
     if (!list.length) return;
+    if (platform === "ps3recomp") for (const pid of ps3Pids) { if (!list.some((p) => p.pid === pid)) ps3Pids.delete(pid); }
     const running = list.some((p) => {
+      if (platform === "ps3recomp") {
+        if (require("./ps3-recomp").matchesProcess(configData, p)) ps3Pids.add(p.pid);
+        return ps3Pids.has(p.pid) && normalizedProcessNames.includes(String(p.name || "").toLowerCase());
+      }
+      if (platform === "ps4recomp") return require("./ps4-recomp").matchesProcess(configData, p);
       if (launchPid && p.pid === launchPid) return true;
       if (!normalizedProcessNames.length) return false;
       if (
@@ -670,9 +1161,11 @@ function startPlaytimeLogWatcher(configData) {
     });
 
     if (!running) {
+      if (requiresPs4Runtime && !seenRunning) return;
       if (!seenRunning && Date.now() < startGraceUntil) {
         return;
       }
+      if (requiresPs4Runtime) stopping = true;
       (async () => {
         try {
           const headerPathNew = path.join(
@@ -705,16 +1198,32 @@ function startPlaytimeLogWatcher(configData) {
     }
     if (running) {
       seenRunning = true;
+      markSessionStarted();
+      if (requiresPs4Runtime) sendStart(lastHeaderUrl || initialHeader || fallbackHeaderUrl);
     }
   };
 
-  const initialSnapshot = processPoller.getSnapshot();
-  if (initialSnapshot && initialSnapshot.length) {
-    handleSnapshot(initialSnapshot);
+  if (requiresPs4Runtime) {
+    const onRuntimeProcesses = (_event, list) => handleSnapshot(list);
+    ipcMain.on("ps4recomp:runtime-processes", onRuntimeProcesses);
+    unsubscribe = () => ipcMain.removeListener("ps4recomp:runtime-processes", onRuntimeProcesses);
+    if (Array.isArray(options.initialProcesses)) handleSnapshot(options.initialProcesses);
+  } else {
+    const initialSnapshot = processPoller.getSnapshot();
+    if (initialSnapshot && initialSnapshot.length) {
+      handleSnapshot(initialSnapshot);
+    }
+    unsubscribe = processPoller.subscribe(handleSnapshot);
   }
-  unsubscribe = processPoller.subscribe(handleSnapshot);
 
   return cleanup;
 }
 
-module.exports = { startPlaytimeLogWatcher };
+module.exports = {
+  startPlaytimeLogWatcher,
+  flushPlaytimeSessions,
+  rebasePlaytimeSession,
+  getActiveLastPlayed,
+  cacheHeaderImage,
+  redownloadHeaderImage,
+};
